@@ -1,48 +1,49 @@
 {
  "task": "ai4sci-vs-contrastive-scoring",
  "schema": "agentic_v2",
- "harness": "mlsbench-devfix-2026-08-23",
+ "harness": "mlsbench-devfix-rewrite-2026-08-24",
  "file": "HypSeek/unimol/custom_scoring.py",
  "filename_source": "june_skeleton",
  "year": null,
  "scaffold_from_context": true,
  "baseline_in_prompt": "vanilla_clip",
  "n_rungs": 2,
- "n_edit_ops": 25,
+ "n_edit_ops": 2,
  "best_test": 2,
- "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace. Choose op by how\n  much you are changing:\n  - op='rewrite': replace the WHOLE editable region with `content`. This is\n    the normal way to write your solution. It needs no line numbers and no\n    copy of the old code, so it cannot fail with 'not found' or 'outside the\n    editable range'. Prefer it whenever you are (re)implementing the stub.\n  - op='str_replace': replace the single, unique occurrence of old_str with\n    new_str — for SMALL surgical fixes only. Keep old_str to 1–10 lines. Never\n    paste a whole function, class or docstring as old_str; that is what\n    op='rewrite' is for, and long anchors almost always fail to match.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. Call\n  it before str_replace whenever you are unsure of the exact text, and\n  always after an undo().\n\n  Reading the file correctly matters more than anything else here:\n  * Every successful edit echoes back the file's CURRENT editable region.\n    That echo is the truth. The listing in this first message is only true\n    until your first edit — after that, do not copy old_str out of it.\n  * The 'NNNNNN: ' line numbers in every listing are a display prefix. Never\n    include them in old_str or in content.\n  * If an edit is rejected, read the error: it quotes the nearest real text\n    in the file. Anchor on that, or switch to op='rewrite'.\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
  "tools": [
   {
    "type": "function",
    "function": {
     "name": "edit",
-    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "description": "Edit files in the workspace. Pick the operation by HOW MUCH you are changing:\n\n  rewrite: Replace the WHOLE editable region of the file with `content`.\n    Use this to implement or re-implement the stub you were given — it is the\n    normal way to write your solution. It needs NO line numbers and NO copy of\n    the old code, so it cannot fail with 'not found' or 'outside the editable\n    range'. `content` is your complete new code for that region.\n\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    Use this only for a SMALL, surgical change (fix one line, tweak a constant).\n    `old_str` must reproduce text that is in the file right now and must be\n    unique. Keep it SHORT — 1 to 10 lines. Do NOT paste a whole function or\n    docstring as `old_str`; if the change is that big, use op='rewrite'.\n    An empty `new_str` deletes `old_str`.\n\n  create: Create a NEW file with `content`. Only available if allow_create=true.\n\nAfter every successful edit this tool echoes the file's current editable region\nback to you. That echo — not the copy in the first message — is the truth about\nwhat the file now contains. Anchor the next str_replace on it, or call view().\nFile paths are relative to the package root (e.g. 'LLaMA-Factory/src/...').\nLines outside the editable region are protected and must NOT be modified.",
     "parameters": {
      "type": "object",
      "properties": {
       "op": {
        "type": "string",
        "enum": [
+        "rewrite",
         "str_replace",
         "create"
        ],
-       "description": "The edit operation to perform."
+       "description": "The edit operation, with its REQUIRED companion arguments:\n  'rewrite'     -> requires content   (replaces the whole editable region)\n  'str_replace' -> requires old_str AND new_str (small surgical change)\n  'create'      -> requires content   (new file)"
       },
       "filename": {
        "type": "string",
-       "description": "Package-relative path to the file."
-      },
-      "old_str": {
-       "type": "string",
-       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
-      },
-      "new_str": {
-       "type": "string",
-       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+       "description": "Package-relative path to the file (e.g. 'pytorch-vision/custom_loss.py')."
       },
       "content": {
        "type": "string",
-       "description": "Content to write (required for op='create')."
+       "description": "Your complete new code. Required for op='rewrite' (becomes the entire editable region) and for op='create'."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Text to replace (required for op='str_replace'). Must appear in the file's CURRENT contents and occur exactly once. Keep it to 1-10 lines; use op='rewrite' for anything larger. Never include the 'NNNNNN: ' line-number prefixes that appear in the displayed code."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (required for op='str_replace'). An empty string deletes `old_str`."
       }
      },
      "required": [
@@ -56,13 +57,13 @@
    "type": "function",
    "function": {
     "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
     "parameters": {
      "type": "object",
      "properties": {
       "filename": {
        "type": "string",
-       "description": "Package-relative path."
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
       },
       "start_line": {
        "type": "integer",
@@ -113,7 +114,7 @@
    "type": "function",
    "function": {
     "name": "undo",
-    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "description": "Revert the last n file modification actions (create/insert/replace) by restoring pre-edit snapshots. Does not undo test calls.",
     "parameters": {
      "type": "object",
      "properties": {
@@ -129,7 +130,7 @@
  "messages": [
   {
    "role": "user",
-   "content": "## Research question\n\nStructure-based virtual screening ranks a compound library against one protein target so the few true binders sit at the very top. Libraries are $10^8$–$10^9$ molecules and the hit rate is far below 0.1%, so the whole game is *throughput at the top of the ranking*. The single thing being designed is the **scoring objective**: given fixed pretrained backbone encoders (Uni-Mol for the molecule and the pocket, ESM-2 for the protein sequence) that are fine-tuned jointly with the scoring module, how should their features be projected into a shared space, what training loss should align binders with their target, and how should a final per-molecule score be read off at evaluation. Everything else — the encoders, the data loaders, the training loop, the evaluation scripts — is fixed.\n\n## Prior art / Background / Baselines\n\n- **Molecular docking (Glide, AutoDock Vina, Gold).** Samples candidate ligand poses in the pocket and scores each pose with an empirical force field correlated with binding free energy.\n- **Supervised affinity regression (DeepDTA, GraphDTA, OnionNet).** Maps a protein-molecule representation to a numeric affinity and ranks by that value.\n- **Supervised decoy classifiers (DrugVQA, AttentionSiteDTI).** Trains a binary classifier on actives versus rule-constructed decoys.\n- **Single-tower 3D scorers.** Feeds the joint protein-ligand complex, including cross-distances, into one network.\n- **Dense retrieval and contrastive pretraining (DPR, InfoNCE, CLIP).** Embeds queries and documents independently and retrieves by dot-product similarity, training with a symmetric in-batch contrastive softmax.\n\n## Fixed substrate / Code framework\n\nThe backbone encoders and harness are frozen and must not be touched. Uni-Mol is an SE(3)-invariant 3D Transformer that returns a 512-d [CLS] vector for a molecule or pocket; ESM-2 returns a 480-d [CLS] vector for the protein sequence. These three encoders are loaded from pretrained weights and fine-tuned jointly with the scoring module. The fixed model wrapper extracts the three [CLS] features per assay, calls the module's three `project_*` methods, and hands `(prot_emb, poc_emb, mol_emb)` to the fixed loss wrapper, which calls `compute_loss`. Training data is organized **by assay**: one target paired with a contiguous block of tested ligands, with block spans, per-ligand pIC50 activities, and metadata for false-negative masking provided per batch. Evaluation calls `score` over a target's library and reports ranking metrics.\n\n## Editable interface\n\nExactly one file is editable — `custom_scoring.py`, the `CustomScoring` module. Every method fills the same contract:\n\n- `__init__(mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128)` — projection heads and any objective parameters.\n- `project_mol(mol_feat)` / `project_pocket(poc_feat)` / `project_protein(prot_feat)` — map a `[B, dim]` feature into the `[B, embed_dim]` comparison space.\n- `compute_loss(mol_emb, poc_emb, prot_emb, batch_list, act_list, uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles)` — the training loss. `batch_list[i] = (start, end)` gives the contiguous column span of pocket `i`'s ligands in `mol_emb`; `act_list[i]` their pIC50 activities; the four metadata fields drive false-negative / duplicate masking. Returns `(loss, log_dict)`, and `log_dict[\"sim_masked\"]` is read by the validation loop.\n- `score(mol_reps, pocket_reps, prot_reps=None)` — numpy scoring for one target's library; returns one score per molecule.\n\nThe starting point is the scaffold default — a CLIP-style contrastive scorer over L2-normalized Euclidean embeddings, scored pocket↔molecule only, with the protein tower defined but unused in the loss.\n\n```python\n\"\"\"Custom scoring module for contrastive virtual screening — default fill (vanilla CLIP).\"\"\"\n\nimport math\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\n\n\nclass CustomScoring(nn.Module):\n    \"\"\"Scoring module for contrastive protein-ligand virtual screening.\n\n    Projects frozen encoder features into a shared embedding space and computes\n    the training loss for ranking actives above decoys.\n    \"\"\"\n\n    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n        super().__init__()\n        # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).\n        self.mol_project = nn.Sequential(\n            nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n        )\n        self.pocket_project = nn.Sequential(\n            nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n        )\n        self.protein_project = nn.Sequential(\n            nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n        )\n        # Learnable temperature (log scale); init log(13) ~ CLIP-style.\n        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n\n    def project_mol(self, mol_feat):\n        return F.normalize(self.mol_project(mol_feat), dim=-1)\n\n    def project_pocket(self, poc_feat):\n        return F.normalize(self.pocket_project(poc_feat), dim=-1)\n\n    def project_protein(self, prot_feat):\n        return F.normalize(self.protein_project(prot_feat), dim=-1)\n\n    def compute_loss(self, mol_emb, poc_emb, prot_emb,\n                     batch_list, act_list,\n                     uniprot_poc=None, uniprot_mol=None,\n                     pocket_lig_smiles=None, lig_smiles=None):\n        logit_scale = self.logit_scale.exp().detach()\n        B = poc_emb.size(0)\n\n        # Similarity matrix: [N_poc, N_mol]\n        logits = poc_emb @ mol_emb.T * logit_scale\n\n        # False-negative mask: same target, or a known binder of this pocket.\n        mask = torch.zeros_like(logits, dtype=torch.bool)\n        if uniprot_poc is not None and uniprot_mol is not None:\n            for i in range(B):\n                for j in range(logits.size(1)):\n                    if uniprot_poc[i] == uniprot_mol[j]:\n                        mask[i, j] = True\n        if pocket_lig_smiles is not None:\n            for i in range(B):\n                bad = pocket_lig_smiles[i]\n                for j in range(logits.size(1)):\n                    if lig_smiles[j] in bad:\n                        mask[i, j] = True\n\n        minus_inf = torch.finfo(logits.dtype).min\n        sim_masked = logits.masked_fill(mask, minus_inf)\n\n        # Symmetric contrastive loss.\n        # Pocket-to-ligand: each pocket retrieves its tested ligands (multi-positive).\n        idx2poc = []\n        for i, (s, e) in enumerate(batch_list):\n            idx2poc += [i] * (e - s)\n        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)\n\n        lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)\n        loss_pocket_list = []\n        for i, (s, e) in enumerate(batch_list):\n            L_i = e - s\n            if L_i == 0:\n                continue\n            rows = list(range(s, e))\n            lprobs_sub = lprobs_pocket[rows]\n            targ_sub = targets[rows]\n            loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction=\"none\")\n            loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))\n        loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)\n\n        # Ligand-to-pocket: each ligand retrieves its pocket (row-local).\n        loss_mol_list = []\n        for i in range(B):\n            s, e = batch_list[i]\n            for k in range(s, e):\n                row_mask = torch.full_like(sim_masked[i], minus_inf)\n                row_mask[k] = 0\n                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n                loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n\n        loss = loss_pocket + loss_mol\n\n        return loss, {\n            \"loss\": loss.item(),\n            \"loss_pocket\": loss_pocket.item(),\n            \"loss_mol\": loss_mol.item(),\n            \"sim_masked\": sim_masked,\n        }\n\n    def score(self, mol_reps, pocket_reps, prot_reps=None):\n        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n        if prot_reps is not None:\n            prot_scores = (prot_reps @ mol_reps.T).max(axis=0)\n            return poc_scores + prot_scores\n        return poc_scores\n```\n\n## Evaluation settings\n\nZero-shot: no target-specific training. Three structure-based screening benchmarks, with metrics averaged across each benchmark's targets:\n\n- **DUD-E** — 102 targets, actives versus property-matched ZINC decoys.\n- **LIT-PCBA** — 15 targets, confirmed actives versus confirmed inactives from dose-response bioassays; built to remove DUD-E's artificial-decoy bias, so realistic and much harder.\n- **DEKOIS 2.0** — 81 targets, a challenging decoy benchmark.\n\nMetrics, all higher-is-better and all *early-recognition*: **AUROC**, **BEDROC** ($\\alpha=80.5$), and **enrichment factor EF** at the top 0.5%, 1%, and 5% (also EF at 0.05%, 0.1%, 0.2%). The task score is the geometric mean across the three benchmarks of each benchmark's metric average. One seed (42).\n\n## HypSeek/unimol/custom_scoring.py  [EDITABLE — entire file]\n```python\n     1: \"\"\"Custom scoring module for contrastive virtual screening — vanilla CLIP (default fill).\"\"\"\n     2: \n     3: import math\n     4: import numpy as np\n     5: import torch\n     6: import torch.nn as nn\n     7: import torch.nn.functional as F\n     8: \n     9: \n    10: class CustomScoring(nn.Module):\n    11:     \"\"\"Scoring module for contrastive protein-ligand virtual screening.\"\"\"\n    12: \n    13:     def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n    14:         super().__init__()\n    15:         # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).\n    16:         self.mol_project = nn.Sequential(\n    17:             nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n    18:         )\n    19:         self.pocket_project = nn.Sequential(\n    20:             nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n    21:         )\n    22:         self.protein_project = nn.Sequential(\n    23:             nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n    24:         )\n    25:         # Learnable temperature (log scale); init log(13) ~ CLIP-style.\n    26:         self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n    27: \n    28:     def project_mol(self, mol_feat):\n    29:         return F.normalize(self.mol_project(mol_feat), dim=-1)\n    30: \n    31:     def project_pocket(self, poc_feat):\n    32:         return F.normalize(self.pocket_project(poc_feat), dim=-1)\n    33: \n    34:     def project_protein(self, prot_feat):\n    35:         return F.normalize(self.protein_project(prot_feat), dim=-1)\n    36: \n    37:     def compute_loss(self, mol_emb, poc_emb, prot_emb,\n    38:                      batch_list, act_list,\n    39:                      uniprot_poc=None, uniprot_mol=None,\n    40:                      pocket_lig_smiles=None, lig_smiles=None):\n    41:         logit_scale = self.logit_scale.exp().detach()\n    42:         B = poc_emb.size(0)\n    43: \n    44:         # Similarity matrix: [N_poc, N_mol]\n    45:         logits = poc_emb @ mol_emb.T * logit_scale\n    46: \n    47:         # False-negative mask: same target, or a known binder of this pocket.\n    48:         mask = torch.zeros_like(logits, dtype=torch.bool)\n    49:         if uniprot_poc is not None and uniprot_mol is not None:\n    50:             for i in range(B):\n    51:                 for j in range(logits.size(1)):\n    52:                     if uniprot_poc[i] == uniprot_mol[j]:\n    53:                         mask[i, j] = True\n    54:         if pocket_lig_smiles is not None:\n    55:             for i in range(B):\n    56:                 bad = pocket_lig_smiles[i]\n    57:                 for j in range(logits.size(1)):\n    58:                     if lig_smiles[j] in bad:\n    59:                         mask[i, j] = True\n    60: \n    61:         minus_inf = torch.finfo(logits.dtype).min\n    62:         sim_masked = logits.masked_fill(mask, minus_inf)\n    63: \n    64:         # === Symmetric contrastive loss ===\n    65:         # Pocket-to-ligand (multi-positive column term): each pocket owns its ligand columns.\n    66:         idx2poc = []\n    67:         for i, (s, e) in enumerate(batch_list):\n    68:             idx2poc += [i] * (e - s)\n    69:         targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)\n    70: \n    71:         lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)\n    72:         loss_pocket_list = []\n    73:         for i, (s, e) in enumerate(batch_list):\n    74:             L_i = e - s\n    75:             if L_i == 0:\n    76:                 continue\n    77:             rows = list(range(s, e))\n    78:             lprobs_sub = lprobs_pocket[rows]\n    79:             targ_sub = targets[rows]\n    80:             loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction=\"none\")\n    81:             loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))\n    82:         loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)\n    83: \n    84:         # Ligand-to-pocket (row-local selected-pair NLL): each ligand retrieves its pocket.\n    85:         loss_mol_list = []\n    86:         for i in range(B):\n    87:             s, e = batch_list[i]\n    88:             for k in range(s, e):\n    89:                 row_mask = torch.full_like(sim_masked[i], minus_inf)\n    90:                 row_mask[k] = 0\n    91:                 lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n    92:                 loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))\n    93:         loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n    94: \n    95:         loss = loss_pocket + loss_mol\n    96: \n    97:         return loss, {\n    98:             \"loss\": loss.item(),\n    99:             \"loss_pocket\": loss_pocket.item(),\n   100:             \"loss_mol\": loss_mol.item(),\n   101:             \"sim_masked\": sim_masked,\n   102:         }\n   103: \n   104:     def score(self, mol_reps, pocket_reps, prot_reps=None):\n   105:         poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n   106:         if prot_reps is not None:\n   107:             prot_scores = (prot_reps @ mol_reps.T).max(axis=0)\n   108:             return poc_scores + prot_scores\n   109:         return poc_scores\n```\n\n## Baseline results (the code above, already measured — reference `vanilla_clip`)\n\nMeasured results — `baseline:vanilla_clip` (`is_final,true`), seed 42 (the only configured seed; per-seed = mean).\n\n## DUD-E\n| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |\n|---|---|---|---|---|---|---|---|---|\n| 42 / mean | 0.895254 | 0.702952 | 51.3104 | 45.9741 | 14.3824 | 51.3104 | 45.9741 | 31.5920 |\n\n## DEKOIS 2.0\n| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |\n|---|---|---|---|---|---|---|---|---|\n| 42 / mean | 0.891507 | 0.711319 | 24.8319 | 24.4116 | 13.2445 | 24.8319 | 24.4116 | 21.9581 |\n\n## LIT-PCBA\n| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |\n|---|---|---|---|---|---|---|---|---|\n| 42 / mean | 0.575630 | 0.064706 | 7.2703 | 5.1616 | 2.5547 | 7.2703 | 5.1616 | 4.0763 |\n\n## Your Budget\n- **Action budget**: 27 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 2 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+   "content": "## Research question\n\nStructure-based virtual screening ranks a compound library against one protein target so the few true binders sit at the very top. Libraries are $10^8$–$10^9$ molecules and the hit rate is far below 0.1%, so the whole game is *throughput at the top of the ranking*. The single thing being designed is the **scoring objective**: given fixed pretrained backbone encoders (Uni-Mol for the molecule and the pocket, ESM-2 for the protein sequence) that are fine-tuned jointly with the scoring module, how should their features be projected into a shared space, what training loss should align binders with their target, and how should a final per-molecule score be read off at evaluation. Everything else — the encoders, the data loaders, the training loop, the evaluation scripts — is fixed.\n\n## Prior art / Background / Baselines\n\n- **Molecular docking (Glide, AutoDock Vina, Gold).** Samples candidate ligand poses in the pocket and scores each pose with an empirical force field correlated with binding free energy.\n- **Supervised affinity regression (DeepDTA, GraphDTA, OnionNet).** Maps a protein-molecule representation to a numeric affinity and ranks by that value.\n- **Supervised decoy classifiers (DrugVQA, AttentionSiteDTI).** Trains a binary classifier on actives versus rule-constructed decoys.\n- **Single-tower 3D scorers.** Feeds the joint protein-ligand complex, including cross-distances, into one network.\n- **Dense retrieval and contrastive pretraining (DPR, InfoNCE, CLIP).** Embeds queries and documents independently and retrieves by dot-product similarity, training with a symmetric in-batch contrastive softmax.\n\n## Fixed substrate / Code framework\n\nThe backbone encoders and harness are frozen and must not be touched. Uni-Mol is an SE(3)-invariant 3D Transformer that returns a 512-d [CLS] vector for a molecule or pocket; ESM-2 returns a 480-d [CLS] vector for the protein sequence. These three encoders are loaded from pretrained weights and fine-tuned jointly with the scoring module. The fixed model wrapper extracts the three [CLS] features per assay, calls the module's three `project_*` methods, and hands `(prot_emb, poc_emb, mol_emb)` to the fixed loss wrapper, which calls `compute_loss`. Training data is organized **by assay**: one target paired with a contiguous block of tested ligands, with block spans, per-ligand pIC50 activities, and metadata for false-negative masking provided per batch. Evaluation calls `score` over a target's library and reports ranking metrics.\n\n## Editable interface\n\nExactly one file is editable — `custom_scoring.py`, the `CustomScoring` module. Every method fills the same contract:\n\n- `__init__(mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128)` — projection heads and any objective parameters.\n- `project_mol(mol_feat)` / `project_pocket(poc_feat)` / `project_protein(prot_feat)` — map a `[B, dim]` feature into the `[B, embed_dim]` comparison space.\n- `compute_loss(mol_emb, poc_emb, prot_emb, batch_list, act_list, uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles)` — the training loss. `batch_list[i] = (start, end)` gives the contiguous column span of pocket `i`'s ligands in `mol_emb`; `act_list[i]` their pIC50 activities; the four metadata fields drive false-negative / duplicate masking. Returns `(loss, log_dict)`, and `log_dict[\"sim_masked\"]` is read by the validation loop.\n- `score(mol_reps, pocket_reps, prot_reps=None)` — numpy scoring for one target's library; returns one score per molecule.\n\nThe starting point is the scaffold default — a CLIP-style contrastive scorer over L2-normalized Euclidean embeddings, scored pocket↔molecule only, with the protein tower defined but unused in the loss.\n\n```python\n\"\"\"Custom scoring module for contrastive virtual screening — default fill (vanilla CLIP).\"\"\"\n\nimport math\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\n\n\nclass CustomScoring(nn.Module):\n    \"\"\"Scoring module for contrastive protein-ligand virtual screening.\n\n    Projects frozen encoder features into a shared embedding space and computes\n    the training loss for ranking actives above decoys.\n    \"\"\"\n\n    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n        super().__init__()\n        # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).\n        self.mol_project = nn.Sequential(\n            nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n        )\n        self.pocket_project = nn.Sequential(\n            nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n        )\n        self.protein_project = nn.Sequential(\n            nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n        )\n        # Learnable temperature (log scale); init log(13) ~ CLIP-style.\n        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n\n    def project_mol(self, mol_feat):\n        return F.normalize(self.mol_project(mol_feat), dim=-1)\n\n    def project_pocket(self, poc_feat):\n        return F.normalize(self.pocket_project(poc_feat), dim=-1)\n\n    def project_protein(self, prot_feat):\n        return F.normalize(self.protein_project(prot_feat), dim=-1)\n\n    def compute_loss(self, mol_emb, poc_emb, prot_emb,\n                     batch_list, act_list,\n                     uniprot_poc=None, uniprot_mol=None,\n                     pocket_lig_smiles=None, lig_smiles=None):\n        logit_scale = self.logit_scale.exp().detach()\n        B = poc_emb.size(0)\n\n        # Similarity matrix: [N_poc, N_mol]\n        logits = poc_emb @ mol_emb.T * logit_scale\n\n        # False-negative mask: same target, or a known binder of this pocket.\n        mask = torch.zeros_like(logits, dtype=torch.bool)\n        if uniprot_poc is not None and uniprot_mol is not None:\n            for i in range(B):\n                for j in range(logits.size(1)):\n                    if uniprot_poc[i] == uniprot_mol[j]:\n                        mask[i, j] = True\n        if pocket_lig_smiles is not None:\n            for i in range(B):\n                bad = pocket_lig_smiles[i]\n                for j in range(logits.size(1)):\n                    if lig_smiles[j] in bad:\n                        mask[i, j] = True\n\n        minus_inf = torch.finfo(logits.dtype).min\n        sim_masked = logits.masked_fill(mask, minus_inf)\n\n        # Symmetric contrastive loss.\n        # Pocket-to-ligand: each pocket retrieves its tested ligands (multi-positive).\n        idx2poc = []\n        for i, (s, e) in enumerate(batch_list):\n            idx2poc += [i] * (e - s)\n        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)\n\n        lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)\n        loss_pocket_list = []\n        for i, (s, e) in enumerate(batch_list):\n            L_i = e - s\n            if L_i == 0:\n                continue\n            rows = list(range(s, e))\n            lprobs_sub = lprobs_pocket[rows]\n            targ_sub = targets[rows]\n            loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction=\"none\")\n            loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))\n        loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)\n\n        # Ligand-to-pocket: each ligand retrieves its pocket (row-local).\n        loss_mol_list = []\n        for i in range(B):\n            s, e = batch_list[i]\n            for k in range(s, e):\n                row_mask = torch.full_like(sim_masked[i], minus_inf)\n                row_mask[k] = 0\n                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n                loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n\n        loss = loss_pocket + loss_mol\n\n        return loss, {\n            \"loss\": loss.item(),\n            \"loss_pocket\": loss_pocket.item(),\n            \"loss_mol\": loss_mol.item(),\n            \"sim_masked\": sim_masked,\n        }\n\n    def score(self, mol_reps, pocket_reps, prot_reps=None):\n        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n        if prot_reps is not None:\n            prot_scores = (prot_reps @ mol_reps.T).max(axis=0)\n            return poc_scores + prot_scores\n        return poc_scores\n```\n\n## Evaluation settings\n\nZero-shot: no target-specific training. Three structure-based screening benchmarks, with metrics averaged across each benchmark's targets:\n\n- **DUD-E** — 102 targets, actives versus property-matched ZINC decoys.\n- **LIT-PCBA** — 15 targets, confirmed actives versus confirmed inactives from dose-response bioassays; built to remove DUD-E's artificial-decoy bias, so realistic and much harder.\n- **DEKOIS 2.0** — 81 targets, a challenging decoy benchmark.\n\nMetrics, all higher-is-better and all *early-recognition*: **AUROC**, **BEDROC** ($\\alpha=80.5$), and **enrichment factor EF** at the top 0.5%, 1%, and 5% (also EF at 0.05%, 0.1%, 0.2%). The task score is the geometric mean across the three benchmarks of each benchmark's metric average. One seed (42).\n\n## HypSeek/unimol/custom_scoring.py  [EDITABLE — entire file only]\n```python\n     1: \"\"\"Custom scoring module for contrastive virtual screening — vanilla CLIP (default fill).\"\"\"\n     2: \n     3: import math\n     4: import numpy as np\n     5: import torch\n     6: import torch.nn as nn\n     7: import torch.nn.functional as F\n     8: \n     9: \n    10: class CustomScoring(nn.Module):\n    11:     \"\"\"Scoring module for contrastive protein-ligand virtual screening.\"\"\"\n    12: \n    13:     def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n    14:         super().__init__()\n    15:         # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).\n    16:         self.mol_project = nn.Sequential(\n    17:             nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n    18:         )\n    19:         self.pocket_project = nn.Sequential(\n    20:             nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n    21:         )\n    22:         self.protein_project = nn.Sequential(\n    23:             nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n    24:         )\n    25:         # Learnable temperature (log scale); init log(13) ~ CLIP-style.\n    26:         self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n    27: \n    28:     def project_mol(self, mol_feat):\n    29:         return F.normalize(self.mol_project(mol_feat), dim=-1)\n    30: \n    31:     def project_pocket(self, poc_feat):\n    32:         return F.normalize(self.pocket_project(poc_feat), dim=-1)\n    33: \n    34:     def project_protein(self, prot_feat):\n    35:         return F.normalize(self.protein_project(prot_feat), dim=-1)\n    36: \n    37:     def compute_loss(self, mol_emb, poc_emb, prot_emb,\n    38:                      batch_list, act_list,\n    39:                      uniprot_poc=None, uniprot_mol=None,\n    40:                      pocket_lig_smiles=None, lig_smiles=None):\n    41:         logit_scale = self.logit_scale.exp().detach()\n    42:         B = poc_emb.size(0)\n    43: \n    44:         # Similarity matrix: [N_poc, N_mol]\n    45:         logits = poc_emb @ mol_emb.T * logit_scale\n    46: \n    47:         # False-negative mask: same target, or a known binder of this pocket.\n    48:         mask = torch.zeros_like(logits, dtype=torch.bool)\n    49:         if uniprot_poc is not None and uniprot_mol is not None:\n    50:             for i in range(B):\n    51:                 for j in range(logits.size(1)):\n    52:                     if uniprot_poc[i] == uniprot_mol[j]:\n    53:                         mask[i, j] = True\n    54:         if pocket_lig_smiles is not None:\n    55:             for i in range(B):\n    56:                 bad = pocket_lig_smiles[i]\n    57:                 for j in range(logits.size(1)):\n    58:                     if lig_smiles[j] in bad:\n    59:                         mask[i, j] = True\n    60: \n    61:         minus_inf = torch.finfo(logits.dtype).min\n    62:         sim_masked = logits.masked_fill(mask, minus_inf)\n    63: \n    64:         # === Symmetric contrastive loss ===\n    65:         # Pocket-to-ligand (multi-positive column term): each pocket owns its ligand columns.\n    66:         idx2poc = []\n    67:         for i, (s, e) in enumerate(batch_list):\n    68:             idx2poc += [i] * (e - s)\n    69:         targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)\n    70: \n    71:         lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)\n    72:         loss_pocket_list = []\n    73:         for i, (s, e) in enumerate(batch_list):\n    74:             L_i = e - s\n    75:             if L_i == 0:\n    76:                 continue\n    77:             rows = list(range(s, e))\n    78:             lprobs_sub = lprobs_pocket[rows]\n    79:             targ_sub = targets[rows]\n    80:             loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction=\"none\")\n    81:             loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))\n    82:         loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)\n    83: \n    84:         # Ligand-to-pocket (row-local selected-pair NLL): each ligand retrieves its pocket.\n    85:         loss_mol_list = []\n    86:         for i in range(B):\n    87:             s, e = batch_list[i]\n    88:             for k in range(s, e):\n    89:                 row_mask = torch.full_like(sim_masked[i], minus_inf)\n    90:                 row_mask[k] = 0\n    91:                 lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n    92:                 loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))\n    93:         loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n    94: \n    95:         loss = loss_pocket + loss_mol\n    96: \n    97:         return loss, {\n    98:             \"loss\": loss.item(),\n    99:             \"loss_pocket\": loss_pocket.item(),\n   100:             \"loss_mol\": loss_mol.item(),\n   101:             \"sim_masked\": sim_masked,\n   102:         }\n   103: \n   104:     def score(self, mol_reps, pocket_reps, prot_reps=None):\n   105:         poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n   106:         if prot_reps is not None:\n   107:             prot_scores = (prot_reps @ mol_reps.T).max(axis=0)\n   108:             return poc_scores + prot_scores\n   109:         return poc_scores\n```\n\n## Baseline results (the code above, already measured — reference `vanilla_clip`)\n\nMeasured results — `baseline:vanilla_clip` (`is_final,true`), seed 42 (the only configured seed; per-seed = mean).\n\n## DUD-E\n| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |\n|---|---|---|---|---|---|---|---|---|\n| 42 / mean | 0.895254 | 0.702952 | 51.3104 | 45.9741 | 14.3824 | 51.3104 | 45.9741 | 31.5920 |\n\n## DEKOIS 2.0\n| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |\n|---|---|---|---|---|---|---|---|---|\n| 42 / mean | 0.891507 | 0.711319 | 24.8319 | 24.4116 | 13.2445 | 24.8319 | 24.4116 | 21.9581 |\n\n## LIT-PCBA\n| metric | AUROC | BEDROC | EF@0.5% | EF@1% | EF@5% | EF@0.05% | EF@0.1% | EF@0.2% |\n|---|---|---|---|---|---|---|---|---|\n| 42 / mean | 0.575630 | 0.064706 | 7.2703 | 5.1616 | 2.5547 | 7.2703 | 5.1616 | 4.0763 |\n\n## Your Budget\n- **Action budget**: 4 total tool calls (every edit / test / undo / web_search / web_extract counts; submit does not)\n- **Test invocations**: at most 2 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
   },
   {
    "role": "assistant",
@@ -141,10 +142,9 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
+       "op": "rewrite",
        "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "            \"loss_pocket\": loss_pocket.item(),\n            \"loss_mol\": loss_mol.item(),\n            \"sim_masked\": sim_masked,\n",
-       "new_str": "            \"loss_poc\": loss_dict_poc[\"loss\"].item(),\n            \"loss_prot\": loss_dict_prot[\"loss\"].item(),\n            \"sim_masked\": loss_dict_poc[\"sim_masked\"],\n"
+       "content": "\"\"\"HCC scoring module: Euclidean contrastive + ranking loss.\"\"\"\n\nimport math\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\n\n\nclass CustomScoring(nn.Module):\n    \"\"\"HCC: Hierarchical Contrastive Cosine in Euclidean space.\n\n    Adds ranking loss that enforces more active ligands score higher\n    within each pocket's ligand set, weighted by 1/log(rank+2) (DCG-style).\n    \"\"\"\n\n    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n        super().__init__()\n        # NonLinearHead pattern used by the HypSeek implementation.\n        self.mol_project = nn.Sequential(\n            nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n        )\n        self.pocket_project = nn.Sequential(\n            nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n        )\n        self.protein_project = nn.Sequential(\n            nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n        )\n        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n\n    def project_mol(self, mol_feat):\n        return F.normalize(self.mol_project(mol_feat), dim=-1)\n\n    def project_pocket(self, poc_feat):\n        return F.normalize(self.pocket_project(poc_feat), dim=-1)\n\n    def project_protein(self, prot_feat):\n        return F.normalize(self.protein_project(prot_feat), dim=-1)\n\n    def _compute_hcc_pair(self, emb_poc, emb_mol, batch_list, act_list,\n                          uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n                          logit_scale):\n        \"\"\"Compute HCC loss for one pathway (pocket-mol or protein-mol).\"\"\"\n        B = emb_poc.size(0)\n        logits = emb_poc @ emb_mol.T * logit_scale\n\n        # False-negative mask\n        mask = torch.zeros_like(logits, dtype=torch.bool)\n        if uniprot_poc is not None and uniprot_mol is not None:\n            for i in range(B):\n                for j in range(logits.size(1)):\n                    if uniprot_poc[i] == uniprot_mol[j]:\n                        mask[i, j] = True\n        if pocket_lig_smiles is not None:\n            for i in range(B):\n                bad = pocket_lig_smiles[i]\n                for j in range(logits.size(1)):\n                    if lig_smiles[j] in bad:\n                        mask[i, j] = True\n\n        minus_inf = torch.finfo(logits.dtype).min\n        sim_masked = logits.masked_fill(mask, minus_inf)\n\n        # Pocket retrieves ligands\n        idx2poc = []\n        for i, (s, e) in enumerate(batch_list):\n            idx2poc += [i] * (e - s)\n        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)\n        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)\n\n        loss_pocket_list = []\n        for i, (s, e) in enumerate(batch_list):\n            L_i = e - s\n            if L_i == 0:\n                continue\n            rows = list(range(s, e))\n            lprobs_sub = lprobs_pocket_all[rows]\n            targ_sub = targets[rows]\n            loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction=\"none\")\n            loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))\n        loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)\n\n        # Ligand retrieves pocket (skip low-activity ligands in multi-ligand pockets)\n        loss_mol_list = []\n        for i in range(B):\n            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            for k in range(s, e):\n                row_mask = torch.full_like(sim_masked[i], minus_inf)\n                row_mask[k] = 0\n                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n                if L_i > 1 and acts[k - s] < 5:\n                    continue\n                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n\n        # Ranking loss: within each pocket, rank by activity\n        loss_rank_list = []\n        for i in range(B):\n            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            if L_i <= 2:\n                continue\n            out_i = sim_masked[i, s:e]\n            for k_rel in range(L_i - 1):\n                m = torch.zeros_like(out_i)\n                for idx in range(L_i):\n                    if idx == k_rel:\n                        continue\n                    if acts[k_rel] - math.log10(3) <= acts[idx]:\n                        m[idx] = minus_inf\n                lprobs_rank = F.log_softmax(m + out_i, dim=-1)\n                loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))\n        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)\n\n        total = loss_pocket + loss_mol + loss_rank\n        return {\n            \"loss\": total,\n            \"loss_pocket\": loss_pocket,\n            \"loss_mol\": loss_mol,\n            \"loss_rank\": loss_rank,\n            \"sim_masked\": sim_masked,\n        }\n\n    def compute_loss(self, mol_emb, poc_emb, prot_emb,\n                     batch_list, act_list,\n                     uniprot_poc=None, uniprot_mol=None,\n                     pocket_lig_smiles=None, lig_smiles=None):\n        logit_scale = self.logit_scale.exp().detach()\n\n        # HCC for pocket-molecule pathway\n        loss_dict_poc = self._compute_hcc_pair(\n            poc_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n            logit_scale,\n        )\n        # HCC for protein-molecule pathway\n        loss_dict_prot = self._compute_hcc_pair(\n            prot_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n            logit_scale,\n        )\n        loss = loss_dict_poc[\"loss\"] + loss_dict_prot[\"loss\"]\n\n        return loss, {\n            \"loss\": loss.item(),\n            \"loss_poc\": loss_dict_poc[\"loss\"].item(),\n            \"loss_prot\": loss_dict_prot[\"loss\"].item(),\n            \"sim_masked\": loss_dict_poc[\"sim_masked\"],\n        }\n\n    def score(self, mol_reps, pocket_reps, prot_reps=None):\n        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n        if prot_reps is not None:\n            prot_scores = (prot_reps @ mol_reps.T).max(axis=0)\n            return poc_scores + prot_scores\n        return poc_scores\n"
       }
      }
     }
@@ -152,264 +152,11 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 99..101). Editable range: entire file."
+   "content": "OK: Rewrote the editable region of HypSeek/unimol/custom_scoring.py — replaced lines 1..109 (109 lines) with 159 line(s). Editable range: entire file.\n\n[Current contents of HypSeek/unimol/custom_scoring.py | editable: 1–159 | total: 159 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: \"\"\"HCC scoring module: Euclidean contrastive + ranking loss.\"\"\"\n     2: \n     3: import math\n     4: import numpy as np\n     5: import torch\n     6: import torch.nn as nn\n     7: import torch.nn.functional as F\n     8: \n     9: \n    10: class CustomScoring(nn.Module):\n    11:     \"\"\"HCC: Hierarchical Contrastive Cosine in Euclidean space.\n    12: \n    13:     Adds ranking loss that enforces more active ligands score higher\n    14:     within each pocket's ligand set, weighted by 1/log(rank+2) (DCG-style).\n    15:     \"\"\"\n    16: \n    17:     def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n    18:         super().__init__()\n    19:         # NonLinearHead pattern used by the HypSeek implementation.\n    20:         self.mol_project = nn.Sequential(\n    21:             nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n    22:         )\n    23:         self.pocket_project = nn.Sequential(\n    24:             nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n    25:         )\n    26:         self.protein_project = nn.Sequential(\n    27:             nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n    28:         )\n    29:         self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n    30: \n    31:     def project_mol(self, mol_feat):\n    32:         return F.normalize(self.mol_project(mol_feat), dim=-1)\n    33: \n    34:     def project_pocket(self, poc_feat):\n    35:         return F.normalize(self.pocket_project(poc_feat), dim=-1)\n    36: \n    37:     def project_protein(self, prot_feat):\n    38:         return F.normalize(self.protein_project(prot_feat), dim=-1)\n    39: \n    40:     def _compute_hcc_pair(self, emb_poc, emb_mol, batch_list, act_list,\n    41:                           uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n    42:                           logit_scale):\n    43:         \"\"\"Compute HCC loss for one pathway (pocket-mol or protein-mol).\"\"\"\n    44:         B = emb_poc.size(0)\n    45:         logits = emb_poc @ emb_mol.T * logit_scale\n    46: \n    47:         # False-negative mask\n    48:         mask = torch.zeros_like(logits, dtype=torch.bool)\n    49:         if uniprot_poc is not None and uniprot_mol is not None:\n    50:             for i in range(B):\n    51:                 for j in range(logits.size(1)):\n    52:                     if uniprot_poc[i] == uniprot_mol[j]:\n    53:                         mask[i, j] = True\n    54:         if pocket_lig_smiles is not None:\n    55:             for i in range(B):\n    56:                 bad = pocket_lig_smiles[i]\n    57:                 for j in range(logits.size(1)):\n    58:                     if lig_smiles[j] in bad:\n    59:                         mask[i, j] = True\n    60: \n    61:         minus_inf = torch.finfo(logits.dtype).min\n    62:         sim_masked = logits.masked_fill(mask, minus_inf)\n    63: \n    64:         # Pocket retrieves ligands\n    65:         idx2poc = []\n    66:         for i, (s, e) in enumerate(batch_list):\n    67:             idx2poc += [i] * (e - s)\n    68:         targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)\n    69:         lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)\n    70: \n    71:         loss_pocket_list = []\n    72:         for i, (s, e) in enumerate(batch_list):\n    73:             L_i = e - s\n    74:             if L_i == 0:\n    75:                 continue\n    76:             rows = list(range(s, e))\n    77:             lprobs_sub = lprobs_pocket_all[rows]\n    78:             targ_sub = targets[rows]\n    79:             loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction=\"none\")\n    80:             loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))\n    81:         loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)\n    82: \n    83:         # Ligand retrieves pocket (skip low-activity ligands in multi-ligand pockets)\n    84:         loss_mol_list = []\n    85:         for i in range(B):\n    86:             s, e = batch_list[i]\n    87:             acts = act_list[i]\n    88:             L_i = e - s\n    89:             for k in range(s, e):\n    90:                 row_mask = torch.full_like(sim_masked[i], minus_inf)\n    91:                 row_mask[k] = 0\n    92:                 lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n    93:                 if L_i > 1 and acts[k - s] < 5:\n    94:                     continue\n    95:                 loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))\n    96:         loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n    97: \n    98:         # Ranking loss: within each pocket, rank by activity\n    99:         loss_rank_list = []\n   100:         for i in range(B):\n   101:             s, e = batch_list[i]\n   102:             acts = act_list[i]\n   103:             L_i = e - s\n   104:             if L_i <= 2:\n   105:                 continue\n   106:             out_i = sim_masked[i, s:e]\n   107:             for k_rel in range(L_i - 1):\n   108:                 m = torch.zeros_like(out_i)\n   109:                 for idx in range(L_i):\n   110:                     if idx == k_rel:\n   111:                         continue\n   112:                     if acts[k_rel] - math.log10(3) <= acts[idx]:\n   113:                         m[idx] = minus_inf\n   114:                 lprobs_rank = F.log_softmax(m + out_i, dim=-1)\n   115:                 loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))\n... (echo truncated at 6000 chars — call view(filename='HypSeek/unimol/custom_scoring.py', start_line=..., end_line=...) for the rest)"
   },
   {
    "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=2]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "                loss_mol_list.append(-lprobs[k] / math.sqrt(e - s))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n\n        loss = loss_pocket + loss_mol\n",
-       "new_str": "                if L_i > 1 and acts[k - s] < 5:\n                    continue\n                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n\n        # Ranking loss: within each pocket, rank by activity\n        loss_rank_list = []\n        for i in range(B):\n            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            if L_i <= 2:\n                continue\n            out_i = sim_masked[i, s:e]\n            for k_rel in range(L_i - 1):\n                m = torch.zeros_like(out_i)\n                for idx in range(L_i):\n                    if idx == k_rel:\n                        continue\n                    if acts[k_rel] - math.log10(3) <= acts[idx]:\n                        m[idx] = minus_inf\n                lprobs_rank = F.log_softmax(m + out_i, dim=-1)\n                loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))\n        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)\n\n        total = loss_pocket + loss_mol + loss_rank\n        return {\n            \"loss\": total,\n            \"loss_pocket\": loss_pocket,\n            \"loss_mol\": loss_mol,\n            \"loss_rank\": loss_rank,\n            \"sim_masked\": sim_masked,\n        }\n\n    def compute_loss(self, mol_emb, poc_emb, prot_emb,\n                     batch_list, act_list,\n                     uniprot_poc=None, uniprot_mol=None,\n                     pocket_lig_smiles=None, lig_smiles=None):\n        logit_scale = self.logit_scale.exp().detach()\n\n        # HCC for pocket-molecule pathway\n        loss_dict_poc = self._compute_hcc_pair(\n            poc_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n            logit_scale,\n        )\n        # HCC for protein-molecule pathway\n        loss_dict_prot = self._compute_hcc_pair(\n            prot_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n            logit_scale,\n        )\n        loss = loss_dict_poc[\"loss\"] + loss_dict_prot[\"loss\"]\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 92..95). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=3]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "            s, e = batch_list[i]\n            for k in range(s, e):\n",
-       "new_str": "            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            for k in range(s, e):\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 87..88). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=4]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        # Ligand-to-pocket (row-local selected-pair NLL): each ligand retrieves its pocket.\n",
-       "new_str": "        # Ligand retrieves pocket (skip low-activity ligands in multi-ligand pockets)\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 84..84). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=5]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "            lprobs_sub = lprobs_pocket[rows]\n",
-       "new_str": "            lprobs_sub = lprobs_pocket_all[rows]\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 78..78). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=6]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "\n        lprobs_pocket = F.log_softmax(sim_masked.T, dim=-1)\n",
-       "new_str": "        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)\n\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 70..71). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=7]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        # === Symmetric contrastive loss ===\n        # Pocket-to-ligand (multi-positive column term): each pocket owns its ligand columns.\n",
-       "new_str": "        # Pocket retrieves ligands\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 64..65). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=8]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "    def compute_loss(self, mol_emb, poc_emb, prot_emb,\n                     batch_list, act_list,\n                     uniprot_poc=None, uniprot_mol=None,\n                     pocket_lig_smiles=None, lig_smiles=None):\n        logit_scale = self.logit_scale.exp().detach()\n        B = poc_emb.size(0)\n\n        # Similarity matrix: [N_poc, N_mol]\n        logits = poc_emb @ mol_emb.T * logit_scale\n\n        # False-negative mask: same target, or a known binder of this pocket.\n",
-       "new_str": "    def _compute_hcc_pair(self, emb_poc, emb_mol, batch_list, act_list,\n                          uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n                          logit_scale):\n        \"\"\"Compute HCC loss for one pathway (pocket-mol or protein-mol).\"\"\"\n        B = emb_poc.size(0)\n        logits = emb_poc @ emb_mol.T * logit_scale\n\n        # False-negative mask\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 37..47). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=9]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        # Learnable temperature (log scale); init log(13) ~ CLIP-style.\n",
-       "new_str": ""
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 25..25). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=10]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        # NonLinearHead pattern: Linear(in,in) -> ReLU -> Linear(in,embed_dim).\n",
-       "new_str": "        # NonLinearHead pattern used by the HypSeek implementation.\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 15..15). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=11]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "    \"\"\"Scoring module for contrastive protein-ligand virtual screening.\"\"\"\n",
-       "new_str": "    \"\"\"HCC: Hierarchical Contrastive Cosine in Euclidean space.\n\n    Adds ranking loss that enforces more active ligands score higher\n    within each pocket's ligand set, weighted by 1/log(rank+2) (DCG-style).\n    \"\"\"\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 11..11). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=1 slug=hcc seq=12]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "\"\"\"Custom scoring module for contrastive virtual screening — vanilla CLIP (default fill).\"\"\"\n",
-       "new_str": "\"\"\"HCC scoring module: Euclidean contrastive + ranking loss.\"\"\"\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 1..1). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=hcc seq=13]]",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=hcc seq=2]]",
    "content": "",
    "tool_calls": [
     {
@@ -427,18 +174,17 @@
   },
   {
    "role": "assistant",
-   "reasoning_content": "[[THINK kind=design rung=2 slug=hcc_hyp_cone seq=14]]",
-   "content": "[[SAY rung=2 slug=hcc_hyp_cone seq=14]]",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=hcc_hyp_cone seq=3]]",
+   "content": "[[SAY rung=2 slug=hcc_hyp_cone seq=3]]",
    "tool_calls": [
     {
      "type": "function",
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
+       "op": "rewrite",
        "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "    def score(self, mol_reps, pocket_reps, prot_reps=None):\n        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n",
-       "new_str": "    def score(self, mol_reps, pocket_reps, prot_reps=None):\n        \"\"\"Score using full 128-d hyperbolic embedding (paper convention).\"\"\"\n        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n"
+       "content": "\"\"\"Full HypSeek scoring: Hyperbolic HCC + Cone Hierarchy.\"\"\"\n\nimport math\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.nn.functional as F\nfrom unimol.losses import lorentz as L\n\n\nclass CustomScoring(nn.Module):\n    \"\"\"Full HypSeek: Lorentz hyperbolic embeddings + HCC + cone hierarchy.\n\n    Maps projected features onto a Lorentz hyperboloid via exp_map0,\n    trains with HCC contrastive-ranking loss plus cone hierarchy\n    constraints (radial + angular).\n    \"\"\"\n\n    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n        super().__init__()\n        # Projection heads (NonLinearHead equivalent: hidden=input_dim)\n        self.mol_project = nn.Sequential(\n            nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n        )\n        self.pocket_project = nn.Sequential(\n            nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n        )\n        self.protein_project = nn.Sequential(\n            nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n        )\n\n        # Learnable scale parameters (log-space, clamped to exp(alpha) <= 1)\n        self.mol_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n        self.pocket_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n        self.protein_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n\n        # Learnable curvature (log-space)\n        self.curv = nn.Parameter(torch.tensor([1.0]).log(), requires_grad=True)\n        self._curv_minmax = {\"max\": math.log(10.0), \"min\": math.log(0.1)}\n\n        # Temperature\n        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n\n        # Cone hierarchy hyperparameters\n        self.bounds = torch.tensor([5.0, 7.0, 9.0], dtype=torch.float32)\n        self.chl_r0 = 0.5\n        self.chl_dr = 0.5\n        self.chl_eta0 = 0.7\n        self.chl_deta = 0.2\n        self.lambda_rad = 0.5\n        self.lambda_ang = 0.5\n        self.gamma_chl = 0.1\n        self.lambda_angu = 0.10\n        self.lambda_het = 0.10\n\n    def _clamp_params(self):\n        \"\"\"Clamp scale and curvature parameters.\"\"\"\n        self.mol_alpha.data = torch.clamp(self.mol_alpha.data, max=0.0)\n        self.pocket_alpha.data = torch.clamp(self.pocket_alpha.data, max=0.0)\n        self.protein_alpha.data = torch.clamp(self.protein_alpha.data, max=0.0)\n        self.curv.data = torch.clamp(self.curv.data, **self._curv_minmax)\n\n    def _project_to_hyperboloid(self, feat, proj_head, alpha):\n        \"\"\"Project features to Lorentz hyperboloid.\"\"\"\n        u = proj_head(feat) * alpha.exp()\n        with torch.autocast(u.device.type, dtype=torch.float32):\n            h = L.exp_map0(u, self.curv.exp())\n        return h\n\n    def project_mol(self, mol_feat):\n        self._clamp_params()\n        return self._project_to_hyperboloid(mol_feat, self.mol_project, self.mol_alpha)\n\n    def project_pocket(self, poc_feat):\n        self._clamp_params()\n        return self._project_to_hyperboloid(poc_feat, self.pocket_project, self.pocket_alpha)\n\n    def project_protein(self, prot_feat):\n        self._clamp_params()\n        return self._project_to_hyperboloid(prot_feat, self.protein_project, self.protein_alpha)\n\n    def _compute_hcc_pair(self, emb_poc, emb_mol, batch_list, act_list,\n                          uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n                          logit_scale):\n        \"\"\"HCC loss for one pathway (space component dot product).\"\"\"\n        B = emb_poc.size(0)\n        emb_poc = emb_poc[:, 1:]\n        emb_mol = emb_mol[:, 1:]\n        logits = torch.matmul(emb_poc, emb_mol.T) * logit_scale\n\n        N_mol = emb_mol.size(0)\n        mask = torch.zeros_like(logits, dtype=torch.bool)\n        if uniprot_poc is not None and uniprot_mol is not None:\n            for i in range(B):\n                for j in range(N_mol):\n                    if uniprot_poc[i] == uniprot_mol[j]:\n                        mask[i, j] = True\n        if pocket_lig_smiles is not None:\n            for i in range(B):\n                bad = pocket_lig_smiles[i]\n                for j in range(N_mol):\n                    if lig_smiles[j] in bad:\n                        mask[i, j] = True\n\n        minus_inf = torch.finfo(logits.dtype).min\n        sim_masked = logits.masked_fill(mask, minus_inf)\n\n        # Pocket retrieves ligands\n        loss_mol_list, loss_rank_list = [], []\n        for i in range(B):\n            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            out_i = sim_masked[i, s:e]\n            for k in range(s, e):\n                row_mask = torch.full_like(sim_masked[i], minus_inf)\n                row_mask[k] = 0\n                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n                if L_i > 1 and acts[k - s] < 5:\n                    continue\n                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))\n            if L_i > 2:\n                for k_rel in range(L_i - 1):\n                    m = torch.zeros_like(out_i)\n                    for idx in range(L_i):\n                        if idx == k_rel:\n                            continue\n                        if acts[k_rel] - math.log10(3) <= acts[idx]:\n                            m[idx] = minus_inf\n                    lprobs_rank = F.log_softmax(m + out_i, dim=-1)\n                    loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)\n\n        # Ligand-to-pocket\n        idx2poc = []\n        for i, (s, e) in enumerate(batch_list):\n            idx2poc += [i] * (e - s)\n        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)\n        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)\n        loss_pocket_list = []\n        for i, (s, e) in enumerate(batch_list):\n            L_i = e - s\n            if L_i == 0:\n                continue\n            rows = list(range(s, e))\n            lprobs_sub = lprobs_pocket_all[rows]\n            targ_sub = targets[rows]\n            loss_tmp = F.nll_loss(lprobs_sub, targ_sub, reduction=\"none\")\n            loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))\n        loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)\n\n        total = loss_pocket + loss_mol + loss_rank\n        return {\"loss\": total, \"loss_pocket\": loss_pocket, \"loss_mol\": loss_mol,\n                \"loss_rank\": loss_rank, \"sim_masked\": sim_masked}\n\n    def compute_loss(self, mol_emb, poc_emb, prot_emb,\n                     batch_list, act_list,\n                     uniprot_poc=None, uniprot_mol=None,\n                     pocket_lig_smiles=None, lig_smiles=None):\n        kappa = self.curv.exp().detach()\n        logit_scale = self.logit_scale.exp().detach()\n        B = poc_emb.size(0)\n\n        # === Cone Hierarchy Loss ===\n        poc_space = poc_emb[:, 1:]\n        lig_space = mol_emb[:, 1:]\n        poc_idx = []\n        for i, (s, e) in enumerate(batch_list):\n            poc_idx += [i] * (e - s)\n        poc_idx = torch.tensor(poc_idx, device=poc_emb.device)\n\n        poc_sel = poc_space[poc_idx]\n        dist_mat = L.pairwise_dist(poc_sel, lig_space, curv=kappa)\n        dist = dist_mat.diagonal()\n        device = dist.device\n        phi = L.oxy_angle(lig_space, poc_space[poc_idx], curv=kappa)\n        omega = L.half_aperture(poc_space[poc_idx], curv=kappa)\n        act_flat = torch.tensor(\n            [x for sub in act_list for x in sub],\n            device=poc_emb.device, dtype=torch.float32,\n        )\n        bounds = self.bounds.to(poc_emb.device)\n        bucket = torch.bucketize(act_flat, bounds)\n        r_k = self.chl_r0 + bucket.float() * self.chl_dr\n        eta_k = self.chl_eta0 - bucket.float() * self.chl_deta\n        Nl = dist.size(0)\n        L_rad = F.relu(dist - r_k).sum() / math.sqrt(Nl)\n        L_ang = F.relu(phi - eta_k * omega).sum() / math.sqrt(Nl)\n        loss_cone = self.lambda_rad * L_rad + self.lambda_ang * L_ang\n\n        # Angular regularization\n        m_margin = 0.15\n        R_ang = F.relu(phi - eta_k * omega + m_margin).sum() / math.sqrt(Nl)\n\n        # Heterogeneous ranking regularization\n        R_het = torch.zeros(1, device=device)\n        cnt_het = 0\n        beta = 80.5\n        offset = 0\n        for i_poc, (s, e) in enumerate(batch_list):\n            L_i = e - s\n            if L_i < 1:\n                continue\n            d_i = dist[offset : offset + L_i].detach()\n            rank = (d_i.unsqueeze(0) < d_i.unsqueeze(1)).float().sum(1) + 1\n            w = torch.exp(-beta * (rank - 1) / L_i)\n            logits_row = torch.matmul(poc_space[i_poc : i_poc + 1], lig_space.T) * logit_scale\n            row_probs = F.softmax(logits_row[0, s:e], dim=-1)\n            pos_mask = act_flat[offset : offset + L_i] < 5\n            if pos_mask.any():\n                R_het += -(w[pos_mask] * row_probs[pos_mask].log()).sum() / (w[pos_mask].sum() + 1e-9)\n                cnt_het += 1\n            offset += L_i\n        R_het = R_het / max(cnt_het, 1)\n        loss_reg = self.lambda_het * R_het + self.lambda_angu * R_ang\n\n        # === HCC for both pathways ===\n        loss_dict_poc = self._compute_hcc_pair(\n            poc_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,\n        )\n        loss_dict_prot = self._compute_hcc_pair(\n            prot_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,\n        )\n\n        loss_hcc = loss_dict_poc[\"loss\"] + loss_dict_prot[\"loss\"]\n        total_loss = loss_hcc + self.gamma_chl * loss_cone + loss_reg\n\n        return total_loss, {\n            \"loss\": total_loss.item(),\n            \"loss_hcc\": loss_hcc.item(),\n            \"loss_cone\": loss_cone.item(),\n            \"loss_reg\": loss_reg.item(),\n            \"sim_masked\": loss_dict_poc[\"sim_masked\"],\n        }\n\n    def score(self, mol_reps, pocket_reps, prot_reps=None):\n        \"\"\"Score using full 128-d hyperbolic embedding (paper convention).\"\"\"\n        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)\n        if prot_reps is not None:\n            prot_scores = (prot_reps @ mol_reps.T).max(axis=0)\n            return poc_scores + prot_scores\n        return poc_scores\n"
       }
      }
     }
@@ -446,287 +192,11 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 154..155). Editable range: entire file."
+   "content": "OK: Rewrote the editable region of HypSeek/unimol/custom_scoring.py — replaced lines 1..159 (159 lines) with 245 line(s). Editable range: entire file.\n\n[Current contents of HypSeek/unimol/custom_scoring.py | editable: 1–245 | total: 245 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: \"\"\"Full HypSeek scoring: Hyperbolic HCC + Cone Hierarchy.\"\"\"\n     2: \n     3: import math\n     4: import numpy as np\n     5: import torch\n     6: import torch.nn as nn\n     7: import torch.nn.functional as F\n     8: from unimol.losses import lorentz as L\n     9: \n    10: \n    11: class CustomScoring(nn.Module):\n    12:     \"\"\"Full HypSeek: Lorentz hyperbolic embeddings + HCC + cone hierarchy.\n    13: \n    14:     Maps projected features onto a Lorentz hyperboloid via exp_map0,\n    15:     trains with HCC contrastive-ranking loss plus cone hierarchy\n    16:     constraints (radial + angular).\n    17:     \"\"\"\n    18: \n    19:     def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):\n    20:         super().__init__()\n    21:         # Projection heads (NonLinearHead equivalent: hidden=input_dim)\n    22:         self.mol_project = nn.Sequential(\n    23:             nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)\n    24:         )\n    25:         self.pocket_project = nn.Sequential(\n    26:             nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)\n    27:         )\n    28:         self.protein_project = nn.Sequential(\n    29:             nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)\n    30:         )\n    31: \n    32:         # Learnable scale parameters (log-space, clamped to exp(alpha) <= 1)\n    33:         self.mol_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n    34:         self.pocket_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n    35:         self.protein_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n    36: \n    37:         # Learnable curvature (log-space)\n    38:         self.curv = nn.Parameter(torch.tensor([1.0]).log(), requires_grad=True)\n    39:         self._curv_minmax = {\"max\": math.log(10.0), \"min\": math.log(0.1)}\n    40: \n    41:         # Temperature\n    42:         self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n    43: \n    44:         # Cone hierarchy hyperparameters\n    45:         self.bounds = torch.tensor([5.0, 7.0, 9.0], dtype=torch.float32)\n    46:         self.chl_r0 = 0.5\n    47:         self.chl_dr = 0.5\n    48:         self.chl_eta0 = 0.7\n    49:         self.chl_deta = 0.2\n    50:         self.lambda_rad = 0.5\n    51:         self.lambda_ang = 0.5\n    52:         self.gamma_chl = 0.1\n    53:         self.lambda_angu = 0.10\n    54:         self.lambda_het = 0.10\n    55: \n    56:     def _clamp_params(self):\n    57:         \"\"\"Clamp scale and curvature parameters.\"\"\"\n    58:         self.mol_alpha.data = torch.clamp(self.mol_alpha.data, max=0.0)\n    59:         self.pocket_alpha.data = torch.clamp(self.pocket_alpha.data, max=0.0)\n    60:         self.protein_alpha.data = torch.clamp(self.protein_alpha.data, max=0.0)\n    61:         self.curv.data = torch.clamp(self.curv.data, **self._curv_minmax)\n    62: \n    63:     def _project_to_hyperboloid(self, feat, proj_head, alpha):\n    64:         \"\"\"Project features to Lorentz hyperboloid.\"\"\"\n    65:         u = proj_head(feat) * alpha.exp()\n    66:         with torch.autocast(u.device.type, dtype=torch.float32):\n    67:             h = L.exp_map0(u, self.curv.exp())\n    68:         return h\n    69: \n    70:     def project_mol(self, mol_feat):\n    71:         self._clamp_params()\n    72:         return self._project_to_hyperboloid(mol_feat, self.mol_project, self.mol_alpha)\n    73: \n    74:     def project_pocket(self, poc_feat):\n    75:         self._clamp_params()\n    76:         return self._project_to_hyperboloid(poc_feat, self.pocket_project, self.pocket_alpha)\n    77: \n    78:     def project_protein(self, prot_feat):\n    79:         self._clamp_params()\n    80:         return self._project_to_hyperboloid(prot_feat, self.protein_project, self.protein_alpha)\n       ... (85 more lines not shown — call view(filename='HypSeek/unimol/custom_scoring.py', start_line=..., end_line=...) to read them) ...\n   166:         poc_space = poc_emb[:, 1:]\n   167:         lig_space = mol_emb[:, 1:]\n   168:         poc_idx = []\n   169:         for i, (s, e) in enumerate(batch_list):\n   170:             poc_idx += [i] * (e - s)\n   171:         poc_idx = torch.tensor(poc_idx, device=poc_emb.device)\n   172: \n   173:         poc_sel = poc_space[poc_idx]\n   174:         dist_mat = L.pairwise_dist(poc_sel, lig_space, curv=kappa)\n   175:         dist = dist_mat.diagonal()\n   176:         device = dist.device\n   177:         phi = L.oxy_angle(lig_space, poc_space[poc_idx], curv=kappa)\n   178:         omega = L.half_aperture(poc_space[poc_idx], curv=kappa)\n   179:         act_flat = torch.tensor(\n   180:             [x for sub in act_list for x in sub],\n   181:             device=poc_emb.device, dtype=torch.float32,\n   182:         )\n   183:         bounds = self.bounds.to(poc_emb.device)\n   184:         bucket = torch.bucketize(act_flat, bounds)\n   185:         r_k = self.chl_r0 + bucket.float() * self.chl_dr\n   186:         eta_k = self.chl_eta0 - bucket.float() * self.chl_deta\n   187:         Nl = dist.size(0)\n   188:         L_rad = F.relu(dist - r_k).sum() / math.sqrt(Nl)\n   189:         L_ang = F.relu(phi - eta_k * omega).sum() / math.sqrt(Nl)\n   190:         loss_cone = self.lambda_rad * L_rad + self.lambda_ang * L_ang\n   191: \n   192:         # Angular regularization\n   193:         m_margin = 0.15\n   194:         R_ang = F.relu(phi - eta_k * omega + m_margin).sum() / math.sqrt(Nl)\n   195: \n   196:         # Heterogeneous ranking regularization\n   197:         R_het = torch.zeros(1, device=device)\n   198:         cnt_het = 0\n   199:         beta = 80.5\n   200:         offset = 0\n... (echo truncated at 6000 chars — call view(filename='HypSeek/unimol/custom_scoring.py', start_line=..., end_line=...) for the rest)"
   },
   {
    "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=15]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        logit_scale = self.logit_scale.exp().detach()\n\n        # HCC for pocket-molecule pathway\n        loss_dict_poc = self._compute_hcc_pair(\n            poc_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n            logit_scale,\n        )\n        # HCC for protein-molecule pathway\n        loss_dict_prot = self._compute_hcc_pair(\n            prot_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,\n            logit_scale,\n        )\n        loss = loss_dict_poc[\"loss\"] + loss_dict_prot[\"loss\"]\n\n        return loss, {\n            \"loss\": loss.item(),\n            \"loss_poc\": loss_dict_poc[\"loss\"].item(),\n            \"loss_prot\": loss_dict_prot[\"loss\"].item(),\n",
-       "new_str": "        kappa = self.curv.exp().detach()\n        logit_scale = self.logit_scale.exp().detach()\n        B = poc_emb.size(0)\n\n        # === Cone Hierarchy Loss ===\n        poc_space = poc_emb[:, 1:]\n        lig_space = mol_emb[:, 1:]\n        poc_idx = []\n        for i, (s, e) in enumerate(batch_list):\n            poc_idx += [i] * (e - s)\n        poc_idx = torch.tensor(poc_idx, device=poc_emb.device)\n\n        poc_sel = poc_space[poc_idx]\n        dist_mat = L.pairwise_dist(poc_sel, lig_space, curv=kappa)\n        dist = dist_mat.diagonal()\n        device = dist.device\n        phi = L.oxy_angle(lig_space, poc_space[poc_idx], curv=kappa)\n        omega = L.half_aperture(poc_space[poc_idx], curv=kappa)\n        act_flat = torch.tensor(\n            [x for sub in act_list for x in sub],\n            device=poc_emb.device, dtype=torch.float32,\n        )\n        bounds = self.bounds.to(poc_emb.device)\n        bucket = torch.bucketize(act_flat, bounds)\n        r_k = self.chl_r0 + bucket.float() * self.chl_dr\n        eta_k = self.chl_eta0 - bucket.float() * self.chl_deta\n        Nl = dist.size(0)\n        L_rad = F.relu(dist - r_k).sum() / math.sqrt(Nl)\n        L_ang = F.relu(phi - eta_k * omega).sum() / math.sqrt(Nl)\n        loss_cone = self.lambda_rad * L_rad + self.lambda_ang * L_ang\n\n        # Angular regularization\n        m_margin = 0.15\n        R_ang = F.relu(phi - eta_k * omega + m_margin).sum() / math.sqrt(Nl)\n\n        # Heterogeneous ranking regularization\n        R_het = torch.zeros(1, device=device)\n        cnt_het = 0\n        beta = 80.5\n        offset = 0\n        for i_poc, (s, e) in enumerate(batch_list):\n            L_i = e - s\n            if L_i < 1:\n                continue\n            d_i = dist[offset : offset + L_i].detach()\n            rank = (d_i.unsqueeze(0) < d_i.unsqueeze(1)).float().sum(1) + 1\n            w = torch.exp(-beta * (rank - 1) / L_i)\n            logits_row = torch.matmul(poc_space[i_poc : i_poc + 1], lig_space.T) * logit_scale\n            row_probs = F.softmax(logits_row[0, s:e], dim=-1)\n            pos_mask = act_flat[offset : offset + L_i] < 5\n            if pos_mask.any():\n                R_het += -(w[pos_mask] * row_probs[pos_mask].log()).sum() / (w[pos_mask].sum() + 1e-9)\n                cnt_het += 1\n            offset += L_i\n        R_het = R_het / max(cnt_het, 1)\n        loss_reg = self.lambda_het * R_het + self.lambda_angu * R_ang\n\n        # === HCC for both pathways ===\n        loss_dict_poc = self._compute_hcc_pair(\n            poc_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,\n        )\n        loss_dict_prot = self._compute_hcc_pair(\n            prot_emb, mol_emb, batch_list, act_list,\n            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,\n        )\n\n        loss_hcc = loss_dict_poc[\"loss\"] + loss_dict_prot[\"loss\"]\n        total_loss = loss_hcc + self.gamma_chl * loss_cone + loss_reg\n\n        return total_loss, {\n            \"loss\": total_loss.item(),\n            \"loss_hcc\": loss_hcc.item(),\n            \"loss_cone\": loss_cone.item(),\n            \"loss_reg\": loss_reg.item(),\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 131..150). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=16]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        # Ligand retrieves pocket (skip low-activity ligands in multi-ligand pockets)\n        loss_mol_list = []\n        for i in range(B):\n            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            for k in range(s, e):\n                row_mask = torch.full_like(sim_masked[i], minus_inf)\n                row_mask[k] = 0\n                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n                if L_i > 1 and acts[k - s] < 5:\n                    continue\n                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n\n        # Ranking loss: within each pocket, rank by activity\n        loss_rank_list = []\n        for i in range(B):\n            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            if L_i <= 2:\n                continue\n            out_i = sim_masked[i, s:e]\n            for k_rel in range(L_i - 1):\n                m = torch.zeros_like(out_i)\n                for idx in range(L_i):\n                    if idx == k_rel:\n                        continue\n                    if acts[k_rel] - math.log10(3) <= acts[idx]:\n                        m[idx] = minus_inf\n                lprobs_rank = F.log_softmax(m + out_i, dim=-1)\n                loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))\n        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)\n\n        total = loss_pocket + loss_mol + loss_rank\n        return {\n            \"loss\": total,\n            \"loss_pocket\": loss_pocket,\n            \"loss_mol\": loss_mol,\n            \"loss_rank\": loss_rank,\n            \"sim_masked\": sim_masked,\n        }\n",
-       "new_str": "        total = loss_pocket + loss_mol + loss_rank\n        return {\"loss\": total, \"loss_pocket\": loss_pocket, \"loss_mol\": loss_mol,\n                \"loss_rank\": loss_rank, \"sim_masked\": sim_masked}\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 83..125). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=17]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)\n\n        loss_pocket_list = []\n",
-       "new_str": "        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)\n        loss_pocket_list = []\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 69..71). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=18]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        # Pocket retrieves ligands\n        idx2poc = []\n",
-       "new_str": "        # Pocket retrieves ligands\n        loss_mol_list, loss_rank_list = [], []\n        for i in range(B):\n            s, e = batch_list[i]\n            acts = act_list[i]\n            L_i = e - s\n            out_i = sim_masked[i, s:e]\n            for k in range(s, e):\n                row_mask = torch.full_like(sim_masked[i], minus_inf)\n                row_mask[k] = 0\n                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)\n                if L_i > 1 and acts[k - s] < 5:\n                    continue\n                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))\n            if L_i > 2:\n                for k_rel in range(L_i - 1):\n                    m = torch.zeros_like(out_i)\n                    for idx in range(L_i):\n                        if idx == k_rel:\n                            continue\n                        if acts[k_rel] - math.log10(3) <= acts[idx]:\n                            m[idx] = minus_inf\n                    lprobs_rank = F.log_softmax(m + out_i, dim=-1)\n                    loss_rank_list.append(-lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i)))\n        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)\n        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)\n\n        # Ligand-to-pocket\n        idx2poc = []\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 64..65). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=19]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "                bad = pocket_lig_smiles[i]\n                for j in range(logits.size(1)):\n                    if lig_smiles[j] in bad:\n",
-       "new_str": "                bad = pocket_lig_smiles[i]\n                for j in range(N_mol):\n                    if lig_smiles[j] in bad:\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 56..58). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=20]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "                for j in range(logits.size(1)):\n",
-       "new_str": "                for j in range(N_mol):\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 51..51). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=21]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        \"\"\"Compute HCC loss for one pathway (pocket-mol or protein-mol).\"\"\"\n        B = emb_poc.size(0)\n        logits = emb_poc @ emb_mol.T * logit_scale\n\n        # False-negative mask\n",
-       "new_str": "        \"\"\"HCC loss for one pathway (space component dot product).\"\"\"\n        B = emb_poc.size(0)\n        emb_poc = emb_poc[:, 1:]\n        emb_mol = emb_mol[:, 1:]\n        logits = torch.matmul(emb_poc, emb_mol.T) * logit_scale\n\n        N_mol = emb_mol.size(0)\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 43..47). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=22]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n\n    def project_mol(self, mol_feat):\n        return F.normalize(self.mol_project(mol_feat), dim=-1)\n\n    def project_pocket(self, poc_feat):\n        return F.normalize(self.pocket_project(poc_feat), dim=-1)\n\n    def project_protein(self, prot_feat):\n        return F.normalize(self.protein_project(prot_feat), dim=-1)\n",
-       "new_str": "\n        # Learnable scale parameters (log-space, clamped to exp(alpha) <= 1)\n        self.mol_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n        self.pocket_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n        self.protein_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())\n\n        # Learnable curvature (log-space)\n        self.curv = nn.Parameter(torch.tensor([1.0]).log(), requires_grad=True)\n        self._curv_minmax = {\"max\": math.log(10.0), \"min\": math.log(0.1)}\n\n        # Temperature\n        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))\n\n        # Cone hierarchy hyperparameters\n        self.bounds = torch.tensor([5.0, 7.0, 9.0], dtype=torch.float32)\n        self.chl_r0 = 0.5\n        self.chl_dr = 0.5\n        self.chl_eta0 = 0.7\n        self.chl_deta = 0.2\n        self.lambda_rad = 0.5\n        self.lambda_ang = 0.5\n        self.gamma_chl = 0.1\n        self.lambda_angu = 0.10\n        self.lambda_het = 0.10\n\n    def _clamp_params(self):\n        \"\"\"Clamp scale and curvature parameters.\"\"\"\n        self.mol_alpha.data = torch.clamp(self.mol_alpha.data, max=0.0)\n        self.pocket_alpha.data = torch.clamp(self.pocket_alpha.data, max=0.0)\n        self.protein_alpha.data = torch.clamp(self.protein_alpha.data, max=0.0)\n        self.curv.data = torch.clamp(self.curv.data, **self._curv_minmax)\n\n    def _project_to_hyperboloid(self, feat, proj_head, alpha):\n        \"\"\"Project features to Lorentz hyperboloid.\"\"\"\n        u = proj_head(feat) * alpha.exp()\n        with torch.autocast(u.device.type, dtype=torch.float32):\n            h = L.exp_map0(u, self.curv.exp())\n        return h\n\n    def project_mol(self, mol_feat):\n        self._clamp_params()\n        return self._project_to_hyperboloid(mol_feat, self.mol_project, self.mol_alpha)\n\n    def project_pocket(self, poc_feat):\n        self._clamp_params()\n        return self._project_to_hyperboloid(poc_feat, self.pocket_project, self.pocket_alpha)\n\n    def project_protein(self, prot_feat):\n        self._clamp_params()\n        return self._project_to_hyperboloid(prot_feat, self.protein_project, self.protein_alpha)\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 29..38). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=23]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "        # NonLinearHead pattern used by the HypSeek implementation.\n",
-       "new_str": "        # Projection heads (NonLinearHead equivalent: hidden=input_dim)\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 19..19). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=24]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "    \"\"\"HCC: Hierarchical Contrastive Cosine in Euclidean space.\n\n    Adds ranking loss that enforces more active ligands score higher\n    within each pocket's ligand set, weighted by 1/log(rank+2) (DCG-style).\n",
-       "new_str": "    \"\"\"Full HypSeek: Lorentz hyperbolic embeddings + HCC + cone hierarchy.\n\n    Maps projected features onto a Lorentz hyperboloid via exp_map0,\n    trains with HCC contrastive-ranking loss plus cone hierarchy\n    constraints (radial + angular).\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 11..14). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=25]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "import torch.nn.functional as F\n\n",
-       "new_str": "import torch.nn.functional as F\nfrom unimol.losses import lorentz as L\n\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 7..7). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=followup rung=2 slug=hcc_hyp_cone seq=26]]",
-   "content": "",
-   "tool_calls": [
-    {
-     "type": "function",
-     "function": {
-      "name": "edit",
-      "arguments": {
-       "op": "str_replace",
-       "filename": "HypSeek/unimol/custom_scoring.py",
-       "old_str": "\"\"\"HCC scoring module: Euclidean contrastive + ranking loss.\"\"\"\n",
-       "new_str": "\"\"\"Full HypSeek scoring: Hyperbolic HCC + Cone Hierarchy.\"\"\"\n"
-      }
-     }
-    }
-   ]
-  },
-  {
-   "role": "tool",
-   "content": "OK: Replaced 1 occurrence in HypSeek/unimol/custom_scoring.py (lines 1..1). Editable range: entire file."
-  },
-  {
-   "role": "assistant",
-   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=hcc_hyp_cone seq=27]]",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=hcc_hyp_cone seq=4]]",
    "content": "",
    "tool_calls": [
     {
@@ -744,7 +214,7 @@
   },
   {
    "role": "assistant",
-   "reasoning_content": "[[THINK kind=submit best=2 seq=28]]",
+   "reasoning_content": "[[THINK kind=submit best=2 seq=5]]",
    "content": "",
    "tool_calls": [
     {
