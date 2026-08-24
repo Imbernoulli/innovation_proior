@@ -23,10 +23,11 @@ all-turns or last-turn-only). Train with mask_history=False (default); the loss 
   (a) methods   : single-turn Q&A (full reasoning).
   (b) trajectory: Mode 1 (feedback = observation) + Mode 2 (prior rungs folded, feedback = user
                   boundary, current rung full).
-  (c) agentic   : Mode 1 (all results = observation; structured function_call -> qwen3 JSON /
-                  qwen3_5 XML) + Mode 2 (prior rounds folded with run_experiment result = user
-                  boundary and str_replace result = observation; current round full, its closing
-                  run_experiment result dropped as the next boundary).
+  (c) agentic   : v2 (agentic_v2_filled.json, devfix harness contract) — DEDUPED folded-only:
+                  one example per round c=0..n-1 (test() result = user boundary, edit result =
+                  observation; every action trained EXACTLY once across the set; trailing
+                  submit turn = its own final round). Legacy v1 (run_experiment files) builds
+                  only while no *_filled exist: Mode 1 full + Mode 2 folded as before.
 
 System prompt carries the discovery YEAR (method year; trajectory first-method year).
 """
@@ -346,7 +347,7 @@ def parse_rounds(msgs):
         elif r == 'tool':
             if cur:
                 cur[-1]['result'] = m['content']
-                if cur[-1]['call'] == 'run_experiment':
+                if cur[-1]['call'] in ('run_experiment', 'test'):   # v1 / v2 round boundary
                     rounds.append(cur); cur = []
     if cur:
         rounds.append(cur)
@@ -365,14 +366,50 @@ def agentic_round(actions, fold, is_current):
             turn['loss'] = True                    # current round -> all actions trained
         out.append(turn)
         if 'result' in a:
-            if a['call'] == 'run_experiment':
+            if a['call'] in ('run_experiment', 'test'):
                 if not is_current:
                     out.append({'from':'human','value':neutralize(a['result'])})   # boundary
             else:
                 out.append({'from':'observation','value':neutralize(a['result'])})
     return out
 
-for ap in sorted(glob.glob('trajectories/*/agentic_messages.json')):
+# v2 (2026-08-24): episodes rebuilt against the devfix MLS harness contract by
+# tools/build_agentic_v2.py + the prose-fill workflow (agentic_v2_filled.json — linted:
+# no empty think on any trained turn, no future-metric leaks). Round boundary is test();
+# the trailing submit turn forms its own final round. Framing is DEDUPED: ONE folded
+# example per round c=0..n-1 (history think-stripped loss=False, current round loss=True),
+# so every action enters the loss EXACTLY once across the set — the old full+folded double
+# framing (bloat audit: same text trained up to 4x/epoch) is retired together with the v1
+# str_replace/create/run_experiment files. When no *_filled files exist yet, the legacy v1
+# path below keeps the build reproducible mid-transition (never mixed per task).
+_v2_files = sorted(glob.glob('trajectories/*/agentic_v2_filled.json'))
+_v1_files = [] if _v2_files else sorted(glob.glob('trajectories/*/agentic_messages.json'))
+
+for ap in _v2_files:
+    task = os.path.basename(os.path.dirname(ap))
+    if task in _DROP_TRAJ:                         # decontam: keep in sync with trajectory gate
+        continue
+    yr = trajs[task]['year'] if task in trajs else None
+    data = json.load(open(ap))
+    tools_str = json.dumps(data.get('tools', []), ensure_ascii=False)
+    year_pfx = f"It is now year {yr}. " if yr else ""
+    sysp = year_pfx + neutralize(data['system'].strip())
+    init, rounds = parse_rounds(data['messages'])
+    if init is None or not rounds:
+        continue
+    for c in range(len(rounds)):
+        convs = [{'from':'human','value':neutralize(init)}]
+        for j in range(c):
+            convs += agentic_round(rounds[j], fold=True, is_current=False)
+        convs += agentic_round(rounds[c], fold=False, is_current=True)
+        convs = end_on_assistant(convs)
+        if len(convs) >= 2:
+            rid = 'submit' if rounds[c][0]['call'] == 'submit' else f'r{c+1}'
+            examples.append({'conversations':convs, 'system':sysp, 'tools':tools_str,
+                             '_kind':'agentic_folded','_id':f'{task}#{rid}'})
+            stats['agentic_folded'] += 1
+
+for ap in _v1_files:
     task = os.path.basename(os.path.dirname(ap))
     if task in _DROP_TRAJ:                         # decontam: keep in sync with trajectory gate
         continue
@@ -449,7 +486,9 @@ for ex in examples:
     ast = [t for t in ex['conversations'] if t['from'] in ('gpt', 'function_call')]
     flags = [t.get('loss', True) for t in ast]
     if str(ex.get('_kind', '')).endswith('folded'):
-        assert False in flags and flags == [False] * flags.count(False) + [True] * flags.count(True), \
+        # trained turns are exactly the trailing current-round block; the agentic-v2
+        # first-round example (id #r1) legitimately has NO folded history (all-True).
+        assert True in flags and flags == [False] * flags.count(False) + [True] * flags.count(True), \
             f"{ex.get('_id')}: folded example must train only the trailing current round"
         assert all('<think>' not in t['value'] for t, fl in zip(ast, flags) if not fl), \
             f"{ex.get('_id')}: a loss=False folded turn still carries a <think> block"

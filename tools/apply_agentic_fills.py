@@ -128,7 +128,9 @@ def apply_task(task, check_only=False):
             ms = SENT.fullmatch(v)
             if ms:
                 m[field] = fills[ms.group(1)].strip()
-    with open(f'{d}/agentic_v2.json', 'w', encoding='utf-8') as f:
+    # The skeleton stays pristine (repair loops re-apply from it); the training
+    # pipeline reads the *_filled file.
+    with open(f'{d}/agentic_v2_filled.json', 'w', encoding='utf-8') as f:
         json.dump(skel, f, ensure_ascii=False, indent=1)
     r = subprocess.run([sys.executable, 'tools/build_agentic_v2.py', '--lint', task],
                        capture_output=True, text=True)

@@ -516,8 +516,13 @@ def lint(paths):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('-')]
     if '--lint' in sys.argv:
-        paths = [os.path.join('trajectories', t, OUT_NAME) for t in args] if args \
-            else sorted(glob.glob('trajectories/*/' + OUT_NAME))
+        # lint targets the FILLED files (the training input); falls back to the
+        # skeleton when a task has not been filled yet (then sentinels flag it).
+        def _p(t):
+            f = os.path.join('trajectories', t, 'agentic_v2_filled.json')
+            return f if os.path.isfile(f) else os.path.join('trajectories', t, OUT_NAME)
+        paths = [_p(t) for t in args] if args \
+            else sorted(glob.glob('trajectories/*/agentic_v2_filled.json'))
         sys.exit(1 if lint(paths) else 0)
 
     tasks = args or sorted(os.path.basename(os.path.dirname(p))
