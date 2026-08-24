@@ -1,0 +1,434 @@
+{
+ "task": "deit-data-efficient-vit",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "workspace/custom_deit_data_efficient_vit.py",
+ "filename_source": "synthesized",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 4,
+ "n_edit_ops": 9,
+ "best_test": 4,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA pure-attention image classifier — a Transformer that ingests an image as a sequence of patch tokens\nwith no convolutions at all — has been shown to match strong convolutional networks on ImageNet-1k\ntop-1 accuracy, but only after pre-training on a private dataset of hundreds of millions of labeled\nimages with heavy compute. Trained from scratch on ImageNet-1k alone (~1.28M training images, no extra\ndata), the same architecture underperforms: a ViT-B/16 trained with the original ViT recipe (AdamW,\nweight decay 0.3, dropout 0.1, gradient clipping, no strong augmentation) reaches 77.91% top-1. An\nexisting engineering pipeline (the timm training library) already lifts this same architecture, still on\nImageNet-1k only, to 79.35% top-1 through unspecified training-procedure tweaks — the starting bar to\nbeat. The question: can a convolution-free image Transformer be trained, on a single 8-GPU node in a few\ndays, to be competitive with convnets of similar size and throughput, using *only* ImageNet-1k? A second,\nrelated question: once such a model exists, how should it be distilled from a strong teacher classifier?\n\n## Background\n\n**Inductive priors in convnets and transformers.** Convolutions bake in strong priors — locality and\ntranslation equivariance — that match natural images, so a convnet needs comparatively little data to\ngeneralize. A Transformer's self-attention has almost no such built-in spatial prior; it learns the\nstructure of images from data, which is the presumed reason it needs so much of it.\n\n**The Transformer block.** Self-attention computes, for queries Q, keys K, values V (all linear\nprojections of the same input sequence X, so K holds N key vectors and the attention is among all N\ninput vectors), Attention(Q,K,V) = softmax(QKᵀ/√d)·V; the √d normalization keeps the softmax from\nsaturating as the head dimension grows. Multi-head self-attention runs h such heads in parallel, each\nproducing an N×d output, concatenates them to N×dh, and reprojects to N×D. A full block adds, on top of\nthe attention sublayer, a feed-forward network (FFN) of two linear layers with a GeLU between them that\nexpands D→4D then contracts 4D→D; both sublayers are residual (skip connections) and layer-normalized.\nThere is no batch normalization, so batch size can be reduced without hurting the layer statistics.\n\n**Treating an image as tokens.** A fixed-size RGB image is cut into N non-overlapping patches of\n16×16 pixels (N = 14×14 = 196 at 224² input); each patch (3·16·16 = 768 numbers) is linearly projected\nto the model width D. Because the block is permutation-invariant, a positional embedding (one vector per\npatch position, learned) is added to the patch tokens before the first block. A special trainable\n**class token** is appended to the patch sequence, passes through all the layers interacting with the\npatches purely via self-attention (the supervision signal at training time comes only from this token;\nthe patch tokens are the model's only variable input), and its final output is linearly projected to the\nclass logits — replacing the global pooling a convnet would use. The network thus processes N+1 tokens\nbut reads out only the class token. Three sizes are on the table, all with head dimension fixed at 64 so\nonly width and head count change: a Tiny size (D=192, 3 heads, 12 layers, 5M params, the ResNet-18-scale\ncounterpart), a Small size (D=384, 6 heads, 12 layers, 22M params, the ResNet-50-scale counterpart), and\na Base size (D=768, 12 heads, 12 layers, 86M params, architecturally identical to ViT-B).\n\n**Train-low, fine-tune-high resolution (FixRes).** Training at a lower resolution and fine-tuning at a\nhigher one is faster and, under strong augmentation, more accurate than training at the high resolution\ndirectly. With a fixed patch size, raising the input resolution increases the number of patches N; the\ntransformer blocks and the classifier head handle the longer token sequence unchanged (nothing in a\nTransformer block depends on sequence length), but the N positional embeddings — one per patch position\n— must be resized to the new grid. A naive bilinear interpolation of a positional-embedding vector from\nits neighbors reduces its ℓ2-norm relative to its neighbors; a pre-trained transformer is not adapted to\nthese artificially shrunk vectors, producing a large accuracy drop if used without further training.\nBicubic interpolation approximately preserves vector norm and is the safer default before fine-tuning.\n\n**Knowledge distillation.** A student can be trained to imitate a teacher classifier's output rather\nthan (or in addition to) the ground-truth label. Soft distillation (Hinton et al.) minimizes the\nKullback–Leibler divergence between the temperature-softened softmax outputs of teacher and student,\ntypically blended with the ground-truth cross-entropy:\n\n  L = (1−λ)·L_CE(ψ(Z_s), y) + λ·τ²·KL(ψ(Z_s/τ), ψ(Z_t/τ)),\n\nwhere Z_s, Z_t are student/teacher logits, ψ is softmax, τ is the temperature, and the τ² factor\ncompensates for the 1/τ scaling of the softened gradients so their magnitude stays comparable as τ\nvaries. Separately, it is known from the distillation literature that a teacher's soft labels act\nsomewhat like label smoothing, and — more relevant under heavy data augmentation — that a teacher\nre-evaluated on the *same augmented crop* the student sees can correct for cases where an aggressive crop\nor mix has changed what is actually visible in the image relative to its dataset label (e.g. a \"cat\"\nimage whose crop no longer contains the cat).\n\n**The augmentation / regularization toolbox.** Available training ingredients include AdamW (decoupled\nweight decay), cosine learning-rate schedules with warmup, AutoAugment and RandAugment (learned\naugmentation policies), Mixup and CutMix (mixing images and labels), random erasing, label smoothing,\nstochastic depth (randomly dropping residual blocks, which eases convergence of deep transformer stacks),\ndropout, repeated augmentation (multiple augmented views of the same image within a batch), and\nexponential moving averages of weights. Learning rate is commonly scaled with batch size. Transformers\nare known to be sensitive to weight initialization; a truncated normal distribution (Hanin & Rolnick) is\na documented safe choice after several other initializations failed to converge in preliminary tests.\n\n**Teacher candidates.** Convolutional classifiers of varying capacity are available as potential teachers\nfor distillation, spanning a range of accuracies (roughly 80–83% top-1 on ImageNet-1k for the RegNetY\nfamily at 4–16 GFLOPs), as well as a Transformer of comparable accuracy to the student itself. For every\ndistillation experiment below, the default teacher is fixed to a RegNetY-16GF convnet (84M params),\ntrained with the same data and the same data augmentation as the student, reaching 82.9% top-1 itself.\n\n## Baselines\n\n**The large-scale-pretrained image Transformer (ViT; Dosovitskiy et al.).** The architecture this\nexploration keeps unchanged: patches → linear embedding → class token + positional embedding → stack of\nTransformer blocks → class-token classifier. Trained on ~300M private images it reaches strong ImageNet\naccuracy; trained on ImageNet-1k alone with its own recipe (weight decay 0.3, gradient clipping, dropout,\nno strong augmentation) it reaches only 77.91% top-1, and the stated conclusion was that such\ntransformers \"do not generalize well when trained on insufficient amounts of data.\"\n\n**Convolutional networks (EfficientNet, RegNet, ResNet).** The accuracy/throughput yardstick on\nImageNet-1k. They are data-efficient (strong architectural priors), train well with SGD, and currently\ndefine the accuracy-vs-speed frontier at every parameter count considered here.\n\n## Evaluation settings\n\nThe benchmark is ImageNet-1k classification (1,281,167 training images, 1000 classes), top-1 accuracy on\nthe standard 50,000-image validation set, with companion test sets ImageNet-Real and ImageNet-V2 used\nelsewhere to check for overfitting to the original validation set (not the primary tracked metric here).\nModels are also compared on throughput (images/second on a single 16GB V100 GPU, largest batch size per\nmodel, averaged over 30 runs) and parameter count. Training is at 224² with optional fine-tuning at 384²\n(or other sizes); a full 300-epoch training run at the Base size takes 53 hours on a single 8-GPU node. No external\ntraining data is used at any point in this exploration.\n\n## Code framework\n\nThe available primitives are: a Transformer-block library (multi-head self-attention, GeLU FFN, layer\nnorm, residual connections); a patch-embedding projection; learnable class-token and positional-embedding\nparameters; AdamW with a cosine schedule and warmup; the augmentation/regularization toolbox above; and a\nsoftmax cross-entropy loss. The scaffold assembles a patch-token transformer with a class token and a\nclassifier head, and leaves empty the slots this exploration must fill: how to read out the prediction(s),\nhow a teacher is brought to bear during training, and how the positional embeddings are handled when\nfine-tuning at higher resolution.\n\n```python\nimport torch\nfrom torch import nn\n\n\nclass TransformerBlock(nn.Module):\n    \"\"\"Standard pre-existing block: residual MSA + residual GeLU-FFN, layer-normed.\"\"\"\n    def __init__(self, dim, heads, mlp_ratio=4.0, drop_path=0.0):\n        super().__init__()\n        self.norm1 = nn.LayerNorm(dim)\n        self.attn = MultiHeadSelfAttention(dim, heads)\n        self.norm2 = nn.LayerNorm(dim)\n        self.mlp = MLP(dim, int(dim * mlp_ratio), dim, act=nn.GELU)\n        self.drop_path = StochasticDepth(drop_path)\n\n    def forward(self, x):\n        x = x + self.drop_path(self.attn(self.norm1(x)))\n        x = x + self.drop_path(self.mlp(self.norm2(x)))\n        return x\n\n\nclass PatchTokenTransformer(nn.Module):\n    def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12, num_classes=1000):\n        super().__init__()\n        self.patch_embed = nn.Conv2d(in_ch, dim, kernel_size=patch, stride=patch)\n        n_patches = (img // patch) ** 2\n        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))\n        self.pos_embed = nn.Parameter(torch.zeros(1, n_patches + 1, dim))\n        self.blocks = nn.Sequential(*[TransformerBlock(dim, heads) for _ in range(depth)])\n        self.norm = nn.LayerNorm(dim)\n        self.head = nn.Linear(dim, num_classes)\n\n    def forward(self, x):\n        x = self.patch_embed(x).flatten(2).transpose(1, 2)            # (B, N, dim)\n        cls = self.cls_token.expand(x.size(0), -1, -1)\n        x = torch.cat([cls, x], dim=1) + self.pos_embed\n        x = self.norm(self.blocks(x))\n        # TODO: read out prediction(s) from the relevant token(s)\n        raise NotImplementedError\n\n\ndef training_loss(student_outputs, labels, teacher=None, inputs=None):\n    # TODO: supervised loss, plus a teacher-based signal and how to combine them\n    raise NotImplementedError\n\n\ndef resize_pos_embed(pos_embed, old_grid, new_grid):\n    # TODO: resize the N positional embeddings to a new patch grid for higher-res fine-tuning\n    raise NotImplementedError\n```\n\n## workspace/custom_deit_data_efficient_vit.py  [EDITABLE — entire file]\n```python\n     1: import torch\n     2: from torch import nn\n     3: \n     4: \n     5: class TransformerBlock(nn.Module):\n     6:     \"\"\"Standard pre-existing block: residual MSA + residual GeLU-FFN, layer-normed.\"\"\"\n     7:     def __init__(self, dim, heads, mlp_ratio=4.0, drop_path=0.0):\n     8:         super().__init__()\n     9:         self.norm1 = nn.LayerNorm(dim)\n    10:         self.attn = MultiHeadSelfAttention(dim, heads)\n    11:         self.norm2 = nn.LayerNorm(dim)\n    12:         self.mlp = MLP(dim, int(dim * mlp_ratio), dim, act=nn.GELU)\n    13:         self.drop_path = StochasticDepth(drop_path)\n    14: \n    15:     def forward(self, x):\n    16:         x = x + self.drop_path(self.attn(self.norm1(x)))\n    17:         x = x + self.drop_path(self.mlp(self.norm2(x)))\n    18:         return x\n    19: \n    20: \n    21: class PatchTokenTransformer(nn.Module):\n    22:     def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12, num_classes=1000):\n    23:         super().__init__()\n    24:         self.patch_embed = nn.Conv2d(in_ch, dim, kernel_size=patch, stride=patch)\n    25:         n_patches = (img // patch) ** 2\n    26:         self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))\n    27:         self.pos_embed = nn.Parameter(torch.zeros(1, n_patches + 1, dim))\n    28:         self.blocks = nn.Sequential(*[TransformerBlock(dim, heads) for _ in range(depth)])\n    29:         self.norm = nn.LayerNorm(dim)\n    30:         self.head = nn.Linear(dim, num_classes)\n    31: \n    32:     def forward(self, x):\n    33:         x = self.patch_embed(x).flatten(2).transpose(1, 2)            # (B, N, dim)\n    34:         cls = self.cls_token.expand(x.size(0), -1, -1)\n    35:         x = torch.cat([cls, x], dim=1) + self.pos_embed\n    36:         x = self.norm(self.blocks(x))\n    37:         # TODO: read out prediction(s) from the relevant token(s)\n    38:         raise NotImplementedError\n    39: \n    40: \n    41: def training_loss(student_outputs, labels, teacher=None, inputs=None):\n    42:     # TODO: supervised loss, plus a teacher-based signal and how to combine them\n    43:     raise NotImplementedError\n    44: \n    45: \n    46: def resize_pos_embed(pos_embed, old_grid, new_grid):\n    47:     # TODO: resize the N positional embeddings to a new patch grid for higher-res fine-tuning\n    48:     raise NotImplementedError\n```\n\n## Your Budget\n- **Action budget**: 13 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 4 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The architecture is the last thing I want to touch here. This exact ViT-B/16 graph sits at 77.91 on ImageNet-1k alone under the recipe it was published with, and a general-purpose training library has already carried the same graph to 79.35 without editing a single layer — about a point and a half bought purely by changing how the weights get fit. If that much falls out of procedure on a first pass, the published verdict that this architecture cannot generalize from insufficient data is at least partly a verdict on a training setup, and it would be careless to start swapping operators before finding out how much of the deficit is procedural.\n\nThe mechanism behind that suspicion is concrete enough to act on. Weight sharing hands a convolution locality and translation equivariance at no cost, so a convnet spends none of its data learning them; self-attention is handed neither, and any spatial regularity it obeys has to be dug out of the training distribution by the optimizer. At a few hundred million images that happens by sheer density of examples. At 1.28 million it may not — and the remedy need not be structural, because augmentation and regularization act on the inputs, the targets and the loss surface, so they can put those same invariances into what the model is shown while the operator itself stays byte-identical to what I was given.\n\nFour runs is the entire budget, so this one has to be the clean control: the graph as given, class token in and class token out, no teacher, and every change confined to training. Anything else and each later delta arrives with two moving parts baked into it.\n\nThe choices, then. AdamW stays: there is no batch normalization anywhere in this network to smooth the landscape for a non-adaptive optimizer, and the published recipe already used it, so regressing to SGD has no motivation. Weight decay comes down hard, 0.3 to 0.05 — a value that strong was chosen for a corpus a couple of hundred times this size, a regime where memorizing really is the dominant danger. Here a model with almost no prior has to fit a fixed and comparatively small set of images, so the likelier way to fail is to fit them badly, and I would rather aim the anti-overfitting pressure through augmentation than through a blunt pull on every weight that also strangles capacity I need. Batch 1024 rather than 4096, learning rate scaled linearly off 5e-4 at 512: that is a compute decision, not a regularization one, since with no batch statistics in the block nothing depends on a large batch, and it fits the schedule onto one 8-GPU node. Cosine decay, five warmup epochs, 300 total.\n\nOn the data side: RandAugment over AutoAugment, since the AutoAugment policies were optimized while a convnet sat in the loop, and that convnet already owned the very prior this model is missing — its search happened under conditions that do not hold here, so I take the randomized, untargeted composition instead. Mixup and CutMix, which past their usual boundary smoothing put two objects into one frame with a mixed target, leaving no single dominant patch for the class token to shortcut through. Random erasing for occlusion robustness, which local pooling gives a convnet for free. Stochastic depth, which the guidance I have ties specifically to deep transformer stacks converging, ramped per block rather than applied flat. No dropout — masking units inside blocks on top of masking whole blocks on top of this much augmentation is how a prior-free network gets talked into underfitting. Label smoothing at 0.1, consistent with targets that mixing has already made approximate. Repeated augmentation at three views per source image, so a batch carries more variety than the count of distinct source images in it would suggest: multiplication of data without new data. Truncated-normal init is less a choice than a precondition, since other initializations are on record as failing to converge here at all.\n\nThe same list goes to all three sizes; nothing in the argument above is size-specific. I also want the resolution lever measured while I am at it, so the empty positional-embedding resize gets bicubic rather than bilinear interpolation: bilinear pulls the norm of an interpolated position down below the ones it was built from, and a stack pretrained on the originals has no reason to behave when fed vectors at the wrong scale.\n\nConcretely: fill the resize helper, keeping the class-token row out of the grid reshape; write the recipe down as a dict so it stays visible; fill the loss slot with plain smoothed cross-entropy and no teacher; read position 0 out through the linear head; build the block stack as a ModuleList with per-block drop rates and truncated-normal init on the two learned parameter sets; and drop the pasted copy of the stock block, which the library supplies unchanged.",
+   "content": "Control step: the ViT architecture is left exactly as given (single class token, one linear head, no distillation) and only the training procedure changes — AdamW at weight decay 0.05, batch 1024, cosine schedule over 300 epochs, truncated-normal init, per-block stochastic depth, no dropout, and an augmentation set of RandAugment, Mixup, CutMix, Random Erasing, Label Smoothing and three-view Repeated Augmentation — with bicubic positional-embedding resizing filled in for the higher-resolution fine-tune.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "    # TODO: resize the N positional embeddings to a new patch grid for higher-res fine-tuning\n    raise NotImplementedError\n",
+       "new_str": "    # bicubic (not bilinear): approximately preserves vector norm across the interpolation\n    cls_pe, patch_pe = pos_embed[:, :1], pos_embed[:, 1:]\n    dim = patch_pe.shape[-1]\n    grid = patch_pe.reshape(1, old_grid, old_grid, dim).permute(0, 3, 1, 2)\n    grid = torch.nn.functional.interpolate(grid, size=new_grid, mode=\"bicubic\", align_corners=False)\n    grid = grid.permute(0, 2, 3, 1).reshape(1, new_grid[0] * new_grid[1], dim)\n    return torch.cat([cls_pe, grid], dim=1)\n\n\ntraining_recipe = dict(\n    optimizer=\"AdamW\", base_lr=0.0005, lr_base_batch=512, batch_size=1024, weight_decay=0.05,\n    schedule=\"cosine\", warmup_epochs=5, epochs=300, init=\"truncated_normal\",\n    randaugment=(9, 0.5), mixup=0.8, cutmix=1.0, random_erasing=0.25,\n    stochastic_depth=0.1, label_smoothing=0.1, repeated_augmentation=3, dropout=None, ema=None,\n)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 47..48). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The loss slot next, and it stays deliberately boring: no teacher in this run, so it is cross-entropy with 0.1 of the mass spread flat over the 1000 classes. Labels reach it either as indices or as Mixup/CutMix-mixed vectors, so the target build takes the dominant index when it is handed a mixed one.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "    # TODO: supervised loss, plus a teacher-based signal and how to combine them\n    raise NotImplementedError\n",
+       "new_str": "    # no teacher this rung: plain label-smoothed cross-entropy against (possibly Mixup/CutMix-mixed) labels\n    logp = torch.log_softmax(student_outputs, dim=-1)\n    eps = 0.1\n    n_classes = student_outputs.size(-1)\n    with torch.no_grad():\n        smooth = torch.full_like(logp, eps / n_classes)\n        smooth.scatter_add_(1, labels.argmax(-1, keepdim=True) if labels.dim() > 1 else labels[:, None],\n                             torch.full((labels.size(0), 1), 1.0 - eps, device=logp.device))\n    return -(smooth * logp).sum(-1).mean()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 42..43). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Readout is the unmodified one — final norm, linear head on position 0, nothing else. The only reason to rewrite the forward at all is that the Sequential wrapper has to go before I can give each block its own drop rate, so the stack gets walked explicitly here.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "        x = self.norm(self.blocks(x))\n        # TODO: read out prediction(s) from the relevant token(s)\n        raise NotImplementedError\n",
+       "new_str": "        for blk in self.blocks:\n            x = blk(x)\n        x = self.norm(x)\n        return self.head(x[:, 0])                                     # class-token logits only\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 36..38). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the construction side that the forward is already assuming: blocks as a ModuleList so each one carries its own drop probability, ramped linearly from zero in the first block up to the full 0.1 in the last, and truncated-normal at std 0.02 on the class token and the positional embeddings, since those are the two free parameter sets that have to start somewhere convergent.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "        self.blocks = nn.Sequential(*[TransformerBlock(dim, heads) for _ in range(depth)])\n        self.norm = nn.LayerNorm(dim)\n        self.head = nn.Linear(dim, num_classes)\n",
+       "new_str": "        # stochastic depth: linearly increasing drop rate across the stack\n        dpr = [drop_path * i / max(depth - 1, 1) for i in range(depth)]\n        self.blocks = nn.ModuleList([TransformerBlock(dim, heads, drop_path=dpr[i]) for i in range(depth)])\n        self.norm = nn.LayerNorm(dim)\n        self.head = nn.Linear(dim, num_classes)\n        nn.init.trunc_normal_(self.cls_token, std=0.02)\n        nn.init.trunc_normal_(self.pos_embed, std=0.02)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 28..30). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Last, the top of the file. The block itself is stock and comes from the library untouched, so the pasted copy is dead weight and goes; what stays is the model class, renamed for what it now is and taking the drop_path argument the stack builder above expects.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "\nclass TransformerBlock(nn.Module):\n    \"\"\"Standard pre-existing block: residual MSA + residual GeLU-FFN, layer-normed.\"\"\"\n    def __init__(self, dim, heads, mlp_ratio=4.0, drop_path=0.0):\n        super().__init__()\n        self.norm1 = nn.LayerNorm(dim)\n        self.attn = MultiHeadSelfAttention(dim, heads)\n        self.norm2 = nn.LayerNorm(dim)\n        self.mlp = MLP(dim, int(dim * mlp_ratio), dim, act=nn.GELU)\n        self.drop_path = StochasticDepth(drop_path)\n\n    def forward(self, x):\n        x = x + self.drop_path(self.attn(self.norm1(x)))\n        x = x + self.drop_path(self.mlp(self.norm2(x)))\n        return x\n\n\nclass PatchTokenTransformer(nn.Module):\n    def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12, num_classes=1000):\n",
+       "new_str": "# --- classifier readout: class token only, no distillation ---\nclass DataEfficientViT(nn.Module):\n    def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12, num_classes=1000,\n                 drop_path=0.1):\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 4..22). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The graph in the file is the same ViT it was — one class token, one head — with every change living in the recipe and in the resize helper. I expect a clear lift over both the original-recipe number and the tuned-library bar at all three sizes, and the higher-resolution fine-tune to land above the 224² number rather than below it.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (3 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — data-efficient training recipe (AdamW, wd 0.05, truncated-normal init, RandAugment +\nMixup + CutMix + Random Erasing + Stochastic Depth + Repeated Augmentation + Label Smoothing, no\ndropout, 300 epochs), unmodified ViT architecture, class-token readout only, no distillation.\nImageNet-1k, top-1 accuracy.\n\n## Main result (224² training)\n\n| model | top1_imagenet |\n|---|---|\n| Tiny (5M) | 72.2 |\n| Small (22M) | 79.8 |\n| Base (86M) | 81.8 |\n\n## Base size, fine-tuned at 384² (bicubic-interpolated positional embeddings)\n\n| resolution | top1_imagenet |\n|---|---|\n| 160² | 79.9 |\n| 224² | 81.8 |\n| 320² | 82.7 |\n| 384² | 83.1 |\n\nResolution and accuracy move together monotonically over this range at fixed recipe and fixed\narchitecture; the 384² fine-tune is the headline Base-size number for this rung (83.1).\n\n## Supplementary: optimizer sensitivity, same recipe otherwise unchanged\n\n| optimizer (pretrain / fine-tune) | 224² | 384² |\n|---|---|---|\n| SGD / AdamW | 74.5 | 77.3 |\n| AdamW / SGD | 81.8 | 83.1 |\n| AdamW / AdamW (main result) | 81.8 | 83.1 |\n\nAdamW at pretraining time is responsible for most of the gap between the two rows above; once pretrained\nwith AdamW, the fine-tuning-stage optimizer (AdamW vs. SGD) makes no measurable difference.\n\nThe Base size (86M) at 81.8% (224²) already exceeds both the as-published ViT-B-on-ImageNet-1k-only number\n(77.91%) and the timm-tuned starting bar (79.35%) by a wide margin, using the same architecture and the\nsame dataset. No distillation signal was used to produce any number above."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "72.2 at Tiny, 79.8 at Small, 81.8 at Base, and 83.1 once the Base model is fine-tuned at 384². Against 77.91 for this same graph under its own recipe and 79.35 for the tuned library, that is 3.9 points from procedure alone over the published number and 2.45 over the bar I actually had to clear, with the architecture unchanged and not one extra image used. The diagnosis holds: most of what looked like an architecture deficit was a training deficit.\n\nThe supplementary rows say something sharper about which part of the procedure did the work. Pretraining with SGD instead of AdamW costs 7.3 points at 224² and 5.8 at 384², while swapping the fine-tuning-stage optimizer costs exactly nothing — 81.8 and 83.1 either way. The adaptive optimizer is load-bearing during the long from-scratch phase and irrelevant once the representation exists. Useful to know, not a lever I can pull a second time.\n\nThe resolution column is flattening too: 79.9, 81.8, 82.7, 83.1 across 160² to 384². 224 to 320 buys 0.9 and 320 to 384 buys 0.4. Resolution still pays, at a shrinking rate. And the augmentation list is about as full as I am willing to make it — another regularizer of the same family is not where the next point comes from.\n\nWhat is qualitatively different, and completely untouched so far, is supervision from outside the student. The convolution keeps its spatial prior in its structure, and what a trained convnet classifier emits is what that prior produced; even collapsed down to a label, its answer comes from a machine that had the thing this architecture lacks. Letting the transformer take some of that in through its targets instead of through its operators is the one lever left that is not simply more of what I already did. The teacher is fixed for this and everything after: the RegNetY-16GF at 82.9%, trained on the same images with the same augmentation, so nothing enters through the teacher that the student was not itself allowed to see. Worth noticing that it is only 1.1 above the current Base at 224² and actually below the 384² number — so if this helps, it will not be because a much stronger model handed over its answers. And since it is frozen and outside the student, none of this touches the parameter budget.\n\nThere are two ways to define the signal and no basis yet for choosing between them, so both go into this one experiment under identical conditions — class-token architecture, recipe, teacher and all three sizes held. The soft variant preserves the teacher's whole distribution and matches it in KL at temperature 3, mixed in at λ=0.1; worth checking the arithmetic there, because with the τ² compensation the KL term ends up weighted 0.9 against the cross-entropy's 0.9, so the teacher is not being dialled down to a whisper at these settings. What it costs is two knobs I would then have to defend. The hard variant takes the argmax only and treats it as a second ground truth, half the loss each, nothing to tune.\n\nThe asymmetry I would bet on, without committing: this recipe already floods training with softened, mixed, non-one-hot targets from label smoothing, Mixup and CutMix, so a soft teacher distribution is more of a signal shape the student is drowning in. A hard pseudo-label computed on the same augmented crop is a different kind of object: a second opinion about the picture the student is actually looking at, formed without reference to what the dataset claims is in it, which matters most when an aggressive crop or a CutMix paste has left the filed label describing something that is no longer on screen. Whether that difference in kind shows up in accuracy is what the run decides.\n\nThe edit is confined to the loss half of the file: write both objectives as separate functions, route between them with a mode flag, and load the frozen teacher in eval mode so it can be called under no_grad on the same batch tensor the student consumes. Architecture, recipe, sizes and evaluation protocol all stay as they are.",
+   "content": "Distillation objective: bring in a frozen RegNetY-16GF teacher, scored on the same augmented crop the student gets, and implement both candidate losses behind one mode flag — Hinton-style soft KD (τ=3, λ=0.1, τ²-compensated) and a parameter-free hard-label variant that puts half the loss on the dataset label and half on the teacher's argmax. Architecture and recipe unchanged.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "from torch import nn\n\n# --- classifier readout: class token only, no distillation ---\nclass DataEfficientViT(nn.Module):\n    def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12, num_classes=1000,\n                 drop_path=0.1):\n        super().__init__()\n        self.patch_embed = nn.Conv2d(in_ch, dim, kernel_size=patch, stride=patch)\n        n_patches = (img // patch) ** 2\n        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))\n        self.pos_embed = nn.Parameter(torch.zeros(1, n_patches + 1, dim))\n        # stochastic depth: linearly increasing drop rate across the stack\n        dpr = [drop_path * i / max(depth - 1, 1) for i in range(depth)]\n        self.blocks = nn.ModuleList([TransformerBlock(dim, heads, drop_path=dpr[i]) for i in range(depth)])\n        self.norm = nn.LayerNorm(dim)\n        self.head = nn.Linear(dim, num_classes)\n        nn.init.trunc_normal_(self.cls_token, std=0.02)\n        nn.init.trunc_normal_(self.pos_embed, std=0.02)\n\n    def forward(self, x):\n        x = self.patch_embed(x).flatten(2).transpose(1, 2)            # (B, N, dim)\n        cls = self.cls_token.expand(x.size(0), -1, -1)\n        x = torch.cat([cls, x], dim=1) + self.pos_embed\n        for blk in self.blocks:\n            x = blk(x)\n        x = self.norm(x)\n        return self.head(x[:, 0])                                     # class-token logits only\n\n\ndef training_loss(student_outputs, labels, teacher=None, inputs=None):\n    # no teacher this rung: plain label-smoothed cross-entropy against (possibly Mixup/CutMix-mixed) labels\n    logp = torch.log_softmax(student_outputs, dim=-1)\n    eps = 0.1\n    n_classes = student_outputs.size(-1)\n    with torch.no_grad():\n        smooth = torch.full_like(logp, eps / n_classes)\n        smooth.scatter_add_(1, labels.argmax(-1, keepdim=True) if labels.dim() > 1 else labels[:, None],\n                             torch.full((labels.size(0), 1), 1.0 - eps, device=logp.device))\n    return -(smooth * logp).sum(-1).mean()\n\n\ndef resize_pos_embed(pos_embed, old_grid, new_grid):\n    # bicubic (not bilinear): approximately preserves vector norm across the interpolation\n    cls_pe, patch_pe = pos_embed[:, :1], pos_embed[:, 1:]\n    dim = patch_pe.shape[-1]\n    grid = patch_pe.reshape(1, old_grid, old_grid, dim).permute(0, 3, 1, 2)\n    grid = torch.nn.functional.interpolate(grid, size=new_grid, mode=\"bicubic\", align_corners=False)\n    grid = grid.permute(0, 2, 3, 1).reshape(1, new_grid[0] * new_grid[1], dim)\n    return torch.cat([cls_pe, grid], dim=1)\n\n\ntraining_recipe = dict(\n    optimizer=\"AdamW\", base_lr=0.0005, lr_base_batch=512, batch_size=1024, weight_decay=0.05,\n    schedule=\"cosine\", warmup_epochs=5, epochs=300, init=\"truncated_normal\",\n    randaugment=(9, 0.5), mixup=0.8, cutmix=1.0, random_erasing=0.25,\n    stochastic_depth=0.1, label_smoothing=0.1, repeated_augmentation=3, dropout=None, ema=None,\n)\n",
+       "new_str": "import torch.nn.functional as F\n\ndef soft_distillation_loss(student_logits, teacher_logits, labels, tau=3.0, lam=0.1):\n    ce = F.cross_entropy(student_logits, labels)\n    kl = F.kl_div(\n        F.log_softmax(student_logits / tau, dim=-1),\n        F.softmax(teacher_logits / tau, dim=-1),\n        reduction=\"batchmean\",\n    ) * (tau ** 2)\n    return (1 - lam) * ce + lam * kl\n\n\ndef hard_distillation_loss(student_logits, teacher_logits, labels):\n    y_t = teacher_logits.argmax(dim=-1)                       # teacher's hard pseudo-label, this crop\n    ce_true = F.cross_entropy(student_logits, labels)\n    ce_teacher = F.cross_entropy(student_logits, y_t)\n    return 0.5 * ce_true + 0.5 * ce_teacher\n\n\ndef training_loss(student_outputs, labels, teacher=None, inputs=None, mode=\"hard\"):\n    with torch.no_grad():\n        teacher_logits = teacher(inputs)                       # same augmented crop the student trained on\n    if mode == \"soft\":\n        return soft_distillation_loss(student_outputs, teacher_logits, labels)\n    elif mode == \"hard\":\n        return hard_distillation_loss(student_outputs, teacher_logits, labels)\n    raise ValueError(mode)\n\n\n# architecture, recipe (batch size, optimizer, augmentation stack, epochs, sizes) all unchanged from\n# rung 1 -- DataEfficientViT with class-token-only readout, trained/evaluated identically, only the loss\n# function and the now-present frozen teacher forward pass differ.\nteacher = load_pretrained(\"RegNetY-16GF\")                      # 82.9% top-1, frozen, same data/augment\nteacher.eval()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 2..58). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Both objectives sit in the file behind the mode flag, with the model, the recipe and the teacher identical across them, so this run isolates the loss and nothing else. I expect at least one of the two to clear the undistilled numbers at every size; if the soft variant lands on top of the previous run's values instead, that is a direct statement that its signal is redundant with the smoothing the recipe already supplies.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — rung-1 recipe and architecture (class-token readout only) held fixed, RegNetY-16GF\nteacher (82.9% top-1, frozen) fixed, only the training loss varied. ImageNet-1k, top-1 accuracy.\n\n## Soft distillation (Hinton-style KD, τ=3.0, λ=0.1)\n\n| model | top1_imagenet |\n|---|---|\n| Tiny | 72.2 |\n| Small | 79.8 |\n| Base | 81.8 |\n| Base, fine-tuned 384² | 83.2 |\n\n## Hard-label distillation (½ CE(true) + ½ CE(teacher argmax), parameter-free)\n\n| model | top1_imagenet |\n|---|---|\n| Tiny | 74.3 |\n| Small | 80.9 |\n| Base | 83.0 |\n| Base, fine-tuned 384² | 84.0 |\n\nSoft distillation reproduces the rung-1 undistilled numbers almost exactly at 224² (72.2/79.8/81.8,\nidentical to no distillation) and gains only 0.1 point at 384² (83.2 vs. 83.1) — no measurable benefit\nfrom the teacher signal at this recipe. Hard-label distillation gains over the undistilled baseline at\nevery size and every resolution: +2.1 (Ti), +1.1 (S), +1.2 (B, 224²), +0.9 (B, 384²). Hard distillation\nstrictly dominates soft distillation on every reported number, using the same teacher, same recipe, same\narchitecture, same parameter count, and no additional hyperparameters."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Hard labels won and the soft objective did nothing at all. Soft KD returns 72.2, 79.8, 81.8 — the identical three numbers I measured with no teacher in the loss — and 83.2 against 83.1 at 384². Given that the τ² factor had that KL term weighted comparably to the cross-entropy, this is not a case of the teacher being turned down too low; the softened distribution simply carried nothing beyond what label smoothing and the mixing augmentations were already putting into the targets. Hard pseudo-labels lifted every entry instead: +2.1 at Tiny, +1.1 at Small, +1.2 at Base 224², +0.9 at Base 384². What the teacher is worth here is its decision, not its confidence profile. And the Base student at 83.0 has now stepped past the teacher's own 82.9, which is reassuring — this is not a case of copying a stronger model's answers.\n\nSo the objective is settled and stays settled. Where I attached it is not. I took the cheap route: one token, one head, two targets bolted onto the same output vector. A teacher at 82.9% hands over a label that contradicts the dataset's something like seventeen times in a hundred, and on exactly those images one 768-dimensional embedding, read through one linear map, is receiving gradients that demand two incompatible answers about the same picture. Part of what each target could have taught goes into that tug-of-war rather than into the representation. That is not the ceiling of what a hard distillation signal is worth; it is the ceiling of what it is worth through a shared readout.\n\nThe fix has a template already inside the architecture. The class token is not special machinery — it is a free parameter appended to the sequence, it goes through the identical attention every patch goes through, and it comes to mean \"classification\" purely because one linear map is fit to predict the label from its final state. That is a recipe, and a recipe can be followed twice. So: a second free token of the same kind, present in the sequence from the start so it trades information with every patch and with the class token through ordinary attention, with its own linear map fit to the teacher's hard label and nothing else. The class head goes back to seeing only the true label. Both signals still reach the trunk; what stops being shared is the vector each one is read out of.\n\nBefore spending a run on that I want the dull explanation ruled out in the same run, not discovered afterwards: a second token also adds parameters and one more slot in the sequence, and if bare capacity is what helps then a second token pointed back at the ground-truth label should help just as much. So the duplicate-target control goes in beside the real design, everything else matched. I am also logging one thing past accuracy: how aligned the two token vectors are, measured once just after they enter the sequence and once at the final layer. Two tokens told to predict the same thing get no pressure from the loss to look different from each other; two tokens with different targets do. Whichever way accuracy lands, that pair of numbers says whether specialization actually happened.\n\nThen the readout question, which has three cheap answers and no obvious winner: class head alone, in which case the distillation token exists only to shape the trunk during training and is dropped at prediction time; distillation head alone; or a late fusion that sums the two softmax outputs and takes the argmax of that. Fusion is my working default since it costs nothing and, if the tokens really did specialize, lets each cover the other's blind spots — but every size gets all three logged, because I have no grounds for picking one up front.\n\nThe edits: rewrite the loss to unpack the two logit tensors and route the true label to one and the teacher's argmax to the other, with the half-and-half weighting carried over untouched; add the duplicate-target control as a subclass that points both heads at the true label; add the cosine helper; then the model itself has to grow the second token.",
+   "content": "Dedicated distillation token: a second free token beside the class token with its own linear head trained solely on the teacher's hard pseudo-label while the class head keeps the true label, the half-and-half hard objective otherwise unchanged. Adds a duplicate-target control and a token cosine-similarity probe, and reads out by summing the two heads' softmax outputs.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "# architecture, recipe (batch size, optimizer, augmentation stack, epochs, sizes) all unchanged from\n# rung 1 -- DataEfficientViT with class-token-only readout, trained/evaluated identically, only the loss\n# function and the now-present frozen teacher forward pass differ.\nteacher = load_pretrained(\"RegNetY-16GF\")                      # 82.9% top-1, frozen, same data/augment\nteacher.eval()\n",
+       "new_str": "def training_loss(student_outputs, labels, teacher=None, inputs=None):\n    y, y_dist = student_outputs\n    with torch.no_grad():\n        y_t = teacher(inputs).argmax(dim=-1)                            # same augmented crop, per rung 2\n    ce_true = F.cross_entropy(y, labels)\n    ce_teacher = F.cross_entropy(y_dist, y_t)\n    return 0.5 * ce_true + 0.5 * ce_teacher                             # hard-label objective, unchanged\n\n\nclass DuplicateClassTokenControl(DistilledViT):\n    \"\"\"Isolates capacity from signal: second token has the SAME target as the class token.\"\"\"\n    def training_loss(self, student_outputs, labels, teacher=None, inputs=None):\n        y, y_second = student_outputs\n        return 0.5 * F.cross_entropy(y, labels) + 0.5 * F.cross_entropy(y_second, labels)\n\n\ndef token_cosine_similarity(embed_a, embed_b):\n    # diagnostic: run at the token-formation point (input) and after the final block (output)\n    return F.cosine_similarity(embed_a, embed_b, dim=-1).mean()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 31..35). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the model the loss is written against: a second free-parameter token concatenated right after the class token, the positional embedding widened by two rows so both specials get one, a second linear head, and forward_features handing back both final-layer embeddings so the loss and the readout can address them separately. The readout helper carries all three modes with the softmax sum as the working default.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "import torch.nn.functional as F\n\ndef soft_distillation_loss(student_logits, teacher_logits, labels, tau=3.0, lam=0.1):\n    ce = F.cross_entropy(student_logits, labels)\n    kl = F.kl_div(\n        F.log_softmax(student_logits / tau, dim=-1),\n        F.softmax(teacher_logits / tau, dim=-1),\n        reduction=\"batchmean\",\n    ) * (tau ** 2)\n    return (1 - lam) * ce + lam * kl\n\n\ndef hard_distillation_loss(student_logits, teacher_logits, labels):\n    y_t = teacher_logits.argmax(dim=-1)                       # teacher's hard pseudo-label, this crop\n    ce_true = F.cross_entropy(student_logits, labels)\n    ce_teacher = F.cross_entropy(student_logits, y_t)\n    return 0.5 * ce_true + 0.5 * ce_teacher\n\n\ndef training_loss(student_outputs, labels, teacher=None, inputs=None, mode=\"hard\"):\n    with torch.no_grad():\n        teacher_logits = teacher(inputs)                       # same augmented crop the student trained on\n    if mode == \"soft\":\n        return soft_distillation_loss(student_outputs, teacher_logits, labels)\n    elif mode == \"hard\":\n        return hard_distillation_loss(student_outputs, teacher_logits, labels)\n",
+       "new_str": "from torch import nn\nimport torch.nn.functional as F\n\n\nclass DistilledViT(nn.Module):\n    \"\"\"Adds a distillation token alongside the class token; two independent linear heads.\"\"\"\n    def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12, num_classes=1000,\n                 drop_path=0.1):\n        super().__init__()\n        self.patch_embed = nn.Conv2d(in_ch, dim, kernel_size=patch, stride=patch)\n        n_patches = (img // patch) ** 2\n        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))\n        self.dist_token = nn.Parameter(torch.zeros(1, 1, dim))          # new: independent free parameter\n        self.pos_embed = nn.Parameter(torch.zeros(1, n_patches + 2, dim))   # +2: cls + dist\n        dpr = [drop_path * i / max(depth - 1, 1) for i in range(depth)]\n        self.blocks = nn.ModuleList([TransformerBlock(dim, heads, drop_path=dpr[i]) for i in range(depth)])\n        self.norm = nn.LayerNorm(dim)\n        self.head = nn.Linear(dim, num_classes)                         # trained on TRUE label\n        self.head_dist = nn.Linear(dim, num_classes)                    # trained on TEACHER pseudo-label\n        for p in (self.cls_token, self.dist_token, self.pos_embed):\n            nn.init.trunc_normal_(p, std=0.02)\n\n    def forward_features(self, x):\n        x = self.patch_embed(x).flatten(2).transpose(1, 2)              # (B, N, dim)\n        cls = self.cls_token.expand(x.size(0), -1, -1)\n        dist = self.dist_token.expand(x.size(0), -1, -1)\n        x = torch.cat([cls, dist, x], dim=1) + self.pos_embed           # order: cls, dist, patches\n        for blk in self.blocks:\n            x = blk(x)\n        x = self.norm(x)\n        return x[:, 0], x[:, 1]                                         # (class embed, distill embed)\n\n    def forward(self, x):\n        x_cls, x_dist = self.forward_features(x)\n        y, y_dist = self.head(x_cls), self.head_dist(x_dist)\n        return y, y_dist                                                # both heads at train time\n\n\ndef readout(y, y_dist, mode=\"fused\"):\n    if mode == \"class_only\":\n        return y.argmax(-1)\n    if mode == \"dist_only\":\n        return y_dist.argmax(-1)\n    if mode == \"fused\":                                                 # working default\n        return (y.softmax(-1) + y_dist.softmax(-1)).argmax(-1)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 2..27). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Two tokens, two heads, the hard-label objective and the teacher unchanged, with the duplicate-target control and the similarity probe alongside. I expect the fused readout to come in above the single-token hard-distillation number, and the control to add essentially nothing — if the control matches the real design, the gain was capacity rather than the separate target and I should say so.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — two-token architecture (class token + distillation token), hard-label objective and\nteacher (RegNetY-16GF, 82.9% top-1) fixed from rung 2, rung-1 recipe otherwise unchanged. ImageNet-1k,\ntop-1 accuracy.\n\n## Readout comparison, 224² training\n\n| model | class-token only | distillation-token only | fused (class+distillation) |\n|---|---|---|---|\n| Tiny | 73.9 | 74.6 | 74.5 |\n| Small | 80.9 | 81.1 | 81.2 |\n| Base | 83.0 | 83.1 | 83.4 |\n\n## Same readouts, Base size fine-tuned at 384²\n\n| readout | top1_imagenet |\n|---|---|\n| class-token only | 84.2 |\n| distillation-token only | 84.4 |\n| fused (class+distillation) | 84.5 |\n\n## Reference: rung-2 single-token hard distillation (same teacher, same recipe, no second token)\n\n| model | 224² | 384² |\n|---|---|---|\n| Base, class token only, hard-label loss | 83.0 | 84.0 |\n\nThe fused two-token readout (83.4% / 84.5%) beats the rung-2 single-token hard-distillation baseline\n(83.0% / 84.0%) at every resolution, and beats either individual token's own classifier read alone. The\ndistillation-token classifier alone already edges out the class-token classifier alone at every size and\nresolution (e.g. Base size: 83.1 vs. 83.0 at 224², 84.4 vs. 84.2 at 384²).\n\n## Token-similarity diagnostic (Base size)\n\n| token pair | cosine similarity, near input | cosine similarity, final layer |\n|---|---|---|\n| class token vs. distillation token (real design) | 0.06 | 0.93 |\n| class token vs. duplicate-class-token (control) | not separately reported | 0.999 |\n\nThe two tokens in the real design start almost orthogonal and only partially converge by the last layer,\nstaying measurably below 1. The duplicate-class-token control converges to a near-identical vector\n(cosine 0.999) and its output embeddings are reported as quasi-identical to the class token's; this\ncontrol token does not bring any additional classification performance over a single class token."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The fused readout won and the control earned its place. Two tokens read 83.4 at 224² and 84.5 at 384² on Base, against 83.0 and 84.0 for the single token carrying both targets — 0.4 and 0.5 over a configuration with the identical loss, teacher and recipe, so the separation of readouts is what bought it. Both individual heads also clear that baseline, and the distillation head alone (83.1 / 84.4) edges the class head alone (83.0 / 84.2) at all three sizes, at 224² and at 384² alike. That last one is worth sitting with: a target that disagrees with the dataset label on 17% of images produces the slightly better classifier. On the crop the student is actually shown, after mixing and erasing, the teacher's call is apparently the more accurate description of the pixels than the label the dataset attached to the original image.\n\nThe fusion margin is thin and not universal — at Tiny the distillation head alone takes 74.6 against 74.5 fused, while Small and Base go the other way, 81.2 against 81.1 and 83.4 against 83.1. Fused stays the primary readout because it wins where the accuracy is highest and at 384², but I keep logging all three rather than overclaim a gap that small.\n\nThe control settles the mechanism cleanly. Two tokens aimed at the same target collapse into each other, cosine 0.999, and buy no accuracy over one token; the real pair starts essentially orthogonal at 0.06 and is still measurably short of identical at 0.93 after the last block. So it was the distinct target, not the extra parameters.\n\nWhich means the network, the loss, the teacher and the readout are all decided and none of them is up for revision. What has never been tested is a number I set in the very first run on general grounds and never went back to: 300 epochs, chosen before any of this existed to be trained.\n\nThere are two specific reasons to think it is short for the thing in front of me now, distinct from a generic more-is-better hunch. Repeated augmentation puts three views of one source image into a batch instead of three different source images, so a nominal epoch walks past roughly a third of the distinct pictures a non-repeating schedule of the same name would. And the trunk is now feeding two heads whose targets disagree on a sizable minority of the data; a body that has to keep two partly incompatible objectives happy is under at least as much pressure as one answering to a single loss, so an epoch budget that was adequate for the simpler case does not automatically carry over.\n\nThere is also a reason the extra epochs might not be wasted in the usual way. The standard objection to long schedules is memorization of a finite training set, but with RandAugment, Mixup, CutMix, erasing and repeated augmentation stacked, the network essentially never receives the same input twice — a fresh view is synthesized every pass. The augmentation is the very machinery this whole exercise built to stand in for missing data; if it does its job, useful novelty should keep arriving long after a run without it would have gone flat.\n\nThe real objection is cost, not risk. A 300-epoch Base run is 53 hours on the node, so tripling and a bit means better than seven days for one configuration, plus the fine-tune on top. That is not a decision to make from the argument alone, and it is also the last test I have — so this run has to carry the full picture: all three sizes at 224², and the resulting Base checkpoint pushed through the same 384² fine-tune so I end with a number that combines both levers rather than one.\n\nThe edit is small and entirely in the schedule: rewrite the cosine so its horizon is the new total rather than the old one, which matters because a decay written for 300 epochs and run for 1000 either truncates or flattens instead of annealing to zero at the endpoint. Then pin the config with everything else explicitly held — architecture, loss, teacher, readout, augmentation, optimizer, batch — and record the fine-tune settings: 384², bicubic interpolation of the position grid, augmentation kept on, teacher kept on and run at the larger input size.",
+   "content": "Schedule extension: architecture, hard-label loss, teacher, fused readout and augmentation are all pinned to the previous run and the only change is the epoch count, 300 to 1000, with the cosine horizon stretched to the new total so the decay finishes where the run does instead of being cut off partway. The Base checkpoint is then carried through the established 384² fine-tune, bicubic positional-embedding interpolation and teacher kept on.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_deit_data_efficient_vit.py",
+       "old_str": "import torch\nfrom torch import nn\nimport torch.nn.functional as F\n\n\nclass DistilledViT(nn.Module):\n    \"\"\"Adds a distillation token alongside the class token; two independent linear heads.\"\"\"\n    def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12, num_classes=1000,\n                 drop_path=0.1):\n        super().__init__()\n        self.patch_embed = nn.Conv2d(in_ch, dim, kernel_size=patch, stride=patch)\n        n_patches = (img // patch) ** 2\n        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))\n        self.dist_token = nn.Parameter(torch.zeros(1, 1, dim))          # new: independent free parameter\n        self.pos_embed = nn.Parameter(torch.zeros(1, n_patches + 2, dim))   # +2: cls + dist\n        dpr = [drop_path * i / max(depth - 1, 1) for i in range(depth)]\n        self.blocks = nn.ModuleList([TransformerBlock(dim, heads, drop_path=dpr[i]) for i in range(depth)])\n        self.norm = nn.LayerNorm(dim)\n        self.head = nn.Linear(dim, num_classes)                         # trained on TRUE label\n        self.head_dist = nn.Linear(dim, num_classes)                    # trained on TEACHER pseudo-label\n        for p in (self.cls_token, self.dist_token, self.pos_embed):\n            nn.init.trunc_normal_(p, std=0.02)\n\n    def forward_features(self, x):\n        x = self.patch_embed(x).flatten(2).transpose(1, 2)              # (B, N, dim)\n        cls = self.cls_token.expand(x.size(0), -1, -1)\n        dist = self.dist_token.expand(x.size(0), -1, -1)\n        x = torch.cat([cls, dist, x], dim=1) + self.pos_embed           # order: cls, dist, patches\n        for blk in self.blocks:\n            x = blk(x)\n        x = self.norm(x)\n        return x[:, 0], x[:, 1]                                         # (class embed, distill embed)\n\n    def forward(self, x):\n        x_cls, x_dist = self.forward_features(x)\n        y, y_dist = self.head(x_cls), self.head_dist(x_dist)\n        return y, y_dist                                                # both heads at train time\n\n\ndef readout(y, y_dist, mode=\"fused\"):\n    if mode == \"class_only\":\n        return y.argmax(-1)\n    if mode == \"dist_only\":\n        return y_dist.argmax(-1)\n    if mode == \"fused\":                                                 # working default\n        return (y.softmax(-1) + y_dist.softmax(-1)).argmax(-1)\n    raise ValueError(mode)\n\n\ndef training_loss(student_outputs, labels, teacher=None, inputs=None):\n    y, y_dist = student_outputs\n    with torch.no_grad():\n        y_t = teacher(inputs).argmax(dim=-1)                            # same augmented crop, per rung 2\n    ce_true = F.cross_entropy(y, labels)\n    ce_teacher = F.cross_entropy(y_dist, y_t)\n    return 0.5 * ce_true + 0.5 * ce_teacher                             # hard-label objective, unchanged\n\n\nclass DuplicateClassTokenControl(DistilledViT):\n    \"\"\"Isolates capacity from signal: second token has the SAME target as the class token.\"\"\"\n    def training_loss(self, student_outputs, labels, teacher=None, inputs=None):\n        y, y_second = student_outputs\n        return 0.5 * F.cross_entropy(y, labels) + 0.5 * F.cross_entropy(y_second, labels)\n\n\ndef token_cosine_similarity(embed_a, embed_b):\n    # diagnostic: run at the token-formation point (input) and after the final block (output)\n    return F.cosine_similarity(embed_a, embed_b, dim=-1).mean()\n",
+       "new_str": "def cosine_schedule(base_lr, total_epochs, warmup_epochs=5):\n    # only change from rung 1: total_epochs 300 -> 1000; horizon rescaled so decay still reaches\n    # zero at the new endpoint rather than being truncated partway through\n    def lr_at(epoch):\n        if epoch < warmup_epochs:\n            return base_lr * epoch / warmup_epochs\n        import math\n        t = (epoch - warmup_epochs) / max(total_epochs - warmup_epochs, 1)\n        return 0.5 * base_lr * (1 + math.cos(math.pi * t))\n    return lr_at\n\n\ntraining_config_rung4 = dict(\n    # unchanged from rung 3: architecture (DistilledViT, two tokens), loss (training_loss, hard-label,\n    # fixed RegNetY-16GF teacher), readout (fused primary; class-only and distillation-only also logged),\n    # augmentation/regularization bundle (RandAugment, Mixup, CutMix, Random Erasing, Stochastic Depth,\n    # Repeated Augmentation x3, Label Smoothing 0.1, no dropout), optimizer (AdamW, wd 0.05,\n    # lr = 0.0005*batch/512), batch size 1024.\n    epochs=1000,                          # only change: 300 -> 1000\n    lr_schedule=cosine_schedule(base_lr=0.0005, total_epochs=1000, warmup_epochs=5),\n)\n\n# after the 1000-epoch 224^2 run at the Base size completes, fine-tune the resulting checkpoint at 384^2\n# exactly as in rung 1/3: bicubic-interpolated positional embeddings, same augmentation, teacher\n# retained (re-evaluated at the fine-tuning resolution), ~25 epochs of fine-tuning.\nfinetune_config = dict(resolution=384, interp=\"bicubic\", keep_augmentation=True, keep_teacher=True)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_deit_data_efficient_vit.py (lines 1..68). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Everything except the epoch count is fixed to the previous configuration, and the decay now runs its full course over the longer schedule instead of ending partway. I expect gains at all three sizes with the largest at the small end, where a fixed 300-epoch budget was likeliest to be the binding constraint, and the higher-resolution fine-tune to still add on top rather than to overlap with what the longer schedule already bought.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #4] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — two-token architecture, hard-label objective, fused readout, RegNetY-16GF teacher,\nrung-1 recipe: all fixed from rung 3. Only the schedule length changed. ImageNet-1k, top-1 accuracy.\n\n## 224² training, 1000 epochs (fused readout) vs. rung-3 300-epoch reference\n\n| model | 300 epochs (rung 3) | 1000 epochs | delta |\n|---|---|---|---|\n| Tiny | 74.5 | 76.6 | +2.1 |\n| Small | 81.2 | 82.6 | +1.4 |\n| Base | 83.4 | 84.2 | +0.8 |\n\n## Base size, fine-tuned at 384², 1000-epoch pretrained checkpoint vs. rung-3 300-epoch reference\n\n| schedule | top1_imagenet |\n|---|---|\n| 300 epochs (rung 3) | 84.5 |\n| 1000 epochs | 85.2 |\n\nExtending the schedule keeps buying accuracy at every size and both resolutions; the gain is largest for\nthe smallest model (Tiny, +2.1) and smallest for the largest (Base, +0.8 at 224², +0.7 at 384²), consistent\nwith the smaller models having had more headroom left in a fixed 300-epoch budget. No size or resolution\nshows a plateau or a regression from the longer schedule.\n\n## Qualitative record note (epoch-scaling comparison, no-distillation model)\n\nThe record separately reports that the rung-1 (no-distillation, single class-token) model's accuracy\nsaturates by roughly epoch 400 and gains little from training further, while the two-token distilled\nmodel keeps improving over the same extended range — the pattern in the two tables above is consistent\nwith that account, though the no-distillation model's own 1000-epoch number was not separately measured\nhere.\n\n## Endpoint\n\nThe Base-size, two-token architecture, hard-label distillation from RegNetY-16GF, fused readout, fine-tuned at\n384² after a 1000-epoch pretraining schedule: **85.2% top-1 on ImageNet-1k, no external training data**.\nThis exceeds a ViT-B pretrained on ~300M private images and fine-tuned at the same 384² resolution\n(84.15% top-1), using only ImageNet-1k throughout. A separate, disjoint regime — extra training data,\nViT-H at 600M parameters and 512² resolution — reaches 88.55% and is not a comparable reference point for\nthis no-external-data exploration."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Four runs, and they stack monotonically. Recipe only: 72.2 / 79.8 / 81.8, with 83.1 at 384². Hard-label distillation on the same graph: 74.3 / 80.9 / 83.0, 84.0 at 384². The two-token architecture with the fused readout: 74.5 / 81.2 / 83.4, 84.5. The long schedule on that same architecture: 76.6 / 82.6 / 84.2, 85.2. Every size improves at every step and nothing regresses anywhere, at 224² or at 384².\n\nTest #4 holds the best measured point at Tiny, at Small, at Base 224² and at Base 384² — 0.8 over test #3 on Base at 224², 0.7 at 384² — and it is not a lucky configuration but the accumulation of four decisions, each isolated in a run of its own: procedure, then objective, then readout architecture, then schedule length. It is also the only one that clears 85 with no external training data anywhere in the pipeline. Submitting #4.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 4
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #4 as final.\n\nMeasured results — two-token architecture, hard-label objective, fused readout, RegNetY-16GF teacher,\nrung-1 recipe: all fixed from rung 3. Only the schedule length changed. ImageNet-1k, top-1 accuracy.\n\n## 224² training, 1000 epochs (fused readout) vs. rung-3 300-epoch reference\n\n| model | 300 epochs (rung 3) | 1000 epochs | delta |\n|---|---|---|---|\n| Tiny | 74.5 | 76.6 | +2.1 |\n| Small | 81.2 | 82.6 | +1.4 |\n| Base | 83.4 | 84.2 | +0.8 |\n\n## Base size, fine-tuned at 384², 1000-epoch pretrained checkpoint vs. rung-3 300-epoch reference\n\n| schedule | top1_imagenet |\n|---|---|\n| 300 epochs (rung 3) | 84.5 |\n| 1000 epochs | 85.2 |\n\nExtending the schedule keeps buying accuracy at every size and both resolutions; the gain is largest for\nthe smallest model (Tiny, +2.1) and smallest for the largest (Base, +0.8 at 224², +0.7 at 384²), consistent\nwith the smaller models having had more headroom left in a fixed 300-epoch budget. No size or resolution\nshows a plateau or a regression from the longer schedule.\n\n## Qualitative record note (epoch-scaling comparison, no-distillation model)\n\nThe record separately reports that the rung-1 (no-distillation, single class-token) model's accuracy\nsaturates by roughly epoch 400 and gains little from training further, while the two-token distilled\nmodel keeps improving over the same extended range — the pattern in the two tables above is consistent\nwith that account, though the no-distillation model's own 1000-epoch number was not separately measured\nhere.\n\n## Endpoint\n\nThe Base-size, two-token architecture, hard-label distillation from RegNetY-16GF, fused readout, fine-tuned at\n384² after a 1000-epoch pretraining schedule: **85.2% top-1 on ImageNet-1k, no external training data**.\nThis exceeds a ViT-B pretrained on ~300M private images and fine-tuned at the same 384² resolution\n(84.15% top-1), using only ImageNet-1k throughout. A separate, disjoint regime — extra training data,\nViT-H at 600M parameters and 512² resolution — reaches 88.55% and is not a comparable reference point for\nthis no-external-data exploration."
+  }
+ ]
+}

@@ -1,0 +1,347 @@
+{
+ "task": "dl-weight-initialization",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "pytorch-vision/custom_init.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 6,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nBefore the first gradient step, every weight in a deep convolutional network is a number drawn from a distribution I choose. That choice governs whether the forward signal stays usable through many layers and whether backpropagated gradients vanish or explode. The object of study is an **initialization strategy**: a data-independent rule that fills `Conv2d`, `BatchNorm2d`, and `Linear` parameters in place, given only the architecture and its depth. The rule must work across three network families — a deep residual net, a plain VGG-style stack, and an inverted-residual mobile net.\n\n## Prior art / Background / Baselines\n\n- **Small fixed-variance Gaussian (the scaffold default).** Draw every weight independently from `N(0, 0.01²)`.\n- **LeCun / Xavier scaling (LeCun 1998; Glorot & Bengio 2010).** Set `Var(W) = 1/fan_in` or `2/(fan_in+fan_out)` to keep activation/gradient variance stable across linear or `tanh`-like layers.\n- **Kaiming / He scaling (He et al. 2015).** Set `Var(W) = 2/fan` to account for ReLU zeroing half its inputs.\n- **Norm-preservation via orthogonality (Saxe et al. 2014).** Initialize each weight matrix to be orthogonal so it preserves vector norms exactly in deep linear networks.\n\n## Fixed substrate / Code framework\n\nThe training loop, data pipeline, model definitions, and evaluation are frozen. Three architectures are built by `build_model(arch, num_classes)`: a CIFAR **ResNet-56** (`BasicBlock` ×27 across three stages, each block = two 3×3 convs with BN, an additive shortcut, final `Linear` head), a **VGG-16-BN** (plain `Conv-BN-ReLU` stack, no shortcuts, two-layer classifier with `Dropout`), and a **MobileNetV2** (inverted-residual blocks with depthwise 3×3 convs, pointwise 1×1 expansions/projections, BN throughout, additive shortcuts only when stride 1 and channels match). Every conv followed by BN has `bias=False`. Optimization is fixed: SGD `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`, cosine-annealed over 200 epochs, cross-entropy loss, batch 128, with `RandomCrop(32, pad=4)` + `RandomHorizontalFlip` augmentation. The metric is the best test accuracy reached during those 200 epochs.\n\n## Editable interface\n\nExactly one function is editable — `initialize_weights(model, config)` in `pytorch-vision/custom_init.py` (lines 228–261). It receives the constructed model and a `config` dict and must initialize **all** parameters in place, with no return value. The contract:\n\n- `config['arch']` — `'resnet56'`, `'vgg16bn'`, or `'mobilenetv2'`; `config['num_classes']` — 10 or 100; `config['depth']` — total count of `Conv2d` + `Linear` layers.\n- I may iterate `model.modules()` / `model.named_modules()` / `model.named_parameters()`, branch on module type or on `arch`, treat shortcut projections differently from main-path convs, set `BatchNorm2d` weight/bias as desired, and use any depth-dependent arithmetic. The module classes `BasicBlock`, `InvertedResidual`, `nn.Conv2d`, `nn.BatchNorm2d`, `nn.Linear` are in scope.\n- **Hard constraints:** the rule must be **data-independent** — no access to training data, no calibration forward passes — and must not alter the model graph, change optimizer hyperparameters, or touch evaluation.\n\nThe starting point is the scaffold default: a tiny fixed-variance Gaussian on every weight, BN at `(weight=1, bias=0)`. Each method replaces exactly this function body and nothing else.\n\n```python\n# EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\ndef initialize_weights(model, config):\n    \"\"\"Initialize all weights in the vision model.\n\n    config: {'arch': str, 'num_classes': int, 'depth': int}\n    Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.normal_(m.weight, 0, 0.01)\n        elif isinstance(m, nn.BatchNorm2d):\n            nn.init.constant_(m.weight, 1)\n            nn.init.constant_(m.bias, 0)\n        elif isinstance(m, nn.Linear):\n            nn.init.normal_(m.weight, 0, 0.01)\n            if m.bias is not None:\n                nn.init.constant_(m.bias, 0)\n```\n\n## Evaluation settings\n\nThree (architecture, dataset) pairs, each trained from scratch for the full 200-epoch schedule on seed 42: **ResNet-56 on CIFAR-100**, **VGG-16-BN on CIFAR-100**, and **MobileNetV2 on FashionMNIST** (grayscale repeated to three channels, resized to 32×32). One metric, higher is better: best test accuracy (%) reached during training, reported per (arch, dataset).\n\n## pytorch-vision/custom_init.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\n     2: def initialize_weights(model, config):\n     3:     \"\"\"Initialize all weights in the vision model.\n     4: \n     5:     config: {'arch': str, 'num_classes': int, 'depth': int}\n     6:     Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n     7:     \"\"\"\n     8:     for m in model.modules():\n     9:         if isinstance(m, nn.Conv2d):\n    10:             nn.init.normal_(m.weight, 0, 0.01)\n    11:         elif isinstance(m, nn.BatchNorm2d):\n    12:             nn.init.constant_(m.weight, 1)\n    13:             nn.init.constant_(m.bias, 0)\n    14:         elif isinstance(m, nn.Linear):\n    15:             nn.init.normal_(m.weight, 0, 0.01)\n    16:             if m.bias is not None:\n    17:                 nn.init.constant_(m.bias, 0)\n```\n\n## Your Budget\n- **Action budget**: 9 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "No run behind me yet, so the only thing to argue with is the fill the scaffold ships: a single standard deviation of 0.01 stamped onto every weight in the model, whether the layer reads three channels or five hundred and twelve. Choosing that number per layer is the entire job of an initializer, and this one declines to look. Before deciding how hard to hit it I want the size of the error. Take one 3x3 conv midway up the VGG chain reading 64 channels — 576 weights feed each output unit, and a linear map carries the forward second moment by that count times Var(W), here 576 times 1e-4, so barely six percent of the incoming variance makes it out. Chain thirteen of those and there is nothing left at the classifier. Reverse the pass and the count that matters is fan_out, which on a square conv is also 576, so the gradient arriving back at the stem is throttled by the same amount — the more damaging of the two directions, since SGD then has nothing to steer by. BatchNorm will re-standardize activations channel by channel, so the network does pass a signal, but BN never edits a weight: what the conv emits before BN reads it, and what comes back through W-transpose, are already at the wrong magnitude by the time BN is involved.\n\nThe LeCun/Xavier/He line repairs exactly one statistic — pick Var(W) so the expected squared norm comes out the same on both sides of a layer. That is depth-stable in expectation, and whatever the expectation does not capture is left to luck, which matters because a layer is a matrix and not a scalar. A square Gaussian divided by sqrt(n) has its singular values smeared over a broad interval: a few directions come out amplified by nearly two, others flattened almost to zero, so the layer conserves norm averaged over directions while being wildly uneven across them. Stack L such layers and the log singular values pile up additively, so the distance between the most and least amplified direction widens in proportion to depth. The second moment gets fixed, the anisotropy gets ignored, and depth acts on the anisotropy.\n\nWhich is the argument for going straight to the far end of the same idea. Instead of matching an average norm, hold every direction: singular values all equal to one, i.e. an orthogonal matrix, semi-orthogonal where the shape is not square. Isometries compose into isometries, so a deep linear stack conserves the forward norm at any depth, and since backprop runs the same matrices transposed and in reverse, the gradient norm rides along. Exact rather than average. That is the ceiling of what norm preservation can promise, and I would rather start from the ceiling and hand pieces of it back than open with a compromise and never learn what the strong version was worth.\n\nThere is one correction I cannot skip. A ReLU sits behind each of these convs, and for symmetric zero-mean pre-activations the rectifier discards precisely half the variance, so an exactly orthogonal layer plus its ReLU halves the signal every time — across thirteen layers, a decay of its own. Multiplying the matrix by sqrt(2), which is the number calculate_gain('relu') hands back, cancels it: the layer overshoots by sqrt(2), the rectifier takes half of that away, and what leaves the activation matches what entered the layer however deep the stack runs. Worth noticing what this coincides with. Scale a row-orthonormal matrix by sqrt(2) and each entry has RMS sqrt(2/fan_in) — He's standard deviation, exactly. So the second moment I end up with is He's, and the only thing the extra machinery is actually buying is the pinned spectrum.\n\nTurning \"orthogonal\" into something that applies to a 4-D conv weight is where I expect trouble, so let me write the failure modes down in advance. orthogonal_ collapses (out, in, kh, kw) to two dimensions by folding everything past the first axis into the columns, QRs a Gaussian into that shape, then reshapes back. Usually there are far more columns than rows, so the rows come out orthonormal — each output filter unit-norm and mutually orthogonal to the rest, which is the property I want. When the fold comes out taller than wide, as VGG's stem does at (64, 27), only the 27 columns can be orthonormalized, and that case is still honest: for that layer the folded matrix genuinely is the operator, applied to an im2col patch, so orthonormal columns mean the patch norm really is carried through. MobileNetV2's depthwise convs are what I distrust. (C, 1, 3, 3) folds to (C, 9), also tall, but here the folded matrix describes nothing the layer does — a depthwise conv is block diagonal, each channel convolved with its own nine taps and never touching another channel. Orthonormalizing along the C axis therefore imposes a relation between filters that the operator has no use for, and buys no per-filter magnitude in exchange. If that is right, VGG is this method's best showing and MobileNetV2 its worst.\n\nBN goes in at (1, 0) — plain identity affine, nothing clever — so the conv fill is the only variable. One pass over model.modules(), no arch branch and no depth arithmetic: orthogonal_ at gain sqrt(2) on every Conv2d and Linear, zeros into any bias, (1, 0) into every BatchNorm2d. I will work the function from the bottom, taking the Linear branch first and then the conv branch together with the docstring and a single gain constant lifted above the loop.",
+   "content": "Orthogonal init replacing the scaffold's fixed 0.01 Gaussian: every Conv2d and Linear weight becomes a (semi-)orthogonal matrix at gain sqrt(2) for ReLU, biases zeroed, BatchNorm left neutral at (weight=1, bias=0). One uniform pass, no per-arch branching.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.normal_(m.weight, 0, 0.01)\n            if m.bias is not None:\n",
+       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 14..16). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the top of the function and the conv branch, which is where nearly all the weights actually live: the same orthogonal_ call with the same gain, and the gain itself hoisted to a single calculate_gain('relu') above the loop so both branches read one constant instead of recomputing it per module. Docstring rewritten to state the rule rather than the scaffold's.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "# EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\ndef initialize_weights(model, config):\n    \"\"\"Initialize all weights in the vision model.\n\n    config: {'arch': str, 'num_classes': int, 'depth': int}\n    Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.normal_(m.weight, 0, 0.01)\n",
+       "new_str": "def initialize_weights(model, config):\n    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 1..10). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The body is the uniform orthogonal pass now — sqrt(2) gain on every conv and on the head, BN neutral, no arch branching — so it should clear the shape-blind Gaussian on all three pairs. What I am really reading is the ordering: strongest on the plain VGG stack, unremarkable on the residual net whose branch accumulation orthogonality never touches, weakest on MobileNetV2 if the depthwise fold is doing as little as I think.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:orthogonal` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.08 |\n| **mean** | **72.08** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.83 |\n| **mean** | **72.83** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 93.88 |\n| **mean** | **93.88** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "72.08 on ResNet-56, 72.83 on VGG-16-BN, 93.88 on MobileNetV2. Before reading anything into that: the Fashion column is a different and far easier problem, so its number only ever competes against itself, never against the two CIFAR ones. ResNet and VGG do share a dataset and a schedule, which makes their 0.75 separation a legitimate comparison — but VGG is the stronger model on CIFAR-100 to begin with, so I take the direction and not the size. The direction is the one I predicted: best on the plain chain the method was derived for, unremarkable on the residual net, worst on the mobile net, where there was no isometry available to build in the first place. The construction behaved as advertised. What none of these three numbers demonstrates is that the costly half of it bought anything.\n\nThat is the observation that reframes the problem. A BatchNorm sits behind every conv in all three graphs and rewrites its output to zero mean and unit variance per channel before anything downstream reads it. Holding per-channel activation variance level from layer to layer — the forward half of what orthogonality promises — is therefore already guaranteed everywhere, at no cost, whatever the convs were filled with. I did leave myself one opening: BN acts diagonally, so it has no purchase on the off-diagonal conditioning of W, which is where a spectral advantage could still hide on a plain stack. The ordering here does not contradict that, but it is far too weak to rest on, given that the spectrum bought nothing visible on the residual net, and on the mobile one there was no way to assemble it. What BN has no claim on is the magnitude of the gradient at the very first update. Fill the convs at the wrong scale and the gradient comes back at the wrong scale, and the opening few hundred steps either crawl or thrash however tidy BN keeps the activations. That is the thing left to fix, and it is a statement about the second moment, not about the whole spectrum.\n\nHe, then, and the derivation is short. Across a conv followed by a rectifier, Var(out) = 0.5 * fan * Var(W) * Var(in), the one-half being the share of a symmetric distribution the rectifier keeps, so Var(W) = 2/fan makes the recursion a fixed point. That is the same second moment the sqrt(2) orthogonal gain was already delivering; what changes is that the singular values go back to being scattered instead of pinned, and the first table gives me no reason to keep paying for pinned.\n\nThe one genuine decision is the mode. Choose fan_in and the forward activation variance sits at its fixed point; choose fan_out and the backward one does, since the return trip runs through W-transpose and picks up fan_out * Var(W). On a square conv the two numbers coincide, so across most of ResNet and most of VGG nothing is being decided at all; it only matters where the channel count steps. Under fan_out the forward variance picks up in_l/out_l at layer l — but one layer's outputs are the next one's inputs, so those ratios cancel their way down the stack and what survives over the whole net is in_1/out_L, one fixed number rather than anything that compounds. On VGG's widths that comes to 3/512, which BN flattens on its first pass. So fan_out is harmless forward and exact backward, and since forward per-channel variance is already BN's territory, backward is the part still worth defending. Convs get fan_out.\n\nThe bill for that lands on the depthwise layers, and I should say it out loud. PyTorch reads fan off weight.size(1) and never divides by groups, so a (C, 1, 3, 3) filter reports fan_in = 9 and fan_out = C*9 — for a 96-channel depthwise layer, 9 against 864. Nine is the physically meaningful count, so fan_out is filling those filters roughly sqrt(96) too small. I will live with it, for two reasons. A BN sits directly behind each depthwise conv and rewrites its output whatever magnitude it arrives at, so one layer downstream the shortfall has been erased. And MobileNetV2's parameters and its gradient flow mostly sit in the pointwise 1x1s, which are real dense channel mixers, and there fan_out defends precisely what I want defended — a 96-into-24 projection reports 96 forward against 24 backward, a factor of four apart, and it is the backward end I am pinning. Carving depthwise out onto fan_in would be exactly the per-arch special-casing this pass is meant to avoid. Set against the last run the mode barely matters there anyway: under either one, each depthwise filter finally gets a per-tap variance derived from something, where the orthogonal fill gave it a cross-channel constraint and no magnitude at all.\n\nThe head goes the opposite way, fan_in, because nothing standardizes after it — it hands its output straight to the softmax — so the pre-logit spread is mine to control, fan_in being the mode that does it. One wart I take rather than special-case: no ReLU follows the last FC, so asking kaiming_normal_ for the ReLU nonlinearity gives it a sqrt(2) it has not earned. Mapping 64 or 512 features onto 100 logits, even with that factor the logits come out order one, the softmax nowhere near saturated, and a constant like that disappears within a few updates; keeping the Linear rule uniform is worth the wart. Biases zero, BN still (1, 0), and deliberately nothing residual-aware in this pass — the point is to isolate whether the cheap correct variance already matches the expensive spectrum.\n\nThree predictions so the run can go against me. MobileNetV2 should improve most, since its depthwise filters are getting a sane fill for the first time; if it does not, my reading that the spectrum was idle is simply wrong. VGG is genuinely uncertain — that is orthogonality's home ground and the only place the off-diagonal argument had any support. ResNet I expect back roughly unchanged, and that is the result I want most, because two rules that could hardly differ more in what they do to an individual layer landing on the same accuracy would show that individual layers are not what constrains it, leaving how 27 branches pile up as the only remaining suspect. The edit: kaiming_normal_ in both branches, fan_in on the head, fan_out on the convs, and the gain constant comes back out.",
+   "content": "Kaiming/He normal in place of orthogonal: Conv2d at mode='fan_out' and Linear at mode='fan_in', both with nonlinearity='relu', biases zeroed, BN still (1, 0). Drops the shared gain constant; still one uniform pass with no per-arch branching.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:\n",
+       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')\n            if m.bias is not None:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 14..16). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The conv branch now, which is where the mode choice actually lands — fan_out, to pin the backward scale BN cannot pin for me — and the explicit gain goes away with it, since kaiming_normal_ derives its own from nonlinearity='relu'. Docstring updated to record both modes, so the asymmetry between the convs and the head is written down instead of implied.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)\n",
+       "new_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 2..10). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "One uniform He pass now, convs on fan_out and the head on fan_in, BN untouched, no branching. I expect the depthwise net to gain the most against the orthogonal run and VGG to come out close either way — but the residual net landing essentially where it already sat is the reading I actually care about.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:kaiming_normal` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.07 |\n| **mean** | **72.07** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 73.38 |\n| **mean** | **73.38** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 94.49 |\n| **mean** | **94.49** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Three predictions, three hits, and the one that pays is the one that did not move. MobileNetV2 climbed from 93.88 to 94.49, +0.61, the moment its depthwise filters had a coherent per-tap variance — nothing there was ever waiting on the spectrum. VGG went 72.83 to 73.38, +0.55, which closes the question I had left open: the off-diagonal conditioning story was orthogonality's strongest case and it still lost on its own ground, so the pinned spectrum was not merely unnecessary elsewhere, it was not paying anywhere. Then ResNet-56: 72.08 to 72.07. A hundredth, in the wrong direction. Set the three next to each other: +0.61, +0.55, -0.01. Replacing every layer's fill, from all-singular-values-equal to a Gaussian smear, shifted the residual net by roughly one part in sixty of what it shifted the other two. On a single seed that is about as decisive a negative as I am going to get: per-layer scale is not what holds ResNet-56 back. Whatever does was untouched by both runs, and the architecture nominates exactly one candidate — how branch outputs pile into the trunk.\n\nWork the accumulation out properly, because the remedy has to come from its shape. The trunk keeps adding: x_{l+1} = x_l + F_l(x_l), and for a BasicBlock F_l is two 3x3 convs terminating in conv2 then bn2. With bn2 at gamma = 1 the branch is standardized to unit variance no matter what the convs inside are doing, so each one joins at full size; if the branches are close to uncorrelated their variances simply add, about one extra unit per block, and 27 BasicBlocks later the head is fed on the order of 28 times the input variance, a bit over 5x in std. Less extreme in reality, since the three projection shortcuts at stage boundaries partly reset the running total, but it still grows with depth. Three separate costs at init. Logits arrive too large, so the softmax opens saturated and the first cross-entropy gradients are misshapen. Every branch is a full-size term competing with the entire accumulated trunk rather than a small correction sitting on top of it, which is not the arrangement that makes a deep residual net easy to train. And a late branch, one unit inside a variance-28 total, receives the thinnest slice of gradient and is the slowest thing in the network. None of that is reachable by a per-layer variance rule, because the failure is in how blocks combine and not in what a block contains — which is why the two earlier passes agreed to within a hundredth.\n\nSo: shrink each branch at the start, and start it at identity rather than at a random function, so the optimizer is not first asked to undo a branch nobody wanted. The exponent I can compute rather than guess. For L branch terms to sum to something of order one, each branch's output std should be of order L^(-1/2). The residual-scaling result spreads that requirement over the m weight layers of a branch by zeroing the last one and putting L^(-1/(2m-2)) on each of the other m-1, whose product is L^(-1/2). A BasicBlock has m = 2, which makes the exponent -1/2 and the factor n_blocks^(-0.5): about 0.19 at 27 blocks, so conv2 ends up roughly five times smaller than He left it.\n\nThe rest of that recipe I am not importing, because it was designed for a network carrying no normalization at all — it takes BatchNorm out and compensates with learnable scalar offsets ahead of every conv and every activation, one learnable multiplier per branch, and a classifier started at zero, each piece standing in for something BN would otherwise handle. Here BN stays and the graph is frozen, so scalars and multipliers are unavailable by construction. I am also leaving the classifier alone: it already got a sensible fan_in fill last pass, and discarding that would just hand SGD extra work. Two moves survive the translation into a BN-equipped net, and both fit inside the contract.\n\nOne, the depth correction: leave the He pass exactly as written, then for ResNets scale each block's conv2 weight by n_blocks^(-0.5). Two, get the identity start out of BN itself — the branch terminates in bn2, whose gamma multiplies the standardized branch output before it meets the shortcut, so writing zero into bn2.weight makes the branch emit nothing at init and the block reduces to its shortcut.\n\nHow those two interact deserves care, because it is not simply \"smaller and quieter\". With gamma at zero the branch output is zero whatever conv2 holds, so the thing that actually flattens the accumulation at init is the zero gamma alone: the trunk stays at Var(x_0) and the 28-fold inflation never happens. And the down-scale is weaker than it looks later too, because BN is indifferent to the magnitude of the weight feeding it — batch mean and batch std both scale with it and the ratio cancels — so multiplying conv2 by a positive constant leaves the branch's forward output unchanged for the entire run, not just at step zero. Where it does register is the gradient: BN's backward carries a 1/sigma, and cutting conv2's output sigma by n_blocks^(-0.5) rescales what conv2 gets back. So the factor is really a depth-dependent brake on how quickly a branch can build up once gamma leaves zero. Identity start from the gamma, growth rate from the conv2 factor — separate jobs, and I want both.\n\nI should check that a branch pinned at zero can come back at all, or I have quietly deleted 27 blocks. With y = gamma * BN(conv2(...)) and gamma zero, the gradient into conv2 is zero, and by the chain rule so is everything ahead of it inside the branch. The exception is gamma itself: its gradient is the normalized branch output, which is nonzero precisely because conv2 is still carrying He weights, down-scaled but not destroyed. So the first update moves gamma only, and the moment gamma is off zero, conv2 and then conv1 start receiving signal. That is also why I zero gamma rather than conv2, which is what the original recipe zeroes: killing gamma silences the branch's output while leaving a decently conditioned random map waiting behind it, so there is something usable the instant it opens up, whereas killing conv2 would leave the branch's map itself degenerate and it would have to build a whole conv up from nothing. There is a bonus that falls exactly where the accumulation hurt most: with every branch silent, the first backward pass runs down the pure identity path, so even the last block sees a full-strength gradient instead of a sliver of that inflated sum. It starts out as a stack of identities and takes on depth only where the data asks for it — and weight decay does not interfere, since it exerts no pull on a gamma sitting at zero.\n\nGate the phase on arch.startswith('resnet'). VGG has no branch to scale and no branch-terminal BN to silence, and its He result is already the best figure in that column. MobileNetV2 does have additive shortcuts, but its InvertedResidual branch is three convs, which puts m at 3 and the exponent at -1/4, a different rule the BasicBlock accounting does not license; its shortcut only exists where the stride is one and the channel counts line up, so plenty of blocks accumulate nothing; and He is already ahead there with no sign that accumulation is what binds. Inventing an exponent for a block the derivation never covered, on a network that may not even have the problem, is not a trade I want. The edits: append a second phase below the module loop that counts BasicBlocks, multiplies each conv2 weight by n_blocks^(-0.5) and writes zero into each bn2 weight, then add the arch lookup and the is_resnet flag at the top. ResNet-56 decides this — it sat on that wash because neither earlier pass went anywhere near accumulation, and this is the first pass that does.",
+   "content": "Fixup-style residual scaling plus zero-gamma BN layered on the Kaiming pass: for ResNets only, count the BasicBlocks, multiply each block's conv2 weight by n_blocks^(-0.5), and write zero into each bn2 weight so no branch contributes at step zero. VGG and MobileNetV2 keep plain He.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "                nn.init.constant_(m.bias, 0)\n",
+       "new_str": "                nn.init.constant_(m.bias, 0)\n\n    # Phase 2: Fixup-inspired residual branch scaling for ResNets\n    if is_resnet:\n        n_blocks = sum(1 for m in model.modules() if isinstance(m, BasicBlock))\n        fixup_scale = n_blocks ** (-0.5)\n        for m in model.modules():\n            if isinstance(m, BasicBlock):\n                # Scale the last conv (conv2) in each residual block\n                m.conv2.weight.data.mul_(fixup_scale)\n                # Zero-init the last BN so residual branch starts near identity\n                nn.init.constant_(m.bn2.weight, 0)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 17..17). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The header, to make the block I just appended legal: pull arch out of config and set is_resnet before the module loop, label that loop as phase one, and rewrite the docstring so the two phases and the ResNet-only gating are stated up front rather than discovered halfway down the function.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"\n",
+       "new_str": "    \"\"\"Fixup-inspired residual scaling with zero-gamma BatchNorm.\n\n    For ResNets: Kaiming normal for all Conv2d, then scale the last conv in\n    each residual block by n_blocks^(-0.5) to control variance accumulation.\n    Zero-initialize the last BN in each block (Goyal et al., 2017).\n    For VGG: Kaiming normal (no residual branches to scale).\n    Linear: small normal init with zero bias.\n    \"\"\"\n    arch = config['arch']\n    is_resnet = arch.startswith('resnet')\n\n    # Phase 1: standard Kaiming init for all layers\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 2..7). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Phase one is the same He pass that produced the last result and phase two only fires when arch starts with 'resnet', so VGG and MobileNetV2 should come back essentially unchanged and serve as a control on the run. ResNet-56 is the whole point: it has to move off the wash both per-layer schemes landed on, or accumulation was not the binding constraint after all.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:fixup` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.37 |\n| **mean** | **72.37** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 74.37 |\n| **mean** | **74.37** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 94.48 |\n| **mean** | **94.48** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Three runs. ResNet-56: 72.08, 72.07, 72.37. VGG-16-BN: 72.83, 73.38, 74.37. MobileNetV2: 93.88, 94.49, 94.48.\n\nResNet-56 is the column test #3 was built for, and it finally moved: 72.37 against a 72.07/72.08 pair that had refused to budge when the per-layer fill changed completely. That is +0.30 on the He run. But the control columns come first. Phase two never fires outside ResNets, so VGG ran identical code in #3 and in #2 and still came back 0.99 higher — single-seed run-to-run spread, not an effect of anything I wrote, and more than three times the size of the ResNet gain. So the residual phase is consistent with that improvement rather than demonstrated by it. MobileNetV2, likewise untouched by phase two, repeated itself to within 0.01, which is the comfortable end of the same spread.\n\nPicking a submission does not require settling that. Test #2 was ahead of #1 on two of the three columns and a hundredth behind on the third, and #3 stands in exactly that relation to #2: top of the column on ResNet-56 (72.37 against 72.07 and 72.08), top on VGG-16-BN (74.37 against 73.38 and 72.83), and on MobileNetV2 94.48 against 94.49 — one hundredth back, a tie on any honest reading. #3 is the end of that chain, so submit n=3.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured results — `baseline:fixup` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.37 |\n| **mean** | **72.37** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 74.37 |\n| **mean** | **74.37** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 94.48 |\n| **mean** | **94.48** |"
+  }
+ ]
+}

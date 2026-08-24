@@ -1,0 +1,278 @@
+{
+ "task": "dl-regularization",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "pytorch-vision/custom_reg.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 3,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA deep convolutional image classifier has far more parameters than the data can constrain. The design target is one **additional regularization term** — a differentiable scalar computed every training step from the model, the batch, and the current logits, and *added* to the cross-entropy loss before backpropagation. Everything else is frozen: architectures, Kaiming initialization, data and augmentation, the optimizer (`SGD`, `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4` — plain L2 weight decay is already on), the cosine schedule, and the evaluation procedure. The term must generalize across three architecture/dataset pairs, stay differentiable, and be cheap enough to run on every step.\n\n## Prior art / Background / Baselines\n\n- **Weight decay / L2 (Krogh & Hertz 1991).** Penalize `||W||^2`, shrinking every weight toward zero. Already applied through the optimizer (`weight_decay=5e-4`).\n- **Dropout (Srivastava et al. 2014).** Zero each hidden unit independently with probability `1-p` and rescale survivors, so each forward pass samples a thinned sub-network.\n- **Batch normalization (Ioffe & Szegedy 2015).** Normalize activations per channel, acting as a strong implicit regularizer.\n- **Label smoothing (Szegedy et al. 2016).** Soften the one-hot target toward uniform to curb over-confident outputs.\n\nThese methods act on weights, hidden units, activations, or the loss target respectively.\n\n## Fixed substrate / Code framework\n\nA standard CIFAR-style training loop is frozen and must not be touched. It uses CIFAR-adapted architectures (ResNet-56 with `BasicBlock` `[9,9,9]`, VGG-16-BN with adaptive average pooling, MobileNetV2 with a stride-1 stem), Kaiming weight init, `RandomCrop(32, pad=4)` + `RandomHorizontalFlip`, per-dataset normalization, and batch size 128. The optimizer is `SGD(lr=0.1, momentum=0.9, weight_decay=5e-4)` with `CosineAnnealingLR(T_max=200)` over 200 epochs. The training step is exactly:\n\n```\nloss = CrossEntropy(outputs, targets) + compute_regularization(model, inputs, outputs, targets, config)\n```\n\nThe new term is summed straight onto the cross-entropy. Best test accuracy over training is recorded.\n\n## Editable interface\n\nExactly one region is editable — the body of `compute_regularization` in `pytorch-vision/custom_reg.py` (lines 246-273). `torch`, `torch.nn as nn`, and `torch.nn.functional as F` are already imported at module scope, so the body uses them directly (no imports inside the function). The contract:\n\n- `model`: the full `nn.Module`; iterate `model.named_parameters()` / `model.named_modules()` for weight- or activation-based penalties.\n- `inputs`: `[B, 3, 32, 32]` input batch (for input-dependent penalties).\n- `outputs`: `[B, num_classes]` logits (for output-based penalties such as entropy/confidence).\n- `targets`: `[B]` integer labels.\n- `config`: dict with `num_classes` (int), `epoch` (int, 0-indexed), `total_epochs` (int) — for epoch-dependent scheduling.\n\nThe function returns one differentiable scalar `torch.Tensor` added to the cross-entropy loss; return `0` for no regularization. The starting point is the scaffold default: not implemented.\n\n```python\n# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — default fill\n# torch, torch.nn as nn, torch.nn.functional as F are already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Compute regularization loss term added to classification loss.\n\n    Called every training step. The returned scalar is added to the\n    cross-entropy loss before backpropagation.\n\n    Args:\n        model: the network (nn.Module, ResNet / VGG / MobileNetV2)\n        inputs: [B, 3, 32, 32] input batch\n        outputs: [B, num_classes] model logits\n        targets: [B] integer class labels\n        config: dict with keys:\n            - 'num_classes': int (10 or 100)\n            - 'epoch': int (current epoch, 0-indexed)\n            - 'total_epochs': int (total training epochs)\n\n    Returns:\n        scalar torch.Tensor -- regularization loss (added to CE loss).\n        Return 0 for no regularization.\n\n    Design considerations:\n        - Weight-based penalties (L1, L2, orthogonality, spectral)\n        - Output-based penalties (confidence, entropy, label smoothing)\n        - Activation-based penalties (sparsity, diversity)\n        - Gradient-based penalties (gradient penalty, Jacobian)\n        - Epoch-dependent scheduling (warm-up, annealing)\n    \"\"\"\n    raise NotImplementedError(\"Implement your regularization strategy\")\n```\n\n## Evaluation settings\n\nThree architecture/dataset pairs span the difficulty range: **ResNet-56 on CIFAR-100** (deep, residual, 100 classes), **VGG-16-BN on CIFAR-100** (plain, BN-heavy, large dense classifier head), and **MobileNetV2 on FashionMNIST** (depthwise-separable, grayscale replicated to 3-channel, 10 classes, the held-out pair). One seed, `42`. One metric, higher is better: **best test accuracy (%)** reached at any epoch during the 200-epoch run. The regularizer must not alter the dataset, architecture, base loss, optimizer, scheduler, or evaluation procedure.\n\n## pytorch-vision/custom_reg.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — default fill\n     2: # torch, torch.nn as nn, torch.nn.functional as F are already imported at module scope.\n     3: def compute_regularization(model, inputs, outputs, targets, config):\n     4:     \"\"\"Compute regularization loss term added to classification loss.\n     5: \n     6:     Called every training step. The returned scalar is added to the\n     7:     cross-entropy loss before backpropagation.\n     8: \n     9:     Args:\n    10:         model: the network (nn.Module, ResNet / VGG / MobileNetV2)\n    11:         inputs: [B, 3, 32, 32] input batch\n    12:         outputs: [B, num_classes] model logits\n    13:         targets: [B] integer class labels\n    14:         config: dict with keys:\n    15:             - 'num_classes': int (10 or 100)\n    16:             - 'epoch': int (current epoch, 0-indexed)\n    17:             - 'total_epochs': int (total training epochs)\n    18: \n    19:     Returns:\n    20:         scalar torch.Tensor -- regularization loss (added to CE loss).\n    21:         Return 0 for no regularization.\n    22: \n    23:     Design considerations:\n    24:         - Weight-based penalties (L1, L2, orthogonality, spectral)\n    25:         - Output-based penalties (confidence, entropy, label smoothing)\n    26:         - Activation-based penalties (sparsity, diversity)\n    27:         - Gradient-based penalties (gradient penalty, Jacobian)\n    28:         - Epoch-dependent scheduling (warm-up, annealing)\n    29:     \"\"\"\n    30:     raise NotImplementedError(\"Implement your regularization strategy\")\n```\n\n## Your Budget\n- **Action budget**: 6 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Start from what the contract lets me build, because it rules out most of my instincts. I hand back exactly one differentiable number per step, it gets added to a cross-entropy I may not rewrite, and it has to stay cheap across three 200-epoch runs. Nothing of mine goes into the forward path, and test-time behaviour cannot shift at all, since a training-loss term is simply absent at eval. Meanwhile decay at 5e-4 runs through the optimizer and a BatchNorm sits behind every conv, so weight magnitude is already policed from two directions — a term that mainly shrinks weights buys me nothing.\n\nSo what is left uncovered? Dropout is on the list, and it has quietly vanished from the convolutional stacks of all three of these nets, surviving only on dense heads. Correlation is why. Two neighbouring positions in a channel look through receptive fields that mostly overlap, so their values track each other, and knocking one to zero leaves the layer above free to read the same evidence off the ones beside it. Deleting anything real from a spatially smooth map means deleting a whole contiguous square, at the scale over which the map stays smooth. That is the piece worth taking. What I cannot take is the machinery: sampling a seed field, growing each seed into a square, rescaling whatever survives, going inert at test time — every one of those edits the forward graph, and I have a scalar.\n\nSo which loss-side version keeps the idea alive? Three options. The literal transplant stays on activations: hang hooks on the convs, grab the intermediate maps, put the co-activation statistic straight onto them. I drop it, on cost and on shape. The forward pass that produced these logits is already finished, so I would need resident hooks plus a second graph the size of the activations riding along every step, and I would be parking persistent state inside a function whose entire job is to hand back one number. The second option smooths the kernel — total variation across its taps — and that one fails on mechanism rather than cost, because a smooth central bump is about the most region-hungry thing a 3x3 kernel can express, so I would be rewarding exactly the reliance I set out to break. The third is where the kernel puts its energy spatially. A conv output is an inner product between the kernel and the patch beneath it, so a filter that piles its magnitude into one tight cluster of taps is tuned to a small contiguous chunk of input. Press down on local block energy in the kernel and filters drift toward spreading magnitude out instead of concentrating it.\n\nConcretely I rewrite the entire body of compute_regularization. Square each Conv2d weight and average across the input-channel axis, giving a per-filter spatial energy map of shape [out, 1, kH, kW] — averaging rather than maxing, since a max hands the whole penalty to whichever input channel happens to be loudest and produces a ragged gradient, while the mean reports the filter's typical spatial profile. Block energy is then an average pool: kernel 3, stride 1, padding 1 so the map keeps its size. Mean over taps and filters, accumulate. I gate on kernel_size >= 3 in both spatial axes, which skips the 1x1 pointwise layers in VGG's head path and MobileNetV2's expand and project blocks — there is nothing spatial in them to reshape. block_size = 3 covers the whole kernel on these architectures, since nearly every conv here is 3x3, and it is the smallest block that is still a neighbourhood instead of a single tap.\n\nTwo numbers to fix. Normalisation first: the count of contributing layers is very uneven. ResNet-56 is a stem plus 54 3x3 convs across its [9,9,9] stages, VGG-16-BN offers thirteen, MobileNetV2 keeps a stem and seventeen depthwise banks. Summed raw, one shared coefficient would land about four times heavier on ResNet than on VGG, so I divide the accumulator by how many layers contributed and the term stops caring about depth — which is what lets a single lambda travel across all three pairs. Then strength. At Kaiming init a 3x3 conv over 64 input channels sits at E[w^2] near 2/576, call it 3e-3; avg_pool2d keeps its divisor at nine even where the window overhangs the zero pad, so what comes back is centre-weighted rather than a flat nine-tap mean, which is harmless and just disappears into the coefficient. Multiply through by 1e-4 and the term is worth around 1e-7 beside a cross-entropy starting near ln(100). It will never compete on value; all it contributes is a gradient of order lambda*w on each weight. Keeping lambda_max an order below the decay coefficient keeps that a preference about filter shape rather than a rival to L2 over magnitude.\n\nLast piece, scheduling. Being quadratic in weights that start small, the term already fades by itself at the beginning. What bothers me is direction, not size: a steady shaping gradient through the opening chaos points against the first genuinely useful filters forming, and with normalization behind every conv I would rather not disturb statistics the rest of training leans on. I want a guarantee, not a reassuringly small number, so the function returns literal zero while progress = epoch / max(total_epochs - 1, 1) stays under 0.2, then lam climbs linearly to lambda_max across the remaining stretch.\n\nWorth being honest about the odds here. The mechanism sits a long way from the failure it targets, it operates on tensors decay and normalization already handle, and the ramp only delivers full strength around the point where the cosine anneal has all but parked the weights. I expect something close to an unhelped baseline, with the least room of all on the near-saturated FashionMNIST pair. Still worth running — it fixes a floor and tells me where to aim next.",
+   "content": "Implementing a DropBlock-inspired spatial co-activation penalty on conv weights: per-filter squared magnitude pooled over 3x3 blocks with a stride-1 average pool, averaged across contributing conv layers, at lambda_max=1e-4. The term stays off through the opening fifth of training and then ramps linearly to full strength.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_reg.py",
+       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — default fill\n# torch, torch.nn as nn, torch.nn.functional as F are already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Compute regularization loss term added to classification loss.\n\n    Called every training step. The returned scalar is added to the\n    cross-entropy loss before backpropagation.\n\n    Args:\n        model: the network (nn.Module, ResNet / VGG / MobileNetV2)\n        inputs: [B, 3, 32, 32] input batch\n        outputs: [B, num_classes] model logits\n        targets: [B] integer class labels\n        config: dict with keys:\n            - 'num_classes': int (10 or 100)\n            - 'epoch': int (current epoch, 0-indexed)\n            - 'total_epochs': int (total training epochs)\n\n    Returns:\n        scalar torch.Tensor -- regularization loss (added to CE loss).\n        Return 0 for no regularization.\n\n    Design considerations:\n        - Weight-based penalties (L1, L2, orthogonality, spectral)\n        - Output-based penalties (confidence, entropy, label smoothing)\n        - Activation-based penalties (sparsity, diversity)\n        - Gradient-based penalties (gradient penalty, Jacobian)\n        - Epoch-dependent scheduling (warm-up, annealing)\n    \"\"\"\n    raise NotImplementedError(\"Implement your regularization strategy\")\n",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired\n# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Spatial co-activation penalty on convolutional weights.\n\n    Applies a spatial co-activation penalty on convolutional weights.\n    For each Conv2d layer with spatial kernels >= block_size, it\n    penalizes the mean energy of local spatial blocks in the weight\n    tensor, discouraging spatially correlated filter patterns.\n\n    Uses conservative strength (lambda_max=1e-4) with linear warm-up\n    and only activates after 20% of training to avoid destabilizing\n    early learning, particularly for BatchNorm-heavy architectures.\n\n    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.\n    \"\"\"\n    block_size = 3\n    lambda_max = 1e-4\n    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)\n\n    # Delay activation: no penalty for first 20% of training\n    if progress < 0.2:\n        return torch.tensor(0.0, device=outputs.device)\n\n    # Linear schedule from 20% to 100% of training\n    adjusted_progress = (progress - 0.2) / 0.8\n    lam = lambda_max * adjusted_progress\n\n    reg = torch.tensor(0.0, device=outputs.device)\n    count = 0\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:\n            w = m.weight  # [out_c, in_c, kH, kW]\n            if w.size(-1) >= block_size and w.size(-2) >= block_size:\n                # Mean squared magnitude within spatial blocks\n                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]\n                pad = block_size // 2\n                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)\n                reg = reg + local.mean()\n                count += 1\n\n    if count > 0:\n        reg = reg / count\n    return lam * reg\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_reg.py (lines 1..30). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The body now returns an exact zero for the opening fifth of training and a layer-count-normalised block-energy term on a linear ramp after that, with the 1x1 convs excluded by the kernel-size gate. Given how tiny that term is next to the cross-entropy, I expect this run to land roughly where a plain well-regularised baseline sits — nothing dramatic on the CIFAR-100 pairs and essentially flat on FashionMNIST.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:dropblock` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet56-cifar100 | vgg16bn-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 72.45 | 73.37 | 94.69 |\n| **mean** | **72.45** | **73.37** | **94.69** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "72.45 on ResNet-56, 73.37 on VGG-16-BN, 94.69 on MobileNetV2/FashionMNIST. Weak, as I guessed, but the shape of it is worth more than the ranking. Turn the accuracies into error and the two CIFAR-100 pairs still get 27.55% and 26.63% of the test set wrong while FashionMNIST only gets 5.31% wrong — about five times as much error sitting on the hard pairs, which is the only place a regularizer has room to work, and it also says the mid-90s number will barely twitch no matter what I write in this function. The other detail: VGG lands 0.92 above ResNet even though ResNet is by far the deeper net, so the two hard pairs are breaking for different reasons — a wide dense head on one, depth and residual routing on the other — and one term should not be expected to lift them equally.\n\nThe single worst number is VGG's 73.37, and that is the architecture whose capacity really pools in the 512-wide classifier my penalty never went near, since it only ever walked Conv2d modules. ResNet at 72.45 is barely distinguishable from an unhelped run: in a residual net the signal always has a path around any one filter, so a preference about that filter's shape is easy to sidestep, and the ramp only delivered full strength once the learning rate had annealed to almost nothing. So the fault is where I chose to act, not how hard I pushed. I spent the run adjusting the spatial layout of conv kernels — well removed from the actual failure, on tensors decay already shrinks and normalization already rescales — and gave nothing at all to the one place over-fitting is directly readable, the distribution the network emits.\n\nMove there. The observable form of over-fitting in these nets is a softmax that has dumped nearly all of its mass onto one class. Entropy measures precisely that: largest at uniform, gone at a fully committed one-hot. So the failure mode is low entropy, and the fix is a term that keeps entropy up; since the loop adds my scalar to a fixed cross-entropy, that means returning minus beta times the mean entropy. Two structural advantages over the weights. The output sits on a fixed scale by construction — whatever produced it, the vector sums to one — whereas a weight-space coefficient needed a layer-count division just to carry the same meaning across three different nets. And it is blind to the parameterization underneath, which is what I want if one value of beta is going to travel. One constraint I have to honour, though: the probabilities on the wrong classes encode how the model generalizes, so I need to knock down the spike without levelling the ordering beneath it.\n\nThat constraint disposes of the near alternatives. A hinge on the largest probability has a kink at its threshold, reacts to a single coordinate, and stays blind to how the remaining mass is arranged — it would sign off on a fifty-fifty split between two classes as humble, when that is still a collapsed prediction. An L2 on the logits goes after the cause of peaking but compresses every class by the same factor, wrecking exactly the ordering I promised to keep. Label smoothing is the closest relative and it is out by contract rather than by quality, since it works by rewriting the target and the target here is frozen. Entropy is the differentiable option that reads the whole vector at once and adds cleanly on top.\n\nCheck what flows back before committing. Through the softmax Jacobian, the entropy gradient on logit i comes out as p_i(-log p_i - H): each class's own surprisal measured against the average surprisal, scaled by the mass that class currently carries. Run a peaked 100-class output through it — 0.9 on the winner, 0.1 split across the other 99, H around 0.78 nats — and the winner takes roughly -0.61 while each of the rest gets about +0.006, a hundredth as much. The whole downward shove lands on the over-confident logit and the tail is left nearly alone. The terms cancel to zero in aggregate, so nothing leaks out of the distribution, and every term is zero at uniform, so there is no way to overshoot and flip a prediction. Across confidence levels the force peaks mid-commitment, near -1.1 when p_max is somewhere between a half and 0.7, and has nearly evaporated by 0.99 — it fights the slide into over-confidence while the outcome is still in play and spends nothing on examples already lost.\n\nSchedule it? The lesson from the last edit is that a ramp decoupled from the dynamics wastes the term. Here the geometry handles it for me: at init the logits are small, the softmax is close to uniform, no class dominates, and that gradient is nearly nothing — it only grows force once outputs begin spiking, which is when I want it. So one constant beta, no ramp, no entropy threshold. Take 0.1: at init the term is about -0.1*log(100), roughly -0.46 against a cross-entropy near 4.6, a bounded offset carrying essentially no gradient, and later it is enough to register on a spike without flattening honest confidence on easy examples.\n\nThe edit throws out the whole current body — progress computation, module loop, pooling — and replaces it with three lines over the logits. Softmax along the class axis, per-example entropy summed over classes and then meaned over the batch (the order is not decorative: averaging the softmaxes first and taking entropy of the average would reward class balance inside a minibatch, which is not the failure I care about), and return -0.1 times that, so the loop computes CE minus beta*H. I add an epsilon of 1e-8 under the log so an underflowing entry stays finite without disturbing the healthy ones.",
+   "content": "Replacing the weight-shape penalty with a confidence penalty: the term is now the negative mean per-example softmax entropy at beta=0.1, computed from the logits alone. No schedule and no module iteration left in the body.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_reg.py",
+       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired\n# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Spatial co-activation penalty on convolutional weights.\n\n    Applies a spatial co-activation penalty on convolutional weights.\n    For each Conv2d layer with spatial kernels >= block_size, it\n    penalizes the mean energy of local spatial blocks in the weight\n    tensor, discouraging spatially correlated filter patterns.\n\n    Uses conservative strength (lambda_max=1e-4) with linear warm-up\n    and only activates after 20% of training to avoid destabilizing\n    early learning, particularly for BatchNorm-heavy architectures.\n\n    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.\n    \"\"\"\n    block_size = 3\n    lambda_max = 1e-4\n    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)\n\n    # Delay activation: no penalty for first 20% of training\n    if progress < 0.2:\n        return torch.tensor(0.0, device=outputs.device)\n\n    # Linear schedule from 20% to 100% of training\n    adjusted_progress = (progress - 0.2) / 0.8\n    lam = lambda_max * adjusted_progress\n\n    reg = torch.tensor(0.0, device=outputs.device)\n    count = 0\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:\n            w = m.weight  # [out_c, in_c, kH, kW]\n            if w.size(-1) >= block_size and w.size(-2) >= block_size:\n                # Mean squared magnitude within spatial blocks\n                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]\n                pad = block_size // 2\n                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)\n                reg = reg + local.mean()\n                count += 1\n\n    if count > 0:\n        reg = reg / count\n    return lam * reg\n",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Confidence penalty: penalize low-entropy predictions.\n\n    Computes negative entropy of the softmax distribution and adds it\n    as a penalty, encouraging the model to be less over-confident.\n    Beta=0.1.\n    \"\"\"\n    probs = F.softmax(outputs, dim=-1)\n    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()\n    return -0.1 * entropy  # penalize confident (low-entropy) predictions\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_reg.py (lines 1..44). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The function is three lines over the logits now — softmax, per-row entropy, minus beta times its batch mean — and the sign is right: the loop minimises cross-entropy while pushing entropy up. I expect this to come in above the previous run on all three pairs, with the clearest move on VGG-16-BN and almost nothing on the near-saturated FashionMNIST pair.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:confidence_penalty` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet56-cifar100 | vgg16bn-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 72.66 | 74.31 | 94.90 |\n| **mean** | **72.66** | **74.31** | **94.90** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "72.66, 74.31, 94.90 — up on all three against 72.45, 73.37, 94.69, and the split matches what I predicted: +0.94 on VGG, +0.21 on ResNet, +0.21 on FashionMNIST. The raw deltas hide the interesting part, though, because the three pairs had very different amounts of error available. Error before and after: VGG 26.63 to 25.69, so 3.5% of its error removed; MobileNetV2 5.31 to 5.10, close to 4% removed even on a task with almost nothing left; ResNet-56 27.55 to 27.34, which is 0.76%. Proportionally the deepest network cut about a fifth as much as either of the others. So ResNet is not only the smallest absolute mover, it is the clear relative laggard, and its being the deepest of the three makes that a structural signature rather than noise.\n\nWhy would depth be exactly where an output-side term underperforms? Because entropy only ever sees p(y|x). It has no opinion about how a signal gets transformed climbing fifty-odd layers, or how an error gets transformed coming back down. Both of those are a vector struck by a long chain of matrices, and what a long chain does is governed by the singular values of its factors: typically under one and the chain contracts geometrically with depth, over one and it swells. So the internal lever is each layer's weight spectrum, and what I want is those singular values parked near one. That is orthogonality — and it is untouched by both the kernel-shape term and the output term.\n\nInitializing orthogonal will not do it, since that is a condition at step zero and the first data gradient pulls the weights off toward whatever lowers the data loss, indifferent to the spectrum, with nothing pulling back. I need a force that is present at every step. Imposing it as a hard constraint — re-orthogonalizing with QR or SVD after each update — is priced out: factorizing VGG's 512x4608 flattened weight is order 1e9 flops, per layer, per step, thirteen such layers in VGG alone, across tens of thousands of steps and three full runs.\n\nSettle the shape question first, since it decides what I am even allowed to ask for. Flatten a conv weight to [out_channels, in*k*k]: ResNet's mid-stage 3x3 over 64 channels becomes 64x576, VGG's becomes 512x4608. Both wide, and once a matrix is wide the two versions of orthogonality part company. Orthonormal columns would mean 576 vectors mutually perpendicular inside a 64-dimensional space, which is impossible; orthonormal rows means the out output filters mutually perpendicular inside the 576-dimensional space they actually occupy, which is achievable. So the target is the row Gram against the identity, which in code is W @ W.t() on the flattened view — an out-by-out matrix whose (i,j) entry is the overlap between filter i and filter j. Every off-diagonal entry is a redundancy I want pressed to zero; every diagonal entry is a filter's squared length, which I want held at one. A single residual matrix carries both requirements: no filter duplicating another, and none collapsing toward the origin.\n\nI should be clear about the third architecture. MobileNetV2's depthwise convs are [C,1,3,3], flattening to C-by-9 — tall rather than wide, with C running into the hundreds across the blocks. Nine dimensions admit at most nine mutually perpendicular vectors, so on those layers the target is not merely difficult, it is unreachable, and most of the off-diagonal residual can never be removed. The term still drives each nine-tap filter toward unit length and separates the first handful of directions, so I leave it applied there, but I do not expect it to earn much — which fits FashionMNIST being nearly out of error to give in the first place.\n\nHow to score the residual: squared Frobenius, ((W W^T - I)**2).sum(). Its gradient works out to 4(W W^T - I)W, which is a couple of matmuls with no factorization anywhere, and autograd builds it straight from the forward expression — so the cost wall that killed the hard constraint is gone. Squaring instead of taking absolute values is deliberate: I want pressure that grows with the residual, so the filters furthest out of line absorb most of the force, where an L1 residual would shove a nearly-correct filter as hard as a badly collapsed one. And I skip the cheaper spectral-norm variant: pinning only the top singular value with a power iteration leaves the small ones squashed, and it is the squashed end that starves a 56-layer stack of gradient, which is the failure I am chasing.\n\nCoefficient 1e-4 again, but unlike the block-energy term this one is not negligible at init, and it pays to know what it does there. Under Kaiming, a filter's squared length is fan_in*(2/fan_in) = 2 rather than 1, so every diagonal entry starts roughly a full unit away from target, with the off-diagonal entries small and unstructured at that point; for a VGG layer the squared Frobenius comes out in the high hundreds, so at 1e-4 that is order 1e-1 per layer and order one summed across the conv stack against a cross-entropy near 4.6. Early on, then, the term is mostly unit-length pressure dragging squared norms from 2 down toward 1, and the decorrelation part only becomes active as the filters differentiate. Notice that on scale it pulls against decay — L2 wants the norm at zero, this wants it at one — so it is not another helping of shrinkage the way the first attempt was, and the off-diagonal work is genuinely new. It also means the coefficient has to stay small, or I would be buying orthogonal but task-blind filters while fighting L2 over the scale.\n\nThe edit swaps the entropy body out wholesale. Walk named_parameters, keep 4-D tensors whose name carries 'conv' and 'weight' — which leaves out biases, normalization scales and the classifier matrix, since the claim is about conv filter banks — view each to [out, -1], build the Gram, subtract an identity created on the weight's own device, square and sum into an accumulator, return 1e-4 times the total. No kernel-size gate this time: orthogonality is a statement about channels rather than about space, and a 1x1 conv is nothing but a channel mixer, so the pointwise layers belong in the penalty rather than outside it. And no schedule whatsoever — the data gradient starts dragging the weights off the manifold at step one, so the opposing force has to be live at step one too. If I have read this right, ResNet-56 should clear 72.66 and be the best of the three there, VGG probably stays with the entropy term since a conv-only penalty cannot reach that dense head's softmax the way it does, and FashionMNIST is a wash.",
+   "content": "Replacing the confidence penalty with orthogonal regularization on conv weights: for each 4-D conv parameter flattened to [out_channels, in*k*k], accumulate the squared Frobenius residual of the filter Gram against the identity, scaled by 1e-4. Applied from the first step, no schedule, no kernel-size gate.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_reg.py",
+       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Confidence penalty: penalize low-entropy predictions.\n\n    Computes negative entropy of the softmax distribution and adds it\n    as a penalty, encouraging the model to be less over-confident.\n    Beta=0.1.\n    \"\"\"\n    probs = F.softmax(outputs, dim=-1)\n    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()\n    return -0.1 * entropy  # penalize confident (low-entropy) predictions\n",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 3: orthogonal regularization.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Orthogonal regularization on convolutional weights.\n\n    Penalizes deviation from orthogonality: ||W^T W - I||_F^2 for each\n    4D conv weight reshaped to [out_channels, in*k*k]. Coefficient=1e-4.\n    \"\"\"\n    reg = torch.tensor(0.0, device=outputs.device)\n    for name, p in model.named_parameters():\n        if 'conv' in name and 'weight' in name and p.dim() == 4:\n            W = p.view(p.size(0), -1)  # [out, in*k*k]\n            WtW = W @ W.t()\n            I = torch.eye(W.size(0), device=W.device)\n            reg = reg + ((WtW - I) ** 2).sum()\n    return 1e-4 * reg\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_reg.py (lines 1..12). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The body now walks the 4-D conv weights, builds the out-by-out filter Gram, and accumulates the squared residual against an identity, active from the first step with no ramp. I expect the gain to concentrate on ResNet-56 — the deepest stack, and the one the entropy term barely helped — while VGG and FashionMNIST stay close to where they were.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:orthogonal_reg` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet56-cifar100 | vgg16bn-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 73.16 | 74.03 | 94.85 |\n| **mean** | **73.16** | **74.03** | **94.85** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Three runs on the board: 72.45 / 73.37 / 94.69, then 72.66 / 74.31 / 94.90, then 73.16 / 74.03 / 94.85 — pair means 80.17, 80.62, 80.68. The first is last on all three pairs, so it is out. Between the second and third it is a genuine trade: the Gram penalty takes ResNet-56 from 72.66 to 73.16, +0.50 and the highest ResNet-56 number of any run here, and hands back 0.28 on VGG (74.03 against 74.31) and 0.05 on FashionMNIST (94.85 against 94.90). That nets +0.17 summed across the pairs, 80.68 against 80.62. It wins the hardest and deepest pair decisively while losing the other two narrowly, which is the side of that trade I want to be on, and it carries the better mean. Submitting #3.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured results — `baseline:orthogonal_reg` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet56-cifar100 | vgg16bn-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 73.16 | 74.03 | 94.85 |\n| **mean** | **73.16** | **74.03** | **94.85** |"
+  }
+ ]
+}

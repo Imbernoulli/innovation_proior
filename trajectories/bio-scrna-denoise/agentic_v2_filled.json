@@ -1,0 +1,341 @@
+{
+ "task": "bio-scrna-denoise",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "denoising/denoise_ttt.py",
+ "filename_source": "override",
+ "year": null,
+ "scaffold_from_context": false,
+ "baseline_in_prompt": null,
+ "n_rungs": 4,
+ "n_edit_ops": 5,
+ "best_test": 4,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA single-cell RNA-seq experiment returns a UMI count matrix `X` of shape `cells × genes`, where `X[c, g]` is the number of unique mRNA molecules from gene `g` captured in cell `c`. Because droplet chemistry captures only a small fraction of the transcripts present, most expressed genes read as hard zeros (*dropouts*). The goal is a denoiser `denoise(X) → X̂` that maps the noisy integer matrix to a non-negative matrix `X̂` approximating the expression rate each cell would show under deeper sequencing. The denoiser is scored directly on held-out signal recovery.\n\nNo clean ground truth exists on real data; evaluation uses molecular cross-validation to turn the Poisson nature of the counts into a self-supervised target.\n\n## Prior art / Background / Baselines\n\n- **kNN-smoothing (Wagner, Yan & Yanai, 2018).** Average each cell's profile with its `k` nearest neighbors by observed expression distance to pool molecules and reduce Poisson noise.\n- **MAGIC (van Dijk et al., Cell 2018).** Build a cell-cell affinity graph with an adaptive-bandwidth kernel, normalize it to a Markov matrix `P`, and impute by `X̂ = P^t X`, diffusing expression transitively along the data manifold.\n- **ALRA (Linderman et al., 2022).** Take a low-rank SVD of the normalized matrix, reconstruct from the top components, and threshold per gene to preserve biological zeros.\n\n## Fixed substrate / Code framework\n\nThe harness is a deterministic evaluator. It simulates a true rate matrix `Λ` with continuous-trajectory and discrete-branch low-rank structure, multiplicative biological over-dispersion (so `Λ` is not exactly low-rank), and lognormal per-cell library-size variation; draws `X ~ Poisson(Λ)`; performs a binomial molecular-cross-validation split with a fixed seed; calls the denoiser on `X_train`; and computes two normalized metrics against raw-count and perfect-rate anchors. The simulator, split, metrics, and anchors are frozen. Methods are tuned on sim seed 0 and reported on sim seeds 1–3.\n\n## Editable interface\n\nExactly one function is editable: `denoise(X) → X̂`, taking the integer count matrix `X_train` and returning a non-negative float matrix of the same shape.\n\n```python\nimport numpy as np\n\ndef simulate(n_cells=900, n_genes=1000, seed=0):\n    \"\"\"True rate Λ (low-rank trajectories + branches + over-dispersion), X ~ Poisson(Λ).\"\"\"\n    # ... fixed generator; returns (X, Lam) ...\n\ndef mcv_split(X, p=0.5, seed=42):\n    \"\"\"Binomial molecular cross-validation (Batson 2019): thin a Poisson into two.\"\"\"\n    rng = np.random.default_rng(seed)\n    X_train = rng.binomial(X.astype(np.int64), p).astype(np.float64)\n    X_test = X - X_train\n    return X_train, X_test\n\ndef _lognorm(M, target=1e4, eps=1e-12):           # library-size normalize + log1p\n    s = np.maximum(M.sum(axis=1, keepdims=True), eps)\n    return np.log1p(M * (target / s))\n\ndef mse_lognorm(test, denoised):\n    return float(np.mean((_lognorm(test) - _lognorm(np.maximum(denoised, 0))) ** 2))\n\ndef poisson_nll(train, test, denoised, eps=1e-8):\n    lam = np.maximum(denoised, 0) * (test.sum() / max(train.sum(), 1.0)) + eps\n    return float(np.mean(lam - test * np.log(lam)))\n\n# ---- EDITABLE: the denoiser. Default = raw (no denoising). ----\ndef denoise(X):\n    return X.astype(np.float64).copy()\n```\n\nOutputs must match `X` in shape, be finite, and be non-negative.\n\n## Evaluation settings\n\nEach dataset is `900 cells × 1000 genes`, median library size ~900 molecules after the MCV split, dropout ~0.59. Sim seed 0 is the tune set; seeds 1–3 are held-out report sets. The MCV split seed is fixed at 42, so every method sees the same train/test partition.\n\nThe two metrics are MSE in log-normalized space and Poisson negative log-likelihood on the held-out half. Each is normalized against the raw-count anchor (`X̂ = X_train`, score 0) and the perfect-rate anchor (true `Λ` scaled to each cell's observed depth, score 1). The headline score is the mean of the two normalized metrics, averaged over the three held-out datasets. The tune-set score is reported alongside to expose over-fitting.\n\nOn the real OpenProblems PBMC/Tabula benchmark, raw counts score ~0.0 and MAGIC scores ~0.64; the synthetic datasets here are cleaner, so absolute numbers run higher, but the relative ordering of baselines remains the object of study.\n\n## denoising/denoise_ttt.py\n(The file does not exist yet — your first edit must be edit(op='create', filename='denoising/denoise_ttt.py', content=...).)\n\n## Your Budget\n- **Action budget**: 9 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 4 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Nine actions and four tests, and the first thing I want to spend one of them on is a denoiser that does nothing at all. That reads like waste until I look at how the score is assembled: each metric gets folded into a fraction whose zero is the raw counts and whose one is the true rate rescaled to each cell's observed test depth. Every number I report from here on is a position on that segment, and right now I have no independent evidence the segment is drawn the way I assume it is — that the perfect anchor really lands on the good side of the raw anchor on both metrics, that the subtraction runs in the direction that turns a genuine improvement into a positive score rather than a negative one, that whatever preprocessing touches the method also touches the anchors. The identity is the one candidate whose correct output I know exactly before running it, because it is literally the anchor the fraction is built from: the numerator is zero entry by entry, so both terms have to come back as clean zeros on the tune seed and on all three held-out seeds. Any other value is a harness fault, and I would infinitely rather find it here, where the answer is not in doubt, than four methods deep and squinting at small margins on a scale nobody ever verified.\n\nThe second thing this run buys is arguably worth more than the sanity check: the absolute anchor values. The two metrics are a squared error in log-normalized space and a Poisson NLL, which live on completely unrelated scales, and each normalized term divides by its own raw-minus-perfect distance. Until I see those four numbers I have no idea whether a given absolute reduction in squared error is worth more or less normalized credit than the same absolute reduction in likelihood. That ratio is going to decide where I spend every later edit, so I want it measured, not guessed.\n\nIt also helps that the identity is genuinely the floor and not just conventionally so. The evaluator thins each count binomially at one half, and because independent thinning of a Poisson gives two independent Poisson halves of half the rate, the held-out half is an honest target: anything a denoiser fits of the training half's own sampling noise transfers nothing. The identity hands all of that noise straight through, which is the most over-dispersed prediction a sane method can make. On the squared-error side it compares two independent half-depth reads through log1p on a matrix that is about three fifths zeros, so the disagreement it eats is pure split noise with no signal removed. On the likelihood side it is worse still: wherever the training half dropped out, the predicted rate collapses to the epsilon floor, and if the independent test half fired there the log penalty is enormous — which is exactly the set of entries a real denoiser is supposed to fill.\n\nSo: create the file, and let denoise return a float64 copy of X. Nothing else.",
+   "content": "Creating denoising/denoise_ttt.py with the identity denoiser — X̂ = X_train as a float64 copy. It is the evaluator's own zero anchor, so this run doubles as a calibration check on the normalized metrics and reports the absolute raw and perfect anchor values.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "create",
+       "filename": "denoising/denoise_ttt.py",
+       "content": "import numpy as np\n\ndef denoise(X):\n    \"\"\"Raw baseline: no denoising. The evaluator's zero anchor.\"\"\"\n    return X.astype(np.float64).copy()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Created: denoising/denoise_ttt.py"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The file is the identity: a float copy of the input, no pooling across cells or genes anywhere. Both normalized terms have to come back as exact zeros on all four datasets, and I want to read the absolute raw and perfect anchor values off the same run to see how wide each metric's denominator actually is.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (3 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `denoise:raw` (identity, `X̂ = X_train`). Synthetic data: 900 cells × 1000\ngenes, dropout ~0.59, MCV split seed 42. Tune = sim seed 0; held-out = sim seeds 1–3.\n\n| Dataset | norm_MSE | norm_Poisson | combined | raw MSE | raw Poisson |\n|---|---|---|---|---|---|\n| tune (seed 0) | 0.0000 | 0.0000 | **0.0000** | 1.6037 | 2.0329 |\n| held seed 1 | 0.0000 | 0.0000 | 0.0000 | 1.4263 | 1.5303 |\n| held seed 2 | 0.0000 | 0.0000 | 0.0000 | 1.4927 | 1.7328 |\n| held seed 3 | 0.0000 | 0.0000 | 0.0000 | 1.4929 | 1.7196 |\n| **held-out mean** | **0.0000** | **0.0000** | **0.0000** | — | — |\n\nReference points (real OpenProblems benchmark): MAGIC ~0.64, TTT-Discover 0.71 (PBMC) / 0.73\n(Tabula).\n\nNotes: both normalized terms are exactly `0.0000` on every dataset, as predicted — the method matrix\n*is* the raw anchor, so the numerator `raw − method` is identically zero. The raw-anchor MSE (~1.5)\nand Poisson NLL (~1.7) are the noise floor of the binomial split; the perfect-rate anchor sits well\nbelow them (tune perf_MSE 1.0587, perf_Poisson −0.949), confirming the two anchors bracket the\nscale correctly and the metric has no sign error. The evaluator is calibrated. The identity pools no\ninformation across cells; the entire 0→1 distance is open."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Exact zeros on both terms, every dataset. The scale is wired the way I assumed, there is no sign flip hiding in the metric code, and every bit of the span up to one is still unclaimed. What I actually came for is the absolute scale underneath, and it is lopsided. On the tune seed the raw anchor sits at 1.6037 squared error and 2.0329 NLL, with the perfect anchor at 1.0587 and −0.949. So the normalized squared-error term divides by about 0.545 and the normalized Poisson term divides by about 2.98 — five and a half times wider. That has to stay in front of me for the rest of the session: a unit of squared error recovered is worth roughly five times as much normalized credit as a unit of likelihood recovered. The held-out raw squared errors land between 1.4263 and 1.4929, tight enough that the three report datasets are comparable draws rather than three different regimes, which means a held-out mean that trails the tune score later will be over-fitting and not dataset luck.\n\nNow something that actually denoises. The whole problem rests on one assumption: two cells occupying the same state are two draws from a single rate, so an average across such cells shrinks the sampling noise roughly in proportion to how many went in while leaving the shared part alone. Pool one cell with ten real matches and the per-entry variance should come down to something like a ninth of what a lone draw carries. That is most of what the identity left on the table, and I want the unadorned version of it measured first. Three tests left; spending one on a sophisticated definition of similarity before I know what a plain average is worth would be spending it blind.\n\nThree decisions sit inside \"average each cell with its k nearest\". First, what space the distance is measured in. Raw counts are hopeless: scale up every entry of a profile and it walks away from its own twin, so Euclidean distance in count space is largely a readout of sequencing depth. Normalizing each cell to a common total removes that, but UMI counts are heteroscedastic: Poisson spread grows with the square root of the mean, so a handful of loudly expressed genes end up owning almost all the squared distance while the quiet genes that actually separate states contribute nothing. The square root is the Poisson-natural cure, since to first order it makes the per-entry variance mean-independent. It is imperfect precisely where I am working — with a median of about nine hundred molecules over a thousand genes the typical entry is well under one, the low-count corner where the transform stabilizes least well and treats genes at different dropout rates inconsistently — and I carry that as a real gap. Not log1p here, even though the squared error is scored under it. It is the right transform for multiplicative noise, but it squashes the zero-one-two range where all the dropout information lives and leaves the variance mean-dependent, so it would put back exactly the imbalance the root removes.\n\nSecond, where to look. The classical recipe picks neighbours on the observed, noisy, normalized profiles and does not denoise the space it searches, and that is the known failure mode: at roughly three fifths dropout, two cells in the same state that happened to miss on different genes read as far apart, while two cells from different states that both captured the same few genes read as close. The neighbour ranking is corrupted by the very noise I am averaging away, and no choice of k repairs a corrupted ranking. I am taking that on purpose so I can price it.\n\nThird, how to pool. Cell plus its k nearest, uniform weight, hard membership, with a discontinuity at the boundary: rank k and you count fully, rank k plus one and you count for nothing, at essentially the same distance. And one k for the entire dataset cannot possibly suit every cell: a cell buried in a dense cluster has plenty of true matches and can absorb a wide pool, while one sitting at the end of a trajectory has few and simply gets padded out with cells from the neighbouring state. I fix k at ten as the compromise rather than sweeping it; the test budget will not pay for a sweep and k is not where the interesting structure lives.\n\nThen invert: square back to the count scale, which guarantees non-negativity with no clipping, and rescale by the depth the cell itself came in with, not the depth of the group it was averaged into, so a deeply sequenced cell comes back deep rather than everything converging on a common total. The Poisson term rescales by total counts and would notice immediately if depths collapsed.\n\nThe prediction worth writing down before the run: uniform pooling's core action is shrinking a maximally over-dispersed prediction toward a local mean, and over-dispersion is what the likelihood punishes hardest, so the absolute NLL should drop a great deal. Recovering log-normalized shape is a different quantity that needs the local geometry right, and mine is corrupted twice over, so I expect a much smaller absolute move there. Which normalized term ends up higher is then a fight between that mechanism asymmetry and the five-and-a-half-times-wider Poisson denominator. My call is Poisson still leads. If the squared-error term comes back on top instead, I have misread what hard averaging does and the next step is aimed at the wrong thing.\n\nConcretely the edit replaces the identity body: sqrt transform, per-cell normalization, a NearestNeighbors fit over the normalized rows, a uniform mean over each returned index block, then rescale by the stored library size and square.",
+   "content": "kNN-smoothing (Wagner-style): replace the identity denoiser with neighbour selection on sqrt-transformed, library-normalized profiles and a uniform hard average over each cell plus its ten nearest, then restore each cell's own library size and square back to the count scale.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "denoising/denoise_ttt.py",
+       "old_str": "\ndef denoise(X):\n    \"\"\"Raw baseline: no denoising. The evaluator's zero anchor.\"\"\"\n    return X.astype(np.float64).copy()\n",
+       "new_str": "from sklearn.neighbors import NearestNeighbors\n\ndef denoise(X, knn=10):\n    \"\"\"Wagner-style kNN-smoothing: neighbours on NOISY profiles, hard uniform average.\"\"\"\n    Xs = np.sqrt(X.astype(np.float64))                 # variance-stabilising transform\n    lib = Xs.sum(axis=1, keepdims=True); lib[lib == 0] = 1.0\n    Xn = Xs / lib                                       # library-size normalise\n    n = X.shape[0]\n    k = min(knn + 1, n)\n    nn = NearestNeighbors(n_neighbors=k).fit(Xn)        # neighbours in noisy normalised space\n    _, idx = nn.kneighbors(Xn)\n    Y = Xn[idx].mean(axis=1)                            # uniform hard average over cell + k neighbours\n    Y = Y * lib                                         # restore each cell's library size\n    return np.square(Y)                                 # undo sqrt → count scale\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in denoising/denoise_ttt.py (lines 2..5). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The denoiser now pools each cell with its ten nearest by sqrt-normalized distance and inverts back to counts. I expect a large move off the floor, with the normalized Poisson term running ahead of the squared-error term, and the held-out numbers tracking the tune number closely since there is only one coarse knob in here.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `denoise:knn` (kNN-smoothing, `k = 10`, neighbors on noisy sqrt-normalized\nprofiles, uniform hard average). Synthetic data: 900 cells × 1000 genes, dropout ~0.59, MCV split\nseed 42. Tune = sim seed 0; held-out = sim seeds 1–3.\n\n| Dataset | norm_MSE | norm_Poisson | combined | MSE | Poisson |\n|---|---|---|---|---|---|\n| tune (seed 0) | 0.7228 | 0.8822 | **0.8025** | 1.2098 | −0.5978 |\n| held seed 1 | 0.7351 | 0.8611 | 0.7981 | 1.0707 | −0.7779 |\n| held seed 2 | 0.7234 | 0.8697 | 0.7965 | 1.1282 | −0.7034 |\n| held seed 3 | 0.7258 | 0.8713 | 0.7986 | 1.1232 | −0.7370 |\n| **held-out mean** | **0.7281** | **0.8674** | **0.7977** | — | — |\n\nReference points: raw 0.0000; MAGIC (next rung) target ~0.64 on the real benchmark; TTT-Discover\n0.71/0.73 on real PBMC/Tabula.\n\nNotes: a large jump off the floor — neighbor averaging closes ~80% of the gap to the rate on this\nsynthetic data (well above the real-benchmark numbers because the synthetic manifold is cleaner).\nThe Poisson term (0.867) is recovered better than the MSE term (0.728): hard uniform averaging fixes\nthe gross under-dispersion of the raw counts but its single global `k` and noisy neighbor selection\nleave the log-normalized shape rougher. Stable across held-out seeds (0.7965–0.7986), no over-fit to\nthe tune set. The MSE/Poisson asymmetry is the signature of the two named weaknesses — noisy neighbor\nchoice and a non-adaptive hard pool — which the affinity-graph diffusion rung addresses."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "A held-out combined of 0.7977 off a floor of zero, so a bare neighbour average already takes about four fifths of the distance on this data. More useful is the split between the terms, which came out exactly the shape I argued for: Poisson at 0.8674, squared error at 0.7281. Hard uniform pooling really does crush the over-dispersion the likelihood punishes, well enough to lead even through a denominator five and a half times wider. And the term that is billing me is the one damaged by the two crudities I put in deliberately — neighbours chosen on noisy profiles, and a hard uniform pool with one global k. Getting the log-normalized profile back demands that the neighbourhood structure be trustworthy, and mine is not.\n\nBefore building the fix, check where a fix actually converts. Multiply each remaining fraction back through its anchor spread: the squared-error term at 0.7281 leaves roughly 0.15 of absolute error on the table, the Poisson term at 0.8674 leaves roughly 0.40 of absolute NLL. More raw room on the likelihood side, but it is the expensive room — each unit divided by about 2.98 buys very little normalized credit — while the error room is small but cheap, each unit returning a large normalized move. So a geometry fix is the right purchase twice over: it is aimed at the term my crudities damaged, and that term is the one where recovery is cheapest. The prediction I will hold against the feedback is specific — nearly all of the movement should register on the normalized squared-error term, with the likelihood term close to unchanged.\n\nStart with the space, since that is where the shape damage originates. The distance stops being computed across all thousand gene axes and gets computed on a principal-component projection of the normalized matrix instead. The argument is structural: the simulator lays down trajectories and branches, which is a small number of shared directions, then multiplies over-dispersion on top, so the components carrying real cell-to-cell biology are the leading ones and the vast remainder is mostly where independent per-gene jitter accumulates. Cutting that tail off is a linear denoiser aimed straight at the distance, which is the ceiling I named last time. Fifty is picked to sit well clear of the few directions a branching trajectory set actually occupies, without going so deep that I start reassembling individual genes' noise. The cheaper alternative — iterate the smoother and search on its own output — is circular and still hard-pooled, so it launders the corrupted ranking rather than fixing it.\n\nThen the weights, which answer the other half of the bill. Instead of a top-k set with a step in it, a soft affinity that decays with distance and whose width adapts to local density: each cell's bandwidth is its own distance to its tenth neighbour, small where cells are packed and large out on a sparse edge, so one number stops having to serve both. The affinity is exp of minus that ratio raised to the decay exponent. At an exponent of one it is a plain exponential with a fat tail, so distant cells keep leaking weight in; raising it steepens the falloff toward a near-hard cut and reintroduces the cliff I am removing. Two is the middle, smooth near the origin and dying fast enough in the tail, and I fix it rather than tune it because the parameter that actually matters here is diffusion depth. I pull a few times k candidates out of the search so the kernel has tail to work with while the bandwidth still comes from the tenth. Symmetrize so the relation is mutual, then row-normalize into a stochastic matrix — every application becomes a convex affinity-weighted recombination that creates no mass and cannot push a value outside its neighbours' range.\n\nThe part that separates this from neighbour averaging is powering that matrix. One application is already a soft, density-adaptive version of the old pool. Powers let a cell borrow from its neighbours' neighbours, weighted by the product of transition probabilities along the path, which is genuinely not the same as enlarging k: enlarging k pulls far cells in at full uniform weight and jumps clean across a state boundary, whereas powering can only get to them by walking the chain, arriving with weight decayed multiplicatively along the way, so the pooling follows the continuum rather than cutting across it. The far end is dangerous — the matrix is stochastic, top eigenvalue exactly one and every other mode strictly below, so the t-th power damps a mode as its eigenvalue to the t and enough steps wash every cell toward one global average. With two tests left I cannot sweep this, so I take two steps on the spectral argument: the adaptive kernel already does most of the pooling in a single application, and the second step is there for transitive reach, not to grind the manifold flat.\n\nThere is one trap in the assembly worth spelling out. The embedding is where I compute the graph; it is not what I smooth. The matrix that gets multiplied by the transition operator is the full-resolution normalized one, all thousand genes. Smooth the projected coordinates and map them back out instead, and the returned matrix cannot have rank above fifty by construction — an assertion the simulator flatly contradicts, since its rate is a low-rank core times per-entry over-dispersion, so pinning the output at rank fifty deletes genuine gene-level variation while claiming to delete noise. Two separate jobs, then: the projection settles who counts as similar, the smoothing runs at full gene resolution. Putting some restrained global structure back afterwards may well be worth doing, but it has to be a deliberate later choice rather than something that sneaks in as a side effect of where I ran the arithmetic.\n\nTwo things to record while I am here, both of which stay open. Because each application is a convex combination, an exact zero gets filled automatically with whatever the neighbours read on that gene, so dropouts are imputed with no special handling — but every zero is filled the same way, capture failure or genuinely-off gene, since nothing in the construction distinguishes them. And the diffusion runs in sqrt-normalized space where the geometry makes sense, never in the log-normalized space the squared error is actually computed in.\n\nThe edit replaces the kNN body: PCA embed, adaptive-bandwidth kernel on the embedding, sparse symmetrized transition matrix, two diffusion steps on the full gene matrix, then the same inversion as before.",
+   "content": "MAGIC-style diffusion: build the neighbour graph on a fifty-component PCA of the sqrt-normalized matrix, weight it with an adaptive-bandwidth alpha-decay kernel (per-cell sigma from its tenth-neighbour distance, exponent 2), symmetrize and row-normalize to a Markov transition matrix, and impute with two diffusion steps on the full gene matrix before inverting.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "denoising/denoise_ttt.py",
+       "old_str": "\ndef denoise(X, knn=10):\n    \"\"\"Wagner-style kNN-smoothing: neighbours on NOISY profiles, hard uniform average.\"\"\"\n    Xs = np.sqrt(X.astype(np.float64))                 # variance-stabilising transform\n    lib = Xs.sum(axis=1, keepdims=True); lib[lib == 0] = 1.0\n    Xn = Xs / lib                                       # library-size normalise\n    n = X.shape[0]\n    k = min(knn + 1, n)\n    nn = NearestNeighbors(n_neighbors=k).fit(Xn)        # neighbours in noisy normalised space\n    _, idx = nn.kneighbors(Xn)\n    Y = Xn[idx].mean(axis=1)                            # uniform hard average over cell + k neighbours\n    Y = Y * lib                                         # restore each cell's library size\n    return np.square(Y)                                 # undo sqrt → count scale\n",
+       "new_str": "from sklearn.decomposition import PCA\nfrom scipy.sparse import csr_matrix\n\ndef denoise(X, knn=10, t=2, n_pca=50, decay=2.0, seed=0):\n    Xs = np.sqrt(X.astype(np.float64))                      # sqrt VST\n    lib = Xs.sum(axis=1, keepdims=True); lib[lib == 0] = 1.0\n    Xn = Xs / lib                                           # library-size normalise\n    k_pca = min(n_pca, min(Xn.shape) - 1)\n    emb = PCA(n_components=k_pca, random_state=seed).fit_transform(Xn)   # denoised embedding\n\n    n = emb.shape[0]\n    k = min(knn * 3 + 1, n)\n    nn = NearestNeighbors(n_neighbors=k).fit(emb)\n    dist, idx = nn.kneighbors(emb)\n    sigma = np.maximum(dist[:, knn], 1e-12)                 # adaptive bandwidth = knn-th distance\n    rows = np.repeat(np.arange(n), k); cols = idx.ravel()\n    aff = np.exp(-((dist.ravel() / sigma[rows]) ** decay))  # alpha-decay kernel\n    A = csr_matrix((aff, (rows, cols)), shape=(n, n)); A = A + A.T   # symmetrise\n    rs = np.asarray(A.sum(axis=1)).ravel(); rs[rs == 0] = 1.0\n    P = A.multiply(1.0 / rs[:, None]).tocsr()               # row-stochastic transition matrix\n\n    Y = Xn.copy()\n    for _ in range(t):                                      # diffuse: X_hat = P^t X\n        Y = P @ Y\n    return np.square(Y * lib)                               # restore depth, undo sqrt\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in denoising/denoise_ttt.py (lines 3..15). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The graph is now built on the PCA embedding with a density-adaptive soft kernel, and the diffusion runs on the full gene matrix before the usual inversion. If my reading of what neighbour averaging lost is right, the gain lands almost entirely on the normalized squared-error term and the Poisson term barely moves.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `denoise:magic` (MAGIC, `t = 2`, `knn = 10`, `n_pca = 50`, alpha-decay `α = 2`,\ndiffusion `Pᵗ X` in sqrt-normalized space). Synthetic data: 900 cells × 1000 genes, dropout ~0.59,\nMCV split seed 42. Tune = sim seed 0; held-out = sim seeds 1–3.\n\n| Dataset | norm_MSE | norm_Poisson | combined | MSE | Poisson |\n|---|---|---|---|---|---|\n| tune (seed 0) | 0.8279 | 0.8866 | **0.8572** | 1.1525 | −0.6107 |\n| held seed 1 | 0.8247 | 0.8713 | 0.8480 | 1.0274 | −0.8051 |\n| held seed 2 | 0.8248 | 0.8759 | 0.8504 | 1.0771 | −0.7208 |\n| held seed 3 | 0.8210 | 0.8753 | 0.8482 | 1.0747 | −0.7483 |\n| **held-out mean** | **0.8235** | **0.8742** | **0.8488** | — | — |\n\nReference points: raw 0.0000; kNN-smoothing 0.7977 (held-out mean); real-benchmark MAGIC ~0.64;\nTTT-Discover 0.71/0.73 on real PBMC/Tabula.\n\nNotes: MAGIC clears kNN by +0.051 on the held-out mean (0.8488 vs 0.7977), and the gain is\nconcentrated where predicted — the MSE term rises from 0.728 to 0.824 (the adaptive-bandwidth\nweighting and PCA-denoised embedding recover the log-normalized *shape* that hard uniform pooling\nsmeared), while the Poisson term improves more modestly (0.874 vs 0.867). The small `t = 2` confirms\nthe affinity weighting does most of the work in one step; larger `t` (tried `t = 3, 4, 6`)\nover-diffused toward the global mean and lost score monotonically. Stable across held-out seeds. On\nthis synthetic data MAGIC scores far above its real-benchmark ~0.64 (the synthetic manifold is\ncleaner). Remaining gaps: a single sqrt transform for all genes regardless of dropout, and no\nrefinement that targets the log-normalized scoring space or the global low-rank structure — the\nendpoint rung's targets."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "0.8488 held out, clearing kNN by 0.0511, and the gain landed where I said it would: the squared-error term went 0.7281 to 0.8235 while Poisson went 0.8674 to 0.8742. Nearly all of it came through the shape term and the likelihood is essentially where neighbour averaging left it. The PCA-denoised embedding and the soft adaptive kernel really were fixing what hard pooling smeared, and the small diffusion depth behaved the way the spectral argument said. The graph and the diffusion stay — they are the backbone.\n\nBut the situation has inverted, and that dictates everything about this last edit. Run the anchors again. The squared-error term at 0.8235 leaves only about 0.10 of absolute error to perfect, so the cheap narrow term is nearly used up and even a flawless job on it moves the combined score by a couple of hundredths at most. The Poisson term at 0.8742 leaves about 0.38 of absolute NLL, which even after paying the wide denominator is now by far the larger unrecovered pool. So this has to earn on the likelihood, and the likelihood reads the absolute per-gene rate, not the shape. That means the tempting bolt-on is the wrong lead: smoothing directly in the log-normalized scoring space is the one gap I have never touched and it is easy, but it is a defence of a nearly spent term. I lead with the things that move the rate and treat the log-space work as the counterweight.\n\nFour gaps, all of them already named, and I am going after all four while keeping the graph.\n\nThe transforms first. I have been forcing every gene through the same square root, whose stabilization is worst exactly in this count regime and which cannot suit both a gene expressed nearly everywhere and one that reads zero nine times in ten. So run the whole pipeline three times — once under Anscombe, twice the root of x plus three eighths, whose shift is built for small counts; once under Freeman-Tukey, the sum of the roots of x and x plus one, built for the almost-all-zeros-and-ones end; once under the plain root as a bridge — and combine the three outputs gene by gene with weights read off each gene's own observed zero fraction: the square of one minus it, its square, and twice the product, normalized. That is the binomial expansion, so the weights sum to one at every dropout level with no seam anywhere along the gene axis, whereas a threshold assignment would put a step between two genes sitting either side of it by a hair, and the likelihood is read gene by gene. At the roughly three-fifths dropout this data carries the split comes out around a sixth Anscombe, a third Freeman-Tukey, a half bridge, so mass genuinely moves as dropout rises rather than one transform winning by default. The reason this reaches the likelihood in particular: the smoothing happens under the transform and the result is mapped back, so what comes out is not a mean rate but the transform's inverse evaluated at a mean of transformed values. Compose a nonlinearity with an average over cells whose rates are not identical and the answer is offset, by an amount governed by how sharply the transform bends at that count level. The likelihood reads that bias directly; the squared-error term, which looks at relative profile shape once it has applied its own log1p, largely does not.\n\nSecond, the zeros. For a gene that reads silent most of the time, the odds heavily favour any particular zero being a molecule that was never captured rather than a gene switched off in that cell, so each pass gets a dedicated fill step ahead of the main smoothing: run the operator a couple of times for a manifold estimate, copy it into the empty entries and only the empty entries so nothing actually measured is overwritten, then renormalize the cell. Those are precisely the entries where the raw likelihood bled worst — training half empty, test half firing.\n\nThird, depth. What I just measured hands one smoothing depth to all thousand genes at once, and the uniformity is the flaw rather than the value of the number. A gene observed in a handful of cells has almost nothing local to work with and benefits from reaching further along the manifold; a gene read cleanly nearly everywhere is already where it needs to be and gains nothing from being dragged around. So instead of one power I accumulate the successive powers with per-gene geometric weights plus a guaranteed baseline term, the base being 0.9 times a quantity that runs from 0.2 up to 1.0 with the gene's dropout. The seven I let the sum run to is a ceiling, not a depth — a gene that is never zero gets a base around 0.18, which averages out to roughly a fifth of one step, i.e. effectively left alone; at this data's typical dropout it is a bit under one and a half steps; only a gene that is entirely zero reaches about three. High-dropout genes land near the shallow depth that was globally best, everything else is smoothed far less than a flat two steps would have, and a flat seventh power would over-diffuse exactly as the deeper settings did. A different operator, not a deeper one.\n\nThen a per-gene safety blend back toward the raw normalized signal, leaning on the diffused version only where three things agree — the gene drops out often, the diffusion actually removed a lot of that gene's variance, and its mean is low — with the cap keeping even the friendliest gene at least thirty percent raw. Where a gene is strongly expressed and the smoothing has mainly erased structure that was genuinely there, the weight falls to nearly nothing and the observed values stand.\n\nFourth, global structure. A thirty-component truncated SVD of the ensembled matrix, reconstructed and mixed back at a tenth. This is not me reversing the refusal from last time: a hard projection replaces the matrix, a tenth-weight mixture only nudges it, and the smallness of that weight is the entire point. Everything the graph does is local — it never registers that the whole population is organized by a few shared factors — so there is real structure only a factorization can supply. But the over-dispersion argument that killed the truncation still applies: pull hard toward the reconstruction and the per-entry spread gets ironed flat, and the squared-error term pays for it. It should help the likelihood and it is the riskiest knob for the other term, which is what the log-space work is there to cover: rescale to the metric's own target total, log1p, diffuse with the same transition matrix, expm1, rescale back, blend in. Twice — a few steps at moderate weight, then a shorter lighter polish — so the output is settled in the space the error is read in before it is returned.\n\nTwo housekeeping items. The transition matrix gets a self-loop mixed in, half the mass staying put before renormalization. This design leans on the operator far harder than a couple of clean steps did — the fill stage uses it, the weighted power sum uses it, both scoring-space passes use it — and without something holding each cell to its own value, that many applications collapse the population toward a single profile. And Anscombe and Freeman-Tukey do not invert by squaring, so each needs a short Newton solve to get back to the count scale, or the ensemble is combining things on different scales.\n\nThe risk is knob count: a dozen of them, tuned on one seed, with real capacity to memorize that seed's manifold instead of the denoising structure. Both earlier steps held their held-out means within a hundredth of their tune scores, so I have a cheap check — a visibly wider gap here means over-fit and I strip components rather than believe the number. The prediction otherwise is that the gain lands on the Poisson term, since the transforms, the zero-filling and the low-rank blend all aim at the absolute per-gene rate, while the log-space passes hold the error term against the low-rank step's cost. If the likelihood refuses to move and only the error term budges, my reading of what is left is wrong.\n\nTwo hunks, tail first: the affinity construction becomes a function returning the transition matrix, then the transform pair and the multi-scale diffusion helper, then a new denoise carrying the three passes, the ensemble, the SVD blend and the log-space polish. The header hunk follows to pull the PCA embedding out and bring in the imports the new body needs.",
+   "content": "Endpoint: replace the single-transform diffusion with a three-VST ensemble (Anscombe / Freeman-Tukey / sqrt) combined gene-wise by observed dropout, each pass adding zero-only imputation, gene-wise multi-scale diffusion and an adaptive raw/diffused blend, then a light truncated-SVD refinement and two diffusion passes in log-normalized space, over a self-looped shared graph.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "denoising/denoise_ttt.py",
+       "old_str": "    sigma = np.maximum(dist[:, knn], 1e-12)                 # adaptive bandwidth = knn-th distance\n    rows = np.repeat(np.arange(n), k); cols = idx.ravel()\n    aff = np.exp(-((dist.ravel() / sigma[rows]) ** decay))  # alpha-decay kernel\n    A = csr_matrix((aff, (rows, cols)), shape=(n, n)); A = A + A.T   # symmetrise\n    rs = np.asarray(A.sum(axis=1)).ravel(); rs[rs == 0] = 1.0\n    P = A.multiply(1.0 / rs[:, None]).tocsr()               # row-stochastic transition matrix\n\n    Y = Xn.copy()\n    for _ in range(t):                                      # diffuse: X_hat = P^t X\n        Y = P @ Y\n    return np.square(Y * lib)                               # restore depth, undo sqrt\n",
+       "new_str": "    sigma = np.maximum(dist[:, knn], 1e-12)\n    rows = np.repeat(np.arange(n), k); cols = idx.ravel()\n    aff = np.exp(-((dist.ravel() / sigma[rows]) ** decay))\n    A = csr_matrix((aff, (rows, cols)), shape=(n, n)); A = A + A.T\n    rs = np.asarray(A.sum(axis=1)).ravel(); rs[rs == 0] = 1.0\n    return A.multiply(1.0 / rs[:, None]).tocsr()\n\n\ndef _apply_vst(c, tr):\n    if tr == \"anscombe\": return 2.0 * np.sqrt(c + 3.0 / 8.0)\n    if tr == \"ft\":       return np.sqrt(c) + np.sqrt(c + 1.0)\n    if tr == \"sqrt\":     return np.sqrt(c)\n    raise ValueError(tr)\n\n\ndef _inv_vst(y, tr):\n    if tr == \"anscombe\":\n        x = (y / 2.0) ** 2 - 3.0 / 8.0\n        for _ in range(8):\n            s = np.sqrt(np.maximum(x + 3.0 / 8.0, 0.0)); x = x - (2.0 * s - y) * s\n        return np.maximum(x, 0.0)\n    if tr == \"ft\":\n        out = np.zeros_like(y); m = y > 0; yy = y[m]\n        s = np.maximum((yy * yy - 1.0) / (2.0 * yy), 0.0); x = s * s\n        for _ in range(8):\n            a = np.sqrt(np.maximum(x, 0.0)); b = np.sqrt(np.maximum(x + 1.0, 0.0))\n            f = a + b - yy; fp = 0.5 / np.maximum(a, 1e-12) + 0.5 / np.maximum(b, 1e-12)\n            x = np.maximum(x - f / fp, 0.0)\n        out[m] = x; return out\n    if tr == \"sqrt\":     return y ** 2\n    raise ValueError(tr)\n\n\ndef _multiscale_diffuse(P, Y, t, dropout, decay=0.9):\n    \"\"\"Gene-wise weighted multi-scale diffusion: sum of P^i with per-gene decay + baseline.\"\"\"\n    cur = Y.copy(); wsum = Y.copy(); wtot = np.ones(Y.shape[1])\n    base = decay * (0.2 + 0.8 * dropout)\n    for i in range(1, t + 1):\n        cur = P @ cur; wi = np.power(base, i)\n        wsum += cur * wi[None, :]; wtot += wi\n    return wsum / np.maximum(wtot[None, :], 1e-12)\n\n\ndef denoise(X, knn=12, t=7, n_pca=50, decay=2.0, diff_decay=0.9,\n            transforms=(\"anscombe\", \"ft\", \"sqrt\"),\n            lowrank_components=30, lowrank_weight=0.10,\n            log_smooth_t=4, log_smooth_weight=0.6,\n            final_smooth_t=3, final_smooth_weight=0.30,\n            impute_steps=2, max_alpha=0.7, seed=0):\n    \"\"\"Test-time endpoint: multi-VST ensemble + low-rank SVD + log-space diffusion.\"\"\"\n    X = X.astype(np.float64)\n    n_cells, n_genes = X.shape\n    libsize_raw = X.sum(axis=1); libsize_raw[libsize_raw == 0] = 1.0\n    dropout = np.mean(X == 0, axis=0)\n\n    # graph built once on the primary (anscombe) VST embedding, with a self-loop\n    Xp = _apply_vst(X, transforms[0])\n    lib_p = Xp.sum(axis=1, keepdims=True); lib_p[lib_p == 0] = 1.0\n    emb = _pca_embed(Xp / lib_p, n_pca, seed)\n    P = _adaptive_affinity(emb, knn, decay)\n    P = (1 - 0.5) * speye(n_cells, format=\"csr\") + 0.5 * P\n    rs = np.asarray(P.sum(axis=1)).ravel(); rs[rs == 0] = 1.0\n    P = P.multiply(1.0 / rs[:, None]).tocsr()\n\n    outs = []\n    for tr in transforms:\n        Xv = _apply_vst(X, tr)\n        lib = Xv.sum(axis=1, keepdims=True); lib[lib == 0] = 1.0\n        Xn = Xv / lib\n        # impute exact zeros with a diffusion-weighted neighbour average\n        nbr = Xn.copy()\n        for _ in range(impute_steps):\n            nbr = P @ nbr\n        Yimp = Xn.copy(); Yimp[Xn == 0] = nbr[Xn == 0]\n        Yimp = Yimp / np.maximum(Yimp.sum(axis=1, keepdims=True), 1e-12)\n        diff = _multiscale_diffuse(P, Yimp, t, dropout, diff_decay)\n        # adaptive gene-wise blend of raw-normalised and diffused\n        var_o = Xn.var(axis=0); var_d = diff.var(axis=0)\n        vred = np.clip((var_o - var_d) / (var_o + 1e-12), 0.0, 1.0)\n        mu = Xn.mean(axis=0); mun = (mu - mu.min()) / (mu.max() - mu.min() + 1e-12)\n        w = np.clip(dropout * vred * (1.0 - mun), 0.0, max_alpha)\n        blended = Xn * (1.0 - w) + diff * w\n        blended = blended / np.maximum(blended.sum(axis=1, keepdims=True), 1e-12)\n        # restore VST-space library size BEFORE inverting\n        outs.append(np.maximum(_inv_vst(blended * lib, tr), 0.0))\n\n    # gene-wise VST ensemble: anscombe (low dropout), ft (high dropout), sqrt (bridge)\n    if len(outs) == 3:\n        wm = np.stack([(1 - dropout) ** 2, dropout ** 2, 2 * dropout * (1 - dropout)])\n        wm /= np.maximum(wm.sum(0, keepdims=True), 1e-12)\n        denoised = sum(outs[i] * wm[i][None, :] for i in range(3))\n    else:\n        denoised = np.mean(outs, axis=0)\n    denoised = np.maximum(denoised, 0.0)\n\n    # light low-rank TruncatedSVD refinement\n    if lowrank_weight > 0:\n        nc = min(lowrank_components, min(n_cells, n_genes) - 1)\n        svd = TruncatedSVD(n_components=nc, random_state=seed, algorithm=\"randomized\")\n        low = svd.fit_transform(denoised) @ svd.components_\n        denoised = np.maximum((1 - lowrank_weight) * denoised + lowrank_weight * low, 0.0)\n\n    # extra diffusion in log-normalised space (the space the MSE is computed in)\n    def log_diffuse(M, steps, weight):\n        cs = M.sum(axis=1, keepdims=True); scale = 1e4 / np.maximum(cs, 1e-12)\n        lg = np.log1p(M * scale)\n        for _ in range(steps):\n            lg = P @ lg\n        return (1 - weight) * M + weight * (np.expm1(lg) * (cs / 1e4))\n    if log_smooth_weight > 0 and log_smooth_t > 0:\n        denoised = log_diffuse(denoised, log_smooth_t, log_smooth_weight)\n    if final_smooth_weight > 0 and final_smooth_t > 0:\n        denoised = log_diffuse(denoised, final_smooth_t, final_smooth_weight)\n\n    return np.maximum(denoised, 0.0)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in denoising/denoise_ttt.py (lines 17..27). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the top of the file to match. TruncatedSVD and a sparse identity join the imports, and the two pieces of graph construction that were inline in the old body — the PCA projection and the adaptive-bandwidth kernel — come out as their own functions. All three transform passes have to share one graph, so it cannot stay buried inside a denoise that now runs three times.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "denoising/denoise_ttt.py",
+       "old_str": "from sklearn.decomposition import PCA\nfrom scipy.sparse import csr_matrix\n\ndef denoise(X, knn=10, t=2, n_pca=50, decay=2.0, seed=0):\n    Xs = np.sqrt(X.astype(np.float64))                      # sqrt VST\n    lib = Xs.sum(axis=1, keepdims=True); lib[lib == 0] = 1.0\n    Xn = Xs / lib                                           # library-size normalise\n    k_pca = min(n_pca, min(Xn.shape) - 1)\n    emb = PCA(n_components=k_pca, random_state=seed).fit_transform(Xn)   # denoised embedding\n\n",
+       "new_str": "from sklearn.decomposition import PCA, TruncatedSVD\nfrom scipy.sparse import csr_matrix, eye as speye\n\n\ndef _pca_embed(Xn, n_pca, seed):\n    k = min(n_pca, min(Xn.shape) - 1)\n    return PCA(n_components=k, random_state=seed).fit_transform(Xn)\n\n\ndef _adaptive_affinity(emb, knn, decay):\n    \"\"\"MAGIC-style alpha-decay kernel: adaptive-bandwidth (knn-th distance) Gaussian.\"\"\"\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in denoising/denoise_ttt.py (lines 3..11). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Three transform passes over one self-looped graph, ensembled gene-wise by dropout, then the SVD blend and the two log-space passes on top. Given where the headroom sits, the gain should show up on the Poisson term with the squared-error term roughly holding its previous level — and the tune-to-held-out gap needs to stay as tight as the earlier steps', or the knob count has bought me a seed rather than a denoiser.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #4] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured result — `denoise:ttt` (TTT-Discover endpoint: 3-VST gene-wise ensemble + zero-imputation\n+ gene-wise multi-scale diffusion + adaptive raw/diffused blend + light truncated-SVD low-rank\nrefinement + two log-normalized-space diffusion passes). Synthetic data: 900 cells × 1000 genes,\ndropout ~0.59, MCV split seed 42. Tune = sim seed 0; held-out = sim seeds 1–3.\n\n| Dataset | norm_MSE | norm_Poisson | combined | MSE | Poisson |\n|---|---|---|---|---|---|\n| tune (seed 0) | 0.8360 | 0.9335 | **0.8847** | 1.1481 | −0.7506 |\n| held seed 1 | 0.8195 | 0.9255 | 0.8725 | 1.0299 | −0.9503 |\n| held seed 2 | 0.8287 | 0.9279 | 0.8783 | 1.0751 | −0.8664 |\n| held seed 3 | 0.8291 | 0.9286 | 0.8788 | 1.0706 | −0.8984 |\n| **held-out mean** | **0.8258** | **0.9273** | **0.8765** | — | — |\n\nFull ladder (held-out mean, sim seeds 1–3):\n\n| Rung | method | norm_MSE | norm_Poisson | **combined** |\n|---|---|---|---|---|\n| 1 | raw (no denoising) | 0.0000 | 0.0000 | **0.0000** |\n| 2 | kNN-smoothing | 0.7281 | 0.8674 | **0.7977** |\n| 3 | MAGIC | 0.8235 | 0.8742 | **0.8488** |\n| 4 | **TTT-Discover endpoint** | 0.8258 | 0.9273 | **0.8765** |\n\nReference points (real OpenProblems benchmark): MAGIC ~0.64; TTT-Discover 0.71 (PBMC) / 0.73\n(Tabula). The endpoint adapts test-time-training/discover (`results/denoising/denoise_ttt.py`,\narXiv:2601.16175).\n\nNotes: the endpoint is the strongest rung, clearing MAGIC by +0.028 on the held-out mean (0.8765 vs\n0.8488). The gain is concentrated on the **Poisson** term (0.927 vs 0.874, +0.053) — the\ngene-adaptive multi-VST ensemble, zero-imputation, and light low-rank refinement tighten the\nabsolute per-gene rate — while the MSE term ties MAGIC (0.826 vs 0.824), held there by the\nlog-normalized-space diffusion passes against the cost of the low-rank step. Component check on the\ntune set: `lowrank_weight=0` scored marginally higher on MSE but is kept at `0.10` to retain the\ngenuine TTT-Discover SVD-refinement component (it helps Poisson and is a defining feature); the two\nlog-space diffusion passes are the largest single contributor to the MSE term. Stable across\nheld-out seeds (0.8725–0.8788), no over-fit. On this synthetic data the endpoint scores ~0.88 versus\nits real-benchmark 0.71/0.73 — the synthetic manifold is cleaner, so every rung runs high, but the\n*ordering* (raw < kNN < MAGIC < TTT) and the endpoint's decisive lead reproduce the real result. No\ndenoiser can exceed the true-rate ceiling: the multiplicative biological over-dispersion baked into\n`Λ` is irreducible noise, which is why the scores plateau below 1 rather than running away. Endpoint\nof the ladder."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Four results and they are monotone: zero for the identity, 0.7977 for neighbour averaging, 0.8488 for the diffusion graph, 0.8765 for the endpoint. Each step's gain also landed on the term I argued it would, which matters more to me than the ordering. This last one clears the diffusion graph by 0.0277 on the held-out mean and did it the way the headroom said it had to — Poisson 0.8742 to 0.9273, while the squared-error term moved only 0.8235 to 0.8258, the low-rank blend's cost being paid back by the log-space passes rather than the error term contributing anything of its own.\n\nThe over-fitting worry did not materialize. Tune 0.8847 against a held-out mean of 0.8765 is a gap of 0.0082, the same order as the previous step's 0.0084 and no worse despite carrying several times the knobs, so the ensemble is reporting the manifold and not seed zero. And the margin is not a mean artifact: the three held-out seeds run 0.8725, 0.8783, 0.8788, so the worst of them still sits above 0.8504, the best single held-out seed anything earlier managed. Test #4 is the best on the held-out mean, on every individual held-out seed, and on the tune set, so there is nothing to trade off. Submitting n=4.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 4
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #4 as final.\n\nMeasured result — `denoise:ttt` (TTT-Discover endpoint: 3-VST gene-wise ensemble + zero-imputation\n+ gene-wise multi-scale diffusion + adaptive raw/diffused blend + light truncated-SVD low-rank\nrefinement + two log-normalized-space diffusion passes). Synthetic data: 900 cells × 1000 genes,\ndropout ~0.59, MCV split seed 42. Tune = sim seed 0; held-out = sim seeds 1–3.\n\n| Dataset | norm_MSE | norm_Poisson | combined | MSE | Poisson |\n|---|---|---|---|---|---|\n| tune (seed 0) | 0.8360 | 0.9335 | **0.8847** | 1.1481 | −0.7506 |\n| held seed 1 | 0.8195 | 0.9255 | 0.8725 | 1.0299 | −0.9503 |\n| held seed 2 | 0.8287 | 0.9279 | 0.8783 | 1.0751 | −0.8664 |\n| held seed 3 | 0.8291 | 0.9286 | 0.8788 | 1.0706 | −0.8984 |\n| **held-out mean** | **0.8258** | **0.9273** | **0.8765** | — | — |\n\nFull ladder (held-out mean, sim seeds 1–3):\n\n| Rung | method | norm_MSE | norm_Poisson | **combined** |\n|---|---|---|---|---|\n| 1 | raw (no denoising) | 0.0000 | 0.0000 | **0.0000** |\n| 2 | kNN-smoothing | 0.7281 | 0.8674 | **0.7977** |\n| 3 | MAGIC | 0.8235 | 0.8742 | **0.8488** |\n| 4 | **TTT-Discover endpoint** | 0.8258 | 0.9273 | **0.8765** |\n\nReference points (real OpenProblems benchmark): MAGIC ~0.64; TTT-Discover 0.71 (PBMC) / 0.73\n(Tabula). The endpoint adapts test-time-training/discover (`results/denoising/denoise_ttt.py`,\narXiv:2601.16175).\n\nNotes: the endpoint is the strongest rung, clearing MAGIC by +0.028 on the held-out mean (0.8765 vs\n0.8488). The gain is concentrated on the **Poisson** term (0.927 vs 0.874, +0.053) — the\ngene-adaptive multi-VST ensemble, zero-imputation, and light low-rank refinement tighten the\nabsolute per-gene rate — while the MSE term ties MAGIC (0.826 vs 0.824), held there by the\nlog-normalized-space diffusion passes against the cost of the low-rank step. Component check on the\ntune set: `lowrank_weight=0` scored marginally higher on MSE but is kept at `0.10` to retain the\ngenuine TTT-Discover SVD-refinement component (it helps Poisson and is a defining feature); the two\nlog-space diffusion passes are the largest single contributor to the MSE term. Stable across\nheld-out seeds (0.8725–0.8788), no over-fit. On this synthetic data the endpoint scores ~0.88 versus\nits real-benchmark 0.71/0.73 — the synthetic manifold is cleaner, so every rung runs high, but the\n*ordering* (raw < kNN < MAGIC < TTT) and the endpoint's decisive lead reproduce the real result. No\ndenoiser can exceed the true-rate ceiling: the multiplicative biological over-dispersion baked into\n`Λ` is irreducible noise, which is why the scores plateau below 1 rather than running away. Endpoint\nof the ladder."
+  }
+ ]
+}

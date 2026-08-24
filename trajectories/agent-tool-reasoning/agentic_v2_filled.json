@@ -1,0 +1,416 @@
+{
+ "task": "agent-tool-reasoning",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 9,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA frozen LLM is given a user query and a set of real RapidAPI tools. It must fulfill the query by calling the right tools in the right order with the right arguments. The only design freedom is the agent's **search/reasoning policy** — how it explores the action space, chooses the next tool call, recognizes a dead end, and decides when to stop — trading task success against the number of LLM queries spent. The environment, answer judge, model backbones, prompts, and decoding parameters are all fixed. The benchmark is StableToolBench (Guo et al. 2024; built on ToolBench, Qin et al. 2023), which provides a virtual API server and a GPT-4 judge that reports a Solvable Pass Rate.\n\n## Prior art / Background / Baselines\n\n- **Chain-of-thought prompting (Wei et al. 2022).** Few-shot exemplars lead the model to write intermediate reasoning steps before the final answer.\n- **Self-consistency (Wang et al. 2022).** Sample many reasoning chains and take a majority vote.\n- **Acting-by-prompting / LLM-as-policy (WebGPT, SayCan, etc., 2021–2022).** At each step the model observes the world, emits an action, and the action is executed before the next observation is fed back.\n- **Reflect-and-retry (Reflexion, Shinn et al. 2023).** After a failed episode, generate a natural-language reflection, store it, and rerun the entire task with the reflection prepended.\n\n## Fixed substrate / Code framework\n\nThe StableToolBench inference harness is frozen. The agent is a `CustomSearch` object whose tree starts from a root node carrying the system/user prompt; the harness runs the same `search()` policy across DeepSeek and Qwen backbones on the I1-instruction subset. The harness owns the full ReAct round and exposes three helpers that must not be modified:\n\n- `self._step(node)` — one LLM call from `node` plus tool execution. It parses the assistant message into `Thought`, `Action`, and `Action Input`; runs the call against the virtual API server; sets `observation_code` (0 ok, 1 hallucinated API name, 3 final answer, 4 give up) and `is_terminal`/`pruned`; increments `self.query_count`; and returns the new leaf(s). Returns `[]` once the query budget is hit.\n- `self._add_diversity_prompt(node)` — if `node` already has children, appends a temporary prompt listing actions already tried from `node` and asking for a different one; returns `True` so the caller can mark that message invalid afterward.\n- `self._rank_nodes(candidates)` — LLM **pairwise** ranking of candidate nodes via `sum_based_rankn`; returns a per-candidate score (higher is better) and charges the comparison calls to `query_count`.\n\nPolicy-relevant state: `self.query_count`/`self.max_query_count`, `self.terminal_node`/`self.give_up_node`, `self.status` (set to 1 on success), `self.answer_count`, `self.single_chain_max_step` (depth cap in raw nodes; a logical round is Thought+Action+Action Input, so three), `self.tree_beam_size` (children per expansion); and per node `is_terminal`, `pruned`, `observation_code`, `get_depth()`, `children`, `father`, `messages`, `make_finish(k)`. The policy may attach its own attributes to nodes.\n\n## Editable interface\n\nExactly one region is editable — the `search(self, root_node)` method of `CustomSearch` in `custom_search.py` (lines 368–439). Every rung is a fill of this one method (plus any private helper methods it calls). The starting point is the scaffold default below: a **greedy chain** that follows one path and never backtracks.\n\n```python\n    # EDITABLE region of custom_search.py — default fill (greedy chain, no backtracking)\n    def search(self, root_node):\n        \"\"\"Core search logic. Modify this method to implement your strategy.\n\n        Helpers (do NOT modify, just call): self._step(node), self._add_diversity_prompt(node),\n        self._rank_nodes(candidates). State: self.query_count, self.max_query_count,\n        self.terminal_node, self.give_up_node, self.status, self.answer_count,\n        self.single_chain_max_step, self.tree_beam_size. Node: node.is_terminal, node.pruned,\n        node.observation_code, node.get_depth(), node.children, node.father.\n        \"\"\"\n        now_node = root_node\n        for step in range(self.single_chain_max_step):\n            if self.query_count >= self.max_query_count:        # budget exhausted\n                break\n            if len(self.terminal_node) >= self.answer_count:    # already have enough answers\n                break\n\n            new_leaves = self._step(now_node)                   # one LLM call + tool exec\n            if not new_leaves:\n                break\n            now_node = new_leaves[-1]\n\n            if now_node.is_terminal:                            # produced a final answer\n                self.status = 1\n                self.terminal_node.append(now_node)\n                break\n            if now_node.pruned:                                 # dead end / give up\n                if now_node.observation_code == 4:\n                    self.give_up_node.append(now_node)\n                break\n            if now_node.get_depth() >= self.single_chain_max_step:\n                now_node.pruned = True\n                break\n```\n\n## Evaluation settings\n\nThe same `search()` policy is run across multiple agent backbones on the **I1-instruction** subset of StableToolBench (50 scored queries per backbone), seed 42. Four diagnostics are reported per backbone: `pass_rate` — fraction of queries with a valid final answer (higher is better; the primary quality signal, alongside the GPT-4-judge Solvable Pass Rate `sopr`); `avg_queries` — average LLM queries per task (lower is better; the efficiency signal); and `give_up_rate` — fraction of queries the agent abandons (lower is better; a diagnostic signal).\n\n## stabletoolbench/toolbench/inference/Algorithms/custom_search.py  [EDITABLE — entire file]\n```python\n     1:     # EDITABLE region of custom_search.py — default fill (greedy chain, no backtracking)\n     2:     def search(self, root_node):\n     3:         \"\"\"Core search logic. Modify this method to implement your strategy.\n     4: \n     5:         Helpers (do NOT modify, just call): self._step(node), self._add_diversity_prompt(node),\n     6:         self._rank_nodes(candidates). State: self.query_count, self.max_query_count,\n     7:         self.terminal_node, self.give_up_node, self.status, self.answer_count,\n     8:         self.single_chain_max_step, self.tree_beam_size. Node: node.is_terminal, node.pruned,\n     9:         node.observation_code, node.get_depth(), node.children, node.father.\n    10:         \"\"\"\n    11:         now_node = root_node\n    12:         for step in range(self.single_chain_max_step):\n    13:             if self.query_count >= self.max_query_count:        # budget exhausted\n    14:                 break\n    15:             if len(self.terminal_node) >= self.answer_count:    # already have enough answers\n    16:                 break\n    17: \n    18:             new_leaves = self._step(now_node)                   # one LLM call + tool exec\n    19:             if not new_leaves:\n    20:                 break\n    21:             now_node = new_leaves[-1]\n    22: \n    23:             if now_node.is_terminal:                            # produced a final answer\n    24:                 self.status = 1\n    25:                 self.terminal_node.append(now_node)\n    26:                 break\n    27:             if now_node.pruned:                                 # dead end / give up\n    28:                 if now_node.observation_code == 4:\n    29:                     self.give_up_node.append(now_node)\n    30:                 break\n    31:             if now_node.get_depth() >= self.single_chain_max_step:\n    32:                 now_node.pruned = True\n    33:                 break\n```\n\n## Your Budget\n- **Action budget**: 12 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The only thing I actually own in this file is control flow. `_step` already performs the entire round — it prompts the model, splits the reply into a thought and a call, executes that call on the virtual server, stamps `observation_code`, flips `is_terminal` or `pruned`, charges the query counter, and hands me back a leaf — and I am not allowed anywhere near it. So every policy I can write here is a pattern of when to call `_step` and from which node. Nothing I do changes what one round is; I only choose how rounds are issued.\n\nThat rules out two obvious moves before I start. Telling the model to reason harder does not help when what is missing is a fact about the world: it will write a confident plan around an API name that does not exist and then keep planning against it, because everything downstream conditions on the text already written. Sampling several such chains and voting is worse than useless, since the wrong answers do not disagree with one another — same model, same hole, so the same invented call wins the vote and I have paid several times over to be confidently wrong. Acting with no written reasoning has the mirror problem: nowhere to put \"the lookup returned this, so the argument I need next is that\", and on a multi-call instruction the model drops the plan halfway. The harness has already settled this by alternating the two inside one round: a thought touches nothing and so cannot misreport the world, and a call is grounded because the server, not the model, produces the observation. Three raw nodes per round, which will matter for the depth cap.\n\nSo the first thing to measure is the plainest control flow available: start at the root, step, move onto the leaf that comes back, step again, until something stops me. One path, no operation that means \"take that call back\". I want this number before anything else, because whatever I build later is this loop with more than one child per node — so its cost per round is the lower bound for everything, and the way it fails is the map for what to add.\n\nThe body of the method is really just the exits, and each one maps to something the frozen step just set. Check the budget before stepping, and treat an empty return from `_step` the same way. Stop if `terminal_node` already holds enough — `answer_count` is 1, so the search halts on the first answer that validates. That is the right commitment: find one working path cheaply and do not shop for a better one. Then read the leaf. `is_terminal` is a final answer, so set `status` and record it. `pruned` is a dead end, and if the code is 4 that was an explicit give-up, worth recording separately because it is an honest outcome rather than a crash. Then a depth guard.\n\nWhat matters is what code 1 does *not* do. A hallucinated API name neither terminates nor prunes, so the agent walks on with a failed call sitting in its context, and every thought after that conditions on it. With no way to retract, I expect that to be the dominant failure — and it will not appear in `give_up_rate` at all, because the run simply exhausts its depth and reports nothing. So a small give-up number will not mean the agent rarely gets stuck; it will mean most of its failures never announce themselves.\n\nOne more detail: the two length limits are in different units. The loop counts rounds; `get_depth()` counts raw nodes, and a round is three of them. So the depth guard bites at about a third of the iterations the loop nominally allows, and far short of `max_query_count`. Nothing but a policy that re-descends from an ancestor could ever push the counter to that cap.\n\nThe scaffold default already is this policy, so this run is about committing it as the measured reference, not inventing anything. I will pull the editable-region banner and the helper-listing docstring down to a single line stating what the loop does, drop the inline comments, and put a blank line ahead of each exit test so the four stopping decisions read as four separate decisions. The tail of this loop is exactly what the next version has to convert into returns, and I want that seam visible before I cut it.",
+   "content": "Committing the greedy single-chain policy as the measured baseline: one `_step` per round, follow the returned leaf, stop on final answer, prune, depth cap or budget, with no backtracking. This edit only normalizes the scaffold default into that form — docstring, comments, and a blank line in front of each exit test — behavior unchanged.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "                break\n            if now_node.get_depth() >= self.single_chain_max_step:\n",
+       "new_str": "                break\n\n            if now_node.get_depth() >= self.single_chain_max_step:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 30..31). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "One guard up, same treatment: the dead-end test gets its own blank line and loses the trailing comment, since the code-4 append underneath already says what that branch is for. This is the exit I expect to fire least often, given that a hallucinated API name does not prune.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "            if now_node.pruned:                                 # dead end / give up\n",
+       "new_str": "\n            if now_node.pruned:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 27..27). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the head of the method. The editable-region banner and the docstring listing every helper are notes to me, not a statement of policy, so they come out in favour of one line naming what the loop actually is; the budget and answer-count comments go with them. I also split the empty-leaves break away from the leaf assignment, so taking a step and reading what it returned are two separate beats rather than one paragraph.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "    # EDITABLE region of custom_search.py — default fill (greedy chain, no backtracking)\n    def search(self, root_node):\n        \"\"\"Core search logic. Modify this method to implement your strategy.\n\n        Helpers (do NOT modify, just call): self._step(node), self._add_diversity_prompt(node),\n        self._rank_nodes(candidates). State: self.query_count, self.max_query_count,\n        self.terminal_node, self.give_up_node, self.status, self.answer_count,\n        self.single_chain_max_step, self.tree_beam_size. Node: node.is_terminal, node.pruned,\n        node.observation_code, node.get_depth(), node.children, node.father.\n        \"\"\"\n        now_node = root_node\n        for step in range(self.single_chain_max_step):\n            if self.query_count >= self.max_query_count:        # budget exhausted\n                break\n            if len(self.terminal_node) >= self.answer_count:    # already have enough answers\n                break\n\n            new_leaves = self._step(now_node)                   # one LLM call + tool exec\n            if not new_leaves:\n                break\n            now_node = new_leaves[-1]\n\n            if now_node.is_terminal:                            # produced a final answer\n",
+       "new_str": "    def search(self, root_node):\n        \"\"\"Greedy chain: follow one path, no backtracking.\"\"\"\n        now_node = root_node\n        for step in range(self.single_chain_max_step):\n            if self.query_count >= self.max_query_count:\n                break\n            if len(self.terminal_node) >= self.answer_count:\n                break\n\n            new_leaves = self._step(now_node)\n            if not new_leaves:\n                break\n\n            now_node = new_leaves[-1]\n\n            if now_node.is_terminal:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 1..23). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The method is now purely the one-path policy — a single `_step` per round, no diversity prompt, no ranking — so the query counter should come out equal to the round count with no overhead at all. I expect the lowest avg_queries of anything I run, pass rates that mostly track raw backbone strength, and a give_up_rate far below the miss rate, because most failures should die silently at the depth cap.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:greedy_chain`, seed 42, I1-instruction (50 scored queries per backbone).\n\n## DeepSeek\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.44 | 3.7 | 0.04 | 0.34 |\n\n## Qwen-72B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.62 | 3.9 | 0.04 | 0.32 |\n\n## Qwen-7B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.30 | 5.5 | 0.06 | 0.14 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Cheap and weak, in the shape I expected, and now I can put counts on it. avg_queries of 3.7 / 3.9 / 5.5 across DeepSeek, Qwen-72B and Qwen-7B is the raw round count with nothing added: one guess per state, and when the guess fails there is no second move available, so the run simply ends. On 50 scored queries per backbone, pass rates of 0.44 / 0.62 / 0.30 are 22 / 31 / 15 solved and 28 / 19 / 35 missed. Against that, give_up_rate 0.04 / 0.04 / 0.06 is 2 / 2 / 3 explicit give-ups. Line those up: 28, 19 and 35 misses against 2, 2 and 3 admissions. Everything else — 26, 17 and 32 — ended without the agent ever stating it was stuck; it ran out of depth with a failed call still in context. That is the diagnosis in one line: these are recoverable dead ends, not impossible tasks. If the APIs genuinely could not serve those queries, the give-up column would be carrying the weight, and it is nowhere near it.\n\nTwo more details sharpen the aim. Qwen-7B is the inversion: 5.5 rounds, the highest of the three, for the lowest pass at 0.30. That is not the weak backbone trying harder — it is the weak backbone reissuing near-copies of a call that already failed until the depth guard cuts it off. Effort with no alternative to spend it on, so whatever I add has to give that effort somewhere else to go rather than simply extend the line. Separately, the judge column: sopr 0.34 / 0.32 / 0.14 against pass 0.44 / 0.62 / 0.30 leaves gaps of 0.10, 0.30 and 0.16, and the DeepSeek/Qwen-72B ordering inverts — Qwen-72B produces more finals (0.62 against 0.44) but fewer survive judging (0.32 against 0.34). Much of its extra pass is well-formed answers that do not satisfy the query, an answer-quality problem no search structure fixes. What I can attack is the no-answer-found mass: 26, 17, 32.\n\nSo the agent needs a way to undo a committed call, and the granularity of the undo is the design decision. Reflecting on a failure and rerunning the task from scratch undoes at the wrong scale: every retry restarts at the root, so if the only bad move came late, I re-pay all the earlier rounds and re-roll dice on steps that already worked, and under a fixed `max_query_count` I can burn the allowance getting back to the point that needed changing without ever changing it. What I want is local — keep the verified prefix, return to the state just before the bad move, take a different action from there. That is a tree: nodes are partial states of the interaction, children are different actions available from the same state, leaves are finals or dead ends. The harness is already built for it, with `father`/`children` on every node and `_step` expanding whichever node I hand it, and the chain I just measured is the one-child-per-node case of it.\n\nHow to search the tree needs care, because the textbook deliberate version does not port. That recipe puts a value on each partial state and cuts any branch below a threshold. I do not trust such a value here: these states are half-finished multi-API interactions full of messy real observations, and a 1-to-10 rating of one is not commensurable with a 1-to-10 rating of another instruction's state, so a fixed cutoff would throw away live branches and keep dead ones close to at random. What does survive that noise is a comparison between two continuations of the same prefix under the same instruction, where whatever private baseline the model is using cancels. `_rank_nodes` does exactly that, pairwise, so I will use it to decide the order children are expanded and never to delete any. And since I cannot enumerate children — the next action is a free-form thought plus an API name plus arbitrary arguments — I sample them, calling `_step` on the same node `tree_beam_size` times. That needs `_add_diversity_prompt` in front of every re-expansion or the model simply hands back the action it just gave me, which would make returning to a failed node a loop instead of an alternative. The nudge gets marked invalid immediately after the step, so it never lands in the child's own history and never makes one sibling's context differ from another's when the ranker reads them.\n\nDepth-first rather than breadth-first, because `answer_count` is 1: I want a single route ending in a valid final answer, not the pick of a frontier I would throw away the moment anything finishes. Breadth-first pays for a whole level before it can reach any terminal.\n\nThe backtracking has to be able to say how far to climb, which a boolean cannot, so every recursive call hands back an integer and the caller decrements it before passing it up. A leaf returning 1 makes its parent try the next sibling right away — a local retry. A 2 comes back to the parent, which returns 1, and the frame above that consumes it and opens its next child, so the branch happens one level higher up: right for a terminal, where I am done with this subtree, and right for an explicit give-up, where the whole local neighbourhood looks like a wash. Two large values act as global exits — 100000 when a step hits the query cap and 10000 once enough answers are collected — both big enough to survive the decrements and unwind every frame.\n\nI should be clear-eyed about the bill. Pairwise ranking compares every pair in both orders, so a node with n children costs n generations plus n(n-1) comparisons, all charged to the same counter, and with a small beam the comparisons outnumber the generations. Per branch point that goes as the square of the beam where the chain paid exactly one. That is the trade I am signing: an order-of-magnitude cost increase in exchange for retraction, and if the pass rate does not move enough to justify it, the ranking is the part to question, not the tree.\n\nThe edit: replace the tail of the loop — the terminal, pruned and depth exits — with base cases that return back-lengths, add the expansion body (beam loop with the diversity nudge, `_rank_nodes`, sort by score descending, recurse into children in that order, decrement and propagate on the way up), and turn `search` into a thin entry point over a recursive `_dfs` that holds the constants.",
+   "content": "Replacing the greedy chain with a ranked depth-first tree search: each node samples `tree_beam_size` children via `_step` (diversity prompt on re-expansion), `_rank_nodes` orders them pairwise for expansion only — never for pruning — and failures unwind through integer back-lengths. This edit lands the recursive body: base cases, beam generation, ranking, ordered expansion.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "                break\n\n            if now_node.pruned:\n                if now_node.observation_code == 4:\n                    self.give_up_node.append(now_node)\n                break\n\n            if now_node.get_depth() >= self.single_chain_max_step:\n                now_node.pruned = True\n                break\n",
+       "new_str": "                return final_answer_back_length\n            else:\n                now_node.pruned = True\n                if now_node.observation_code == 4:\n                    self.give_up_node.append(now_node)\n                    return prune_back_length\n                return 1\n\n        # Generate beam_size children\n        candidates = []\n        for i in range(self.tree_beam_size):\n            if self.query_count >= self.max_query_count:\n                return 100000\n\n            # Add diversity prompt if node already has children\n            added_diversity = self._add_diversity_prompt(now_node)\n\n            new_leaves = self._step(now_node)\n\n            # Mark diversity message as invalid\n            if added_diversity:\n                now_node.messages[-1][\"valid\"] = False\n\n            if not new_leaves:\n                continue\n            candidates.append(new_leaves[-1])\n\n        if not candidates:\n            return 1\n\n        # Rank candidates using LLM pairwise comparison\n        if len(candidates) > 1:\n            scores = self._rank_nodes(candidates)\n            for score, node in zip(scores, candidates):\n                node.prior_score = score\n            candidates.sort(key=lambda x: x.prior_score, reverse=True)\n\n        # Expand best candidates in order\n        for cand in candidates:\n            result = self._dfs(cand)\n            if len(self.terminal_node) >= self.answer_count:\n                return 10000\n            elif result > 1:\n                now_node.make_finish(2)\n                return result - 1\n\n        return 1\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 19..28). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the top of the file: `search` drops to a single call into `_dfs`, and the recursive frame opens with the two back-length constants, the `expand_num` stamp so the visit order stays recoverable afterwards, and one base-case test catching depth cap, pruned and terminal together — the block I just wrote pulls those three apart underneath it.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "        \"\"\"Greedy chain: follow one path, no backtracking.\"\"\"\n        now_node = root_node\n        for step in range(self.single_chain_max_step):\n            if self.query_count >= self.max_query_count:\n                break\n            if len(self.terminal_node) >= self.answer_count:\n                break\n\n            new_leaves = self._step(now_node)\n            if not new_leaves:\n                break\n\n            now_node = new_leaves[-1]\n\n",
+       "new_str": "        \"\"\"DFS with LLM ranking: expand best child first, backtrack on failure.\"\"\"\n        self._dfs(root_node)\n\n    def _dfs(self, now_node):\n        \"\"\"Recursive DFS. Returns number of levels to backtrack.\"\"\"\n        final_answer_back_length = 2\n        prune_back_length = 2\n\n        now_node.expand_num = self.now_expand_num\n        self.now_expand_num += 1\n\n        # Base cases\n        if now_node.get_depth() >= self.single_chain_max_step or now_node.pruned or now_node.is_terminal:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 2..14). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The policy is a recursive tree search now: a beam of sampled children per node, pairwise ordering, sibling retry and multi-level unwinding on failure. I expect pass rate up wherever the chain was dying at the depth cap, give-ups down, because reaching a dead end now opens a sibling rather than ending the run, and avg_queries up by roughly the square of the beam, because every branch point pays comparisons on top of generations.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:dfs_ranked`, seed 42, I1-instruction (50 scored queries per backbone).\n\n## DeepSeek\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.72 | 33.1 | 0.02 | 0.40 |\n\n## Qwen-72B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.82 | 35.1 | 0.02 | 0.50 |\n\n## Qwen-7B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.36 | 52.7 | 0.04 | 0.20 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Both halves of the bet landed, and they landed separately. Retraction paid: pass went 0.44 to 0.72 on DeepSeek, 0.62 to 0.82 on Qwen-72B, 0.30 to 0.36 on Qwen-7B, give-ups fell to 0.02 / 0.02 / 0.04, and sopr rose on all three, 0.34 to 0.40, 0.32 to 0.50, 0.14 to 0.20. The tree is finding paths the single chain could not, which is exactly the recoverable dead-end mass I counted. And the cost landed too: 3.7 to 33.1, 3.9 to 35.1, 5.5 to 52.7. Divide them out and it is 8.9, 9.0, 9.6. Three backbones with three different failure profiles paying essentially the same multiple is not something task difficulty can produce; it has to be a fixed charge per branch point baked into the procedure.\n\nWhich I can reconstruct. A node generates its whole beam before descending: n calls to `_step`, and then, since there is more than one candidate, `_rank_nodes` compares every pair in both directions for another n(n-1), on the same counter. So n + n(n-1) = n squared per branch, against the chain's 1. Setting that near 9 gives a beam of 3, and nothing else fits — a beam of 2 predicts 4x, a beam of 4 predicts 16x. Checking cell by cell rather than as a ratio: 9 x 3.7 = 33.3 against a measured 33.1, 9 x 3.9 = 35.1 against 35.1, 9 x 5.5 = 49.5 against 52.7, with Qwen-7B running over because it opens more branch points than the others. So the whole order-of-magnitude jump is beam generation plus ranking; the tree itself, the nudge and the unwinding arithmetic barely register in the counter. And of those nine calls per node, six are comparisons — six calls in every nine went on deciding what order to try children I would have reached regardless.\n\nThe Qwen-7B cell is what turns \"expensive\" into \"harmful\". It spent more per task than any other cell in the table, 52.7 queries, for 0.36 pass, barely over the chain's 0.30, and sopr of only 0.20. Work out what each extra query bought: on DeepSeek +0.28 pass for +29.4 queries, so roughly 0.0095 of a pass point apiece; on Qwen-72B +0.20 for +31.2, roughly 0.0064; on Qwen-7B +0.06 for +47.2, roughly 0.0013. So the backbone that most needed to search got about seven times less pass per extra query than the strongest one, because under a fixed cap the bulk of its allowance went into comparisons and the search stopped before it had gone deep or wide enough.\n\nSo: do I need the ordering at all? What I need is a single route ending in a valid final answer — `answer_count` is 1 — not the best route and not a ranking of anything. And depth-first has a property that ranking cannot touch: the set of nodes it eventually visits does not depend on the order it tries siblings, and I stop the instant one path finishes. Ordering can only make me arrive earlier, and only at nodes where the child worth taking was not the one generated first. That is an occasional saving of a few expansions weighed against six comparison calls charged at every single branch point, easy ones included.\n\nAnd how often is the first-generated child not the best one? Rarely, and I have direct evidence from machinery I had to build for an unrelated reason: `_add_diversity_prompt` exists precisely because calling `_step` twice on the same node returns the same action. The model's first pick is a strong attractor. So generation order already approximates the ranking and arrives free with the generation, while `_rank_nodes` pays quadratically to recompute it. Worse, the ranked version charges that on every task including the easy ones — a clean instruction needing no retraction still pre-generated three children and compared them at every node on the way down, so a k-round task cost around 9k where it should cost k.\n\nDrop the ranking. Expand one child and descend into it at once; a second child here gets generated only when everything under the first one has failed. That is a pre-order walk, and it brackets neatly between the two policies I have run. On an easy instruction there is exactly one child per node and it degenerates to the chain at the chain's cost, which is the case the ranked version could not stop overcharging. On a hard one the nodes explored are essentially the ones the ranked search would have explored, since the visited set is order-independent, but at one call per node instead of nine.\n\nEverything else stays. The tree, the base cases and the integer returns were never the expensive part. The nudge is more important now than it was, not less: with ranking gone it is the only thing making a re-expansion actually different, and it rides in front of the same generation call, so it costs no extra query.\n\nThe edit is a subtraction in four places: drop the `make_finish` call on the unwinding path, since with the ranked expansion gone there is no completion state left to record and the returned integer is doing all the control-flow work by itself; collapse the candidate list, the `_rank_nodes` call and the sorted expansion loop into one immediate recursion on the leaf just generated; fix the loop comment, which would otherwise describe a beam that no longer exists; and rename `_dfs` to `_dfsdt` so the method states which policy it is.",
+   "content": "DFSDT: dropping `_rank_nodes` from the search entirely — expand a single child and descend into it at once, opening a sibling only when that subtree dead-ends, keeping the tree, the diversity prompt and the integer backtracking. This first edit removes the `make_finish` call on the unwinding path, which only existed to settle ranked-expansion bookkeeping.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "                now_node.make_finish(2)\n",
+       "new_str": ""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 61..61). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "This is the actual subtraction: no candidate list, no pairwise comparison, no sort — take the leaf the step just returned and recurse into it on the spot, so a second child at this node is only ever generated after the first one's subtree has failed. The return handling below stays exactly as it was; the unwinding arithmetic was never what cost anything.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "            candidates.append(new_leaves[-1])\n\n        if not candidates:\n            return 1\n\n        # Rank candidates using LLM pairwise comparison\n        if len(candidates) > 1:\n            scores = self._rank_nodes(candidates)\n            for score, node in zip(scores, candidates):\n                node.prior_score = score\n            candidates.sort(key=lambda x: x.prior_score, reverse=True)\n\n        # Expand best candidates in order\n        for cand in candidates:\n            result = self._dfs(cand)\n",
+       "new_str": "\n            leaf = new_leaves[-1]\n\n            # Immediately recurse (no ranking)\n            result = self._dfsdt(leaf)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 43..57). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The comment above the loop still advertises beam pre-generation and the list it filled, and both are gone. The loop bound has changed meaning as well — it is now a cap on how many attempts I will make at this node, not a batch size — so the comment should say that.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "        # Generate beam_size children\n        candidates = []\n",
+       "new_str": "        # Try beam_size times (each time generates one child and recurses)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 26..27). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Names last: the entry docstring still promises best-first-by-rank, and `_dfs` is no longer the algorithm I measured under that name. Renaming both to `_dfsdt` so the policy a number came from is identifiable from the code itself.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "stabletoolbench/toolbench/inference/Algorithms/custom_search.py",
+       "old_str": "        \"\"\"DFS with LLM ranking: expand best child first, backtrack on failure.\"\"\"\n        self._dfs(root_node)\n\n    def _dfs(self, now_node):\n        \"\"\"Recursive DFS. Returns number of levels to backtrack.\"\"\"\n",
+       "new_str": "        \"\"\"DFSDT: generate one child, recurse immediately, backtrack on failure.\"\"\"\n        self._dfsdt(root_node)\n\n    def _dfsdt(self, now_node):\n        \"\"\"Recursive DFSDT. Returns number of levels to backtrack.\"\"\"\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in stabletoolbench/toolbench/inference/Algorithms/custom_search.py (lines 2..6). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Every node now costs exactly one `_step` — the diversity prompt rides in front of that same generation rather than costing a call of its own — so total queries should track nodes expanded, with siblings opened only where a first attempt failed. I expect the query counts to fall a long way back toward the chain's regime while pass rate holds or improves, with the largest gain on the backbone that was spending the most and passing the least.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:dfsdt`, seed 42, I1-instruction (50 scored queries per backbone).\n\n## DeepSeek\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.78 | 18.3 | 0.04 | 0.40 |\n\n## Qwen-72B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.90 | 12.4 | 0.00 | 0.54 |\n\n## Qwen-7B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.44 | 39.6 | 0.00 | 0.26 |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Three results to choose between. #1, the greedy chain: 0.44 / 0.62 / 0.30 pass at 3.7 / 3.9 / 5.5 queries — cheapest by a distance and weakest on every backbone. #2, ranked DFS: 0.72 / 0.82 / 0.36 at 33.1 / 35.1 / 52.7. #3, DFSDT: 0.78 / 0.90 / 0.44 at 18.3 / 12.4 / 39.6.\n\nThere is no trade to weigh between #2 and #3. #3 is higher on pass rate on all three backbones and does it for roughly half the queries — 18.3 against 33.1, 12.4 against 35.1, 39.6 against 52.7 — so removing the ranking cost nothing in quality and handed most of the budget back. sopr agrees: 0.40 / 0.54 / 0.26 against #2's 0.40 / 0.50 / 0.20, level on DeepSeek and better on both Qwen backbones. Give-ups go to 0.00 on both Qwens; DeepSeek's ticks from 0.02 to 0.04, one extra query out of fifty, which I will take alongside +0.06 pass on that backbone. The clearest cell is Qwen-7B, where the comparisons were doing the most damage: +0.08 pass over #2 while shedding 13.1 queries per task. #1 would only win if queries were the objective, and they are not — it gives up 0.34, 0.28 and 0.14 pass on the three backbones to save them. Submitting #3.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured results — `baseline:dfsdt`, seed 42, I1-instruction (50 scored queries per backbone).\n\n## DeepSeek\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.78 | 18.3 | 0.04 | 0.40 |\n\n## Qwen-72B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.90 | 12.4 | 0.00 | 0.54 |\n\n## Qwen-7B\n| seed | pass_rate | avg_queries | give_up_rate | sopr |\n|---|---|---|---|---|\n| 42 | 0.44 | 39.6 | 0.00 | 0.26 |"
+  }
+ ]
+}

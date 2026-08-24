@@ -1,0 +1,503 @@
+{
+ "task": "mlsys-sparse-attention-inference",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "sparse-attn-eval/custom_sparse_attn.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 4,
+ "n_edit_ops": 12,
+ "best_test": 4,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA pretrained 1.5B-parameter causal LLM must run long-context tasks at inference time under a hard sparsity budget. The only designed component is the **`SparseAttention` module**, one instance of which is monkey-patched into every attention layer of `Qwen/Qwen2.5-1.5B-Instruct`. There is no retraining, fine-tuning, weight editing, or architectural surgery. For each query token the module decides which preceding keys receive non-zero attention, and the fraction of `(q, k)` pairs it keeps — the **density** — must stay at or under `0.25` (plus a small `0.02` slack) averaged across all 24 layers or the harness aborts the run. The question is how to spend that 25% of the attention matrix so long-context retrieval and QA quality survive.\n\n## Prior art / Background / Baselines\n\n- **Full scaled-dot-product attention.** `softmax(QK^T/√d)V` attends every query to every key in one hop, materializing an N×N score matrix per head per layer.\n- **Sliding-window / local attention.** Each query attends only to the nearest `W` keys.\n- **Static block-sparse patterns (sink+window, global+window+random).** A fixed mask adds always-attended anchor tokens and, in some variants, random long-range links to a local window. The mask is chosen once, independent of the query.\n- **KV-cache compression (H2O, SnapKV, Quest).** These methods select important keys from the attention accumulated over a mutable KV cache during autoregressive decode. The importance signal depends on the decode window.\n\n## Fixed substrate / Code framework\n\n`harness.py` loads `Qwen2.5-1.5B-Instruct` (native 32K context, so no RoPE rescaling is needed at 8K), monkey-patches the agent's `SparseAttention` into every attention layer, and runs the model with `use_cache=False` so every forward is a single parallel pass over the whole prefix. The backbone is GQA with 12 query heads and 2 KV heads; the harness applies `repeat_kv` before calling the module, so the module always sees 12 heads on both Q and K/V and never handles GQA replication itself. After every forward the harness reads `self.last_density` and aggregates it across the 24 layers; `enforce_budget` aborts the run if the mean exceeds `0.25 + 0.02` for any non-dense baseline, and a missing, NaN, infinite, negative, or `>1` density report is treated as a harness error. RoPE and GQA replication are applied by the loop before `q, k, v` reach the module.\n\n## Editable interface\n\nExactly one region is editable — lines 31–103 of `sparse-attn-eval/custom_sparse_attn.py`, the body of the `SparseAttention` class. `harness.py` and `run_llm.py` are read-only. The contract:\n\n```python\nclass SparseAttention(nn.Module):\n    def __init__(self, head_dim, num_heads, block_size=64, density_budget=0.25): ...\n    def forward(self, q, k, v, is_causal=False, scale=None) -> torch.Tensor: ...\n```\n\n`q, k, v` arrive as `(B, H, N, D)` in float16/bfloat16, GQA already replicated to `H=12`. `is_causal=True` for this LLM. `scale` defaults to `1/√D`. The forward returns the attention output in the same shape and dtype, and must set `self.last_density` to the fraction of `(q, k)` pairs that received non-zero attention — causal-adjusted, dividing the kept count by `N(N+1)/2` when `is_causal=True`.\n\nThe starting point is the scaffold default below: a sink + sliding-window mask, built once per `N` and cached across the 24 layers, run through fused SDPA. Each method replaces exactly this class body.\n\n```python\n# EDITABLE region of custom_sparse_attn.py — default fill (sink + sliding window)\nclass SparseAttention(nn.Module):\n    \"\"\"Default: sliding window + sink, fused SDPA with a cached bool mask.\"\"\"\n\n    def __init__(self, head_dim, num_heads, block_size=64, density_budget=0.25):\n        super().__init__()\n        self.head_dim = head_dim\n        self.num_heads = num_heads\n        self.block_size = block_size\n        self.density_budget = density_budget\n        self.window = 1024          # local window radius (tokens per side)\n        self.num_sinks = 4          # \"always attended\" sink tokens\n        self.last_density = None\n        self._mask_cache: dict = {}  # (N, is_causal, device) -> (mask, density)\n\n    @torch.no_grad()\n    def _get_mask(self, N: int, device: torch.device, is_causal: bool):\n        key = (N, is_causal, device)\n        cached = self._mask_cache.get(key)\n        if cached is not None:\n            return cached\n        idx = torch.arange(N, device=device)\n        di = idx[:, None] - idx[None, :]\n        mask = (di.abs() <= self.window) | (idx[None, :] < self.num_sinks)\n        if is_causal:\n            mask = mask & (idx[:, None] >= idx[None, :])\n        denom = N * (N + 1) / 2.0 if is_causal else float(N * N)\n        density = float(mask.sum().item()) / max(denom, 1.0)\n        self._mask_cache[key] = (mask, density)\n        return mask, density\n\n    def forward(self, q, k, v, is_causal=False, scale=None):\n        B, H, N, D = q.shape\n        scale = scale if scale is not None else 1.0 / math.sqrt(D)\n        mask, self.last_density = self._get_mask(N, q.device, is_causal)\n        out = F.scaled_dot_product_attention(\n            q, k, v, attn_mask=mask.view(1, 1, N, N),\n            dropout_p=0.0, is_causal=False, scale=scale,\n        )\n        return out\n```\n\n## Evaluation settings\n\n`Qwen2.5-1.5B-Instruct`, single A100 80GB, FP16 only (no FP8), pure PyTorch ops (no Triton; `torch.nn.attention.flex_attention` permitted if available). One seed, `42`. Three long-context environments, all higher-is-better:\n\n| Env | Metric | Notes |\n|---|---|---|\n| `niah_8k` | retrieval accuracy | Synthetic Needle-In-A-Haystack at 8K context |\n| `longbench_qasper` | QA F1 | LongBench Qasper single-doc scientific-paper QA |\n| `longbench_multifieldqa_en` | QA F1 | LongBench MultiFieldQA-EN long-document multi-field QA |\n\n`density_budget = 0.25` for every non-dense baseline; the dense baseline reports `last_density = 1.0` and runs with `--allow-dense` so the budget check is skipped for it alone.\n\n## sparse-attn-eval/custom_sparse_attn.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of custom_sparse_attn.py — default fill (sink + sliding window)\n     2: class SparseAttention(nn.Module):\n     3:     \"\"\"Default: sliding window + sink, fused SDPA with a cached bool mask.\"\"\"\n     4: \n     5:     def __init__(self, head_dim, num_heads, block_size=64, density_budget=0.25):\n     6:         super().__init__()\n     7:         self.head_dim = head_dim\n     8:         self.num_heads = num_heads\n     9:         self.block_size = block_size\n    10:         self.density_budget = density_budget\n    11:         self.window = 1024          # local window radius (tokens per side)\n    12:         self.num_sinks = 4          # \"always attended\" sink tokens\n    13:         self.last_density = None\n    14:         self._mask_cache: dict = {}  # (N, is_causal, device) -> (mask, density)\n    15: \n    16:     @torch.no_grad()\n    17:     def _get_mask(self, N: int, device: torch.device, is_causal: bool):\n    18:         key = (N, is_causal, device)\n    19:         cached = self._mask_cache.get(key)\n    20:         if cached is not None:\n    21:             return cached\n    22:         idx = torch.arange(N, device=device)\n    23:         di = idx[:, None] - idx[None, :]\n    24:         mask = (di.abs() <= self.window) | (idx[None, :] < self.num_sinks)\n    25:         if is_causal:\n    26:             mask = mask & (idx[:, None] >= idx[None, :])\n    27:         denom = N * (N + 1) / 2.0 if is_causal else float(N * N)\n    28:         density = float(mask.sum().item()) / max(denom, 1.0)\n    29:         self._mask_cache[key] = (mask, density)\n    30:         return mask, density\n    31: \n    32:     def forward(self, q, k, v, is_causal=False, scale=None):\n    33:         B, H, N, D = q.shape\n    34:         scale = scale if scale is not None else 1.0 / math.sqrt(D)\n    35:         mask, self.last_density = self._get_mask(N, q.device, is_causal)\n    36:         out = F.scaled_dot_product_attention(\n    37:             q, k, v, attn_mask=mask.view(1, 1, N, N),\n    38:             dropout_p=0.0, is_causal=False, scale=scale,\n    39:         )\n    40:         return out\n```\n\n## Your Budget\n- **Action budget**: 16 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 4 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Nothing has run yet, and a 0.25 budget is only meaningful next to whatever the unconstrained model scores on these three environments, so the first thing on the board has to be that ceiling, measured rather than assumed. An F1 near 0.1 later is either a wreck or a near-miss depending entirely on where the top is, and right now I cannot tell those apart. So this run is deliberately not a sparse method: untouched attention, density reported as 1.0, allowed past the check by the dense exemption.\n\nThe discipline is to disturb nothing the pretrained weights are calibrated to. The scale stays 1/sqrt(D). D is 128 here, so every logit sums 128 products and their spread before normalizing runs to roughly 11; a softmax fed values that wide is effectively an argmax, and the model learned its q/k magnitudes with the division already in place. RoPE and the GQA expansion both happen upstream of my module, so re-rotating or re-expanding would score in a frame the weights have never seen. My edit here mostly removes things.\n\nHow I realize the dense computation still matters, because the naive version does not fit. At N=8192 an explicit score matrix is 67M entries per head, and there are 12 heads in each of 24 layers; writing that out and reading it back for the softmax is traffic I would rather not hand-roll, and rolling my own tiled online-softmax risks the reference disagreeing with the model's real attention in the low bits, which is the one thing a ceiling must not do. Fused SDPA is that tiled kernel already, and handing it is_causal=True lets it construct the triangular bias internally instead of me passing an (N,N) boolean. So attn_mask=None, with is_causal and scale forwarded straight through.\n\nDensity gets pinned to the literal 1.0 rather than counted from a mask. A dense causal pass keeps every admissible pair, which is exactly the denominator the harness divides by, so 1.0 is the honest report; building a phantom triangle just to sum it would risk a float disagreement at the diagonal, and anything above 1 counts as a harness error.\n\nConcretely: pull the _get_mask call out of forward and hand the tensors to SDPA with last_density set to 1.0, delete the window / num_sinks / _mask_cache state and the helper that fed them so no stale density can be read later, then retitle the class so the 1.0 does not look like a defect.\n\nI expect the three environments to behave very differently, and holding that distinction now will keep me from misreading every sparse pattern afterwards. Retrieval should be essentially solved -- the needle's key is never masked away, its logit dominates its row, and the value arrives in a single hop wherever it was planted. The two QA numbers I expect to come in low, and that will not be a coverage failure: a 1.5B asked to phrase an answer out of a long document bleeds F1 to paraphrase and hedging even when it read the right sentence. That low number is the realistic target for everything after, and mistaking it for a sparsity loss would be the easiest error available to me.",
+   "content": "Baseline first: replace the scaffold's cached sink+window mask with full dense causal attention -- fused SDPA with attn_mask=None and is_causal forwarded -- and report last_density=1.0 for the dense-exempt run so this measures the unconstrained quality ceiling.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        mask, self.last_density = self._get_mask(N, q.device, is_causal)\n        out = F.scaled_dot_product_attention(\n            q, k, v, attn_mask=mask.view(1, 1, N, N),\n            dropout_p=0.0, is_causal=False, scale=scale,\n        )\n",
+       "new_str": "        # Use PyTorch's fused SDPA for efficient dense attention.\n        out = F.scaled_dot_product_attention(\n            q, k, v, attn_mask=None, dropout_p=0.0,\n            is_causal=is_causal, scale=scale,\n        )\n        self.last_density = 1.0\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 35..39). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "With forward no longer calling _get_mask, the window, num_sinks and _mask_cache fields are dead state and, worse, a second place a density could come from. Strip them and the helper together so __init__ carries only density_budget and last_density.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        self.block_size = block_size\n        self.density_budget = density_budget\n        self.window = 1024          # local window radius (tokens per side)\n        self.num_sinks = 4          # \"always attended\" sink tokens\n        self.last_density = None\n        self._mask_cache: dict = {}  # (N, is_causal, device) -> (mask, density)\n\n    @torch.no_grad()\n    def _get_mask(self, N: int, device: torch.device, is_causal: bool):\n        key = (N, is_causal, device)\n        cached = self._mask_cache.get(key)\n        if cached is not None:\n            return cached\n        idx = torch.arange(N, device=device)\n        di = idx[:, None] - idx[None, :]\n        mask = (di.abs() <= self.window) | (idx[None, :] < self.num_sinks)\n        if is_causal:\n            mask = mask & (idx[:, None] >= idx[None, :])\n        denom = N * (N + 1) / 2.0 if is_causal else float(N * N)\n        density = float(mask.sum().item()) / max(denom, 1.0)\n        self._mask_cache[key] = (mask, density)\n        return mask, density\n",
+       "new_str": "        self.density_budget = density_budget\n        self.last_density = None\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 9..30). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Header and docstring still advertise sliding window plus sink, which is now false. Rename it to what it is and say in the docstring that this is a quality reference rather than an attempt at the budget, so nobody reads the 1.0 density as a broken report.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "# EDITABLE region of custom_sparse_attn.py — default fill (sink + sliding window)\nclass SparseAttention(nn.Module):\n    \"\"\"Default: sliding window + sink, fused SDPA with a cached bool mask.\"\"\"\n",
+       "new_str": "# EDITABLE region of custom_sparse_attn.py — rung 1: dense oracle (density 1.0)\nclass SparseAttention(nn.Module):\n    \"\"\"Dense attention oracle. Reports true full-attention density.\n\n    The point of this baseline is to give an upper-bound quality reference;\n    it is not meant to satisfy a real sparsity constraint.\n    \"\"\"\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 1..3). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Forward is a plain causal SDPA call with no mask, no re-scaling, and a hardcoded density of 1.0, which the dense flag lets through the budget check. This should come back with near-perfect needle retrieval and two low QA F1 numbers that mark the model's own answer-phrasing limit.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (3 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:dense` (`is_final,true`), seed 42.\n\n## niah_8k\n| seed | niah_acc | density |\n|---|---|---|\n| 42 | 1.0 | 1.0 |\n| **mean** | **1.0** | **1.0** |\n\n## longbench_qasper\n| seed | qasper_f1 | density |\n|---|---|---|\n| 42 | 0.1406 | 1.0 |\n| **mean** | **0.1406** | **1.0** |\n\n## longbench_multifieldqa_en\n| seed | multifieldqa_f1 | density |\n|---|---|---|\n| 42 | 0.3447 | 1.0 |\n| **mean** | **0.3447** | **1.0** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The oracle run splits the three environments exactly along the line I was watching. NIAH at 1.0 says the unconstrained model finds the planted fact every time, so there is a full 0.8 of room above whatever guessing scores, and any pattern whose kept set skips the needle's block will show up there immediately. Qasper 0.1406 and MultiFieldQA 0.3447 are low in absolute terms, and since coverage was guaranteed on this run those numbers mostly report what a 1.5B can phrase rather than what it can reach. Which means the QA side has very little F1 available to lose and should bleed gradually, while retrieval is the metric that will punish a bad mask loudly.\n\nNow the first attempt under 0.25. I want the mask to be a function of N only -- computed once and shared by all 24 layers, so deciding it costs nothing per layer -- and that is a control rather than laziness. If a carefully built fixed pattern already holds retrieval near the top, I never need query-dependence and I skip a pile of machinery. If it fails where a position-blind structure predicts it will, I will have priced fixedness instead of assuming it, and that measurement is what would justify paying for selection later.\n\nTreat the kept pairs as edges. Dense keeps every causal edge, which is why retrieval came free above: the question position has its own direct link to the needle position. Throwing most edges away has to preserve two things. Nearby coverage, since trained attention puts most of its mass just behind the query, so I want a band around each query block. And short routes, because depth is a hard cap at 24 layers: a band of one block per side extends a token's reach by 64 positions per side per layer, so after all 24 layers it has absorbed material from at most about 1500 tokens back. Something planted 4000 tokens earlier is not unlikely to arrive, it cannot arrive. A few random long links per query block fix precisely that -- they shrink the graph diameter to logarithmic, and with 128 blocks at 8K a small handful of arcs puts anything within a few hops. And a couple of always-on blocks at the front supply what neither the band nor the arcs do: a position that takes in the whole prefix in one step. Causal masking says that role can only live on the earliest tokens, since they are the only columns every later query is allowed to see.\n\nThe port to this harness is not free and I should be honest about what does not survive it. The projections are frozen, so nothing about the pattern is learned; I cannot append dedicated global tokens, because N is fixed and density is measured over the pairs that already exist; and with no Triton there is no block-sparse kernel, so I compute all the logits and knock out the dropped ones, which means no wall-clock saving whatsoever. What I am testing is behavior at the budget. The three roles therefore become roles assigned to tokens that are already there: the leading blocks promoted to read everything and be read by everything, a neighbourhood band, and a fixed random draw over the rest.\n\nSizing is the part that can abort the run outright. I keep the harness block width, 64, which puts 128 blocks in an 8K prompt; 2 leading blocks and a 3-wide band leave the random count free. Taking 32 blocks a row -- what round(0.25*128) gives -- would sit precisely on the ceiling before anything else is counted, and two effects push realized token density above the flat block fraction: the promoted rows, where the leading blocks read everyone, contribute pairs no per-query estimate includes, and the kept diagonal block gets trimmed by the strict token triangle in a way block arithmetic does not price. There is also no averaging cushion, since all 24 layers report the same cached mask, so this one mask has to clear 0.27 unaided. So I solve against a discounted budget: multiplying by 0.88 before rounding gives round(0.25*0.88*128) = 28 blocks a row, minus the 5 spent on leading and band, so 23 random. That intentionally leaves about a tenth of the allowance unused as insurance, and the density column will tell me whether the insurance was needed or whether I was just timid.\n\nI can already price what this buys on retrieval, which is why I am not optimistic. The block that has to find the needle is whichever one holds the question, and that sits at the very end of the prompt. The leading blocks are at the front and the band reaches one block either side, so a mid-haystack needle can only be covered by one of that block's 23 draws out of the roughly 123 candidates left once leading and band are excluded -- worse than one in five. A two-hop route exists on paper, but a single token's contribution gets averaged down at every hop, so direct coverage is what decides this.\n\nPlan: rewrite forward to build the keep matrix at block level, expand it to token level through the block index, AND with the strict triangle, take last_density off the realized token mask rather than the algebra, and run the attention as a float32 masked softmax with a nan_to_num guard for any row that kept nothing. Then add _build_block_keep with the budget solve and a deterministic sample cache in __init__, and put the block width and the leading/band counts on the class.",
+   "content": "First budgeted method: BigBird-style block sparsity -- global blocks plus a local band plus a fixed random sample, on 64-token blocks. This edit rewrites forward to expand the block keep-matrix to a token mask, report the measured density, and run a float32 masked softmax.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        scale = scale if scale is not None else 1.0 / math.sqrt(D)\n        # Use PyTorch's fused SDPA for efficient dense attention.\n        out = F.scaled_dot_product_attention(\n            q, k, v, attn_mask=None, dropout_p=0.0,\n            is_causal=is_causal, scale=scale,\n        )\n        self.last_density = 1.0\n        return out\n",
+       "new_str": "        Bk = self.BLOCK\n        scale = scale if scale is not None else 1.0 / math.sqrt(D)\n\n        block_keep, n_blocks = self._build_block_keep(N, q.device, is_causal)\n        # Expand block_keep -> token-level (N, N) by index gather\n        q_tok_blk = (torch.arange(N, device=q.device) // Bk).clamp(max=n_blocks - 1)\n        k_tok_blk = q_tok_blk\n        token_keep = block_keep[q_tok_blk][:, k_tok_blk]   # (N, N) bool\n        if is_causal:\n            idx = torch.arange(N, device=q.device)\n            token_keep = token_keep & (idx[:, None] >= idx[None, :])\n\n        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)\n        self.last_density = float(token_keep.sum().item()) / max(denom, 1.0)\n\n        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale\n        attn = attn.masked_fill(~token_keep, float('-inf'))\n        attn = torch.softmax(attn, dim=-1)\n        attn = torch.nan_to_num(attn, nan=0.0)\n        out = torch.matmul(attn, v.float())\n        return out.to(q.dtype)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 18..25). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Now the piece forward is calling: _build_block_keep, which solves the random count against the discounted budget and unions the three roles, plus the cache it draws into. The draw has to be frozen per (n_blocks, device, g, w, r) rather than repeated -- this same module instance runs again at every generation step, and a mask that wandered would make one prompt score differently from step to step and could push some forward over the ceiling. Seeding off the block count and the process seed keeps it reproducible without me hardcoding a pattern.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        self.density_budget = density_budget\n        self.last_density = None\n",
+       "new_str": "        self.block_size = block_size\n        self.density_budget = density_budget\n        self.last_density = None\n        # Random-block cache, keyed by (N, device) — same pattern across calls\n        # for the same sequence length (deterministic per layer instance).\n        self._random_cache = {}\n\n    def _build_block_keep(self, N, device, is_causal):\n        Bk = self.BLOCK\n        if N % Bk != 0:\n            # Pad-aware: round up to whole blocks; the (N,N) mask gets clipped.\n            n_blocks = (N + Bk - 1) // Bk\n        else:\n            n_blocks = N // Bk\n        g = min(self.NUM_GLOBAL_BLOCKS, n_blocks)\n        w = self.NUM_WINDOW_BLOCKS\n        # Solve random-blocks count from the budget at the BLOCK level.\n        # The actual measured density (after random-block sampling and\n        # causal AND) tends to land slightly above the linear estimate, so\n        # apply a ~12% conservative margin to stay clear of the +0.02 slack\n        # ceiling at every context length we evaluate.\n        target = max(1, int(round(self.density_budget * 0.88 * n_blocks)))\n        used = g + w\n        r = max(0, min(target - used, n_blocks - used))\n        # Build (n_blocks, n_blocks) bool keep\n        keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool, device=device)\n        # global cols (every query block attends to first g blocks)\n        if g > 0:\n            keep[:, :g] = True\n        # global rows (first g blocks attend to everyone)\n        if g > 0:\n            keep[:g, :] = True\n        # window: |bi - bj| <= w//2\n        idx = torch.arange(n_blocks, device=device)\n        win = (idx[:, None] - idx[None, :]).abs() <= w // 2\n        keep |= win\n        # random: per query block, sample r blocks from the non-(global|window) pool\n        cache_key = (n_blocks, str(device), g, w, r)\n        if cache_key not in self._random_cache:\n            gen = torch.Generator(device='cpu')\n            gen.manual_seed(((0xBB ^ n_blocks) + int(torch.initial_seed()) - 42) & 0xFFFFFFFF)\n            rand_keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool)\n            base = keep.detach().to('cpu')\n            for bi in range(n_blocks):\n                avail = (~base[bi]).nonzero(as_tuple=False).flatten()\n                if avail.numel() == 0 or r == 0:\n                    continue\n                pick = avail[torch.randperm(avail.numel(), generator=gen)[:r]]\n                rand_keep[bi, pick] = True\n            self._random_cache[cache_key] = rand_keep.to(device)\n        keep |= self._random_cache[cache_key]\n        # Apply causal at block level (a query block i may attend to j<=i)\n        if is_causal:\n            keep = keep & (idx[:, None] >= idx[None, :])\n        return keep, n_blocks\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 13..14). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Last the constants the helper reads: BLOCK=64 lining up with the harness block width, 2 leading blocks, and a 3-block band so the neighbourhood works out to one block either side. Class-level, because they define the pattern and I want them visible above the code consuming them, and the header stops claiming this is the dense oracle.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "# EDITABLE region of custom_sparse_attn.py — rung 1: dense oracle (density 1.0)\nclass SparseAttention(nn.Module):\n    \"\"\"Dense attention oracle. Reports true full-attention density.\n\n    The point of this baseline is to give an upper-bound quality reference;\n    it is not meant to satisfy a real sparsity constraint.\n    \"\"\"\n",
+       "new_str": "# EDITABLE region of custom_sparse_attn.py — rung 2: BigBird (global + window + random)\nclass SparseAttention(nn.Module):\n    \"\"\"BigBird — global + window + random block-sparse pattern.\"\"\"\n\n    BLOCK = 64\n    NUM_GLOBAL_BLOCKS = 2  # first 2 blocks (128 tokens) act as global sinks\n    NUM_WINDOW_BLOCKS = 3  # band of 3 blocks around the query block\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 1..7). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The mask is decided at block level, expanded and ANDed against the token triangle, and density is read off the realized mask rather than my block-level estimate. I expect the QA scores to keep a decent share of the oracle's and NIAH to fall toward guessing; the density column is what I am actually nervous about, since the promoted rows are not in my per-row arithmetic.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:bigbird` (`is_final,true`), seed 42.\n\n## niah_8k\n| seed | niah_acc | density |\n|---|---|---|\n| 42 | 0.2 | 0.2601 |\n| **mean** | **0.2** | **0.2601** |\n\n## longbench_qasper\n| seed | qasper_f1 | density |\n|---|---|---|\n| 42 | 0.0871 | 0.2421 |\n| **mean** | **0.0871** | **0.2421** |\n\n## longbench_multifieldqa_en\n| seed | multifieldqa_f1 | density |\n|---|---|---|\n| 42 | 0.2298 | 0.2693 |\n| **mean** | **0.2298** | **0.2693** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "That landed about where the coverage estimate said it would, and the density column is worse news than the scores are. NIAH dropped from 1.0 to 0.2, which is what guessing among a few answer forms looks like: the question block's draws missed the needle, the one-in-five bet I priced. QA held up better -- Qasper 0.0871, about 62% of the ceiling's 0.1406, and MultiFieldQA 0.2298, roughly two thirds of 0.3447. But the densities came back 0.2601, 0.2421 and 0.2693. Two of the three are above 0.25 outright, and the MultiFieldQA run sat 0.0007 short of the 0.27 abort -- seven ten-thousandths of density away from being killed and scoring me nothing at all. So that pattern spent the whole allowance, overshot on two tasks, survived the third by a hair, and still could not retrieve.\n\nThe reading is not that I need more budget. It is that the allowance went somewhere useless. Twenty-three of the twenty-eight blocks a query kept were far blocks chosen without any reference to the question, and on a frozen model at inference that is close to buying arbitrary text: connectivity on paper is not relevance, and the softmax deposits almost nothing on a distant block that has nothing to do with what is being asked. Meanwhile the band was three blocks, under 200 tokens of nearby context, which is the part the model leans on hardest. Qasper coming in soft fits that starvation. So the fix at this stage is not query-dependence; it is to put a static allowance only where it reliably pays, and to size it so the realized number lands under the line rather than over it. Honest floor before clever.\n\nTwo ingredients survive that filter. The recent band, because the keys just behind a query take most of the mass in any trained model. And a few anchors at the very front, which rest on an actual mechanism and not on a rule of thumb: the softmax has to total one, there is no abstain option, so a query with nothing it strongly needs still unloads its surplus onto whatever is always reachable, and under causal masking the only universally reachable columns are the opening tokens. Pull those and the rest of every row gets rescaled into a shape the weights were never fit to. So a handful of anchor columns buys stability and everything else should go to the band. Four anchors is the smallest count I trust for that job -- past that, extra anchor columns repeat finished work, while each extra band token is one more token of real context.\n\nNow the sizing, solved exactly rather than by fudge factor, since any band token I decline to spend is context I gave away for nothing. Once a row is past its anchors plus W it holds exactly that many keys, anchors and band not overlapping, so the whole mask is about N*(num_sinks+W) pairs; dividing by N(N+1)/2 makes the density 2*(num_sinks+W)/(N+1). Pin that to 0.25 at N=8192 and W = round(0.25*8193/2) - 4 = 1020, so a filled row holds 1024 keys. Rows before that keep only their own prefix, which is fewer, so the realized figure comes in lower: the short rows sum to about 520k pairs, the remaining 7172 full rows give about 7.34M, so roughly 7.86M out of 33.56M, a density around 0.234. That figure should repeat on all three environments, because W follows from N alone -- nothing is sampled, so no task gets an unlucky draw against the ceiling the way the 0.027 spread I just measured did.\n\nThe trade deserves stating plainly: dropping the random arcs discards long-range reachability, the property last run's graph argument called essential. But that run had it and still sat at 0.2 with soft Qasper, so the reachability was not converting into retrieval here. In exchange the nearby band goes from about 190 tokens to about 1020, better than five times the contiguous context. What this cannot do is find things: anchors hold the opening, the band holds the tail, and a fact planted somewhere in the middle of 8K is in neither, so retrieval should not budge. That is exactly the control I want -- two fixed geometries sharing nothing except that the mask is settled before the query is known. If both land on the same retrieval number, the culprit is the fixedness itself, and that is what would justify paying for selection.\n\nThe edits: forward collapses to one (N,N) mask, a density measured from it, and the same float32 masked softmax; _build_block_keep and its sample cache come out, replaced by a _build_mask that derives W from the budget; and the class header gets renamed.\n\nOne convention note, since it changes the algebra: this band is row-relative and one-sided under causality, 0 <= i-j < W, not the symmetric neighbourhood the block pattern used, which is where the factor of two in the solve comes from.",
+   "content": "Switching to StreamingLLM-style sink plus sliding window: cut the random blocks entirely and pour the budget into local context. This edit reduces forward to a single (N,N) mask with the window width solved from the density identity so the mask lands at budget rather than over it.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        Bk = self.BLOCK\n        scale = scale if scale is not None else 1.0 / math.sqrt(D)\n\n        block_keep, n_blocks = self._build_block_keep(N, q.device, is_causal)\n        # Expand block_keep -> token-level (N, N) by index gather\n        q_tok_blk = (torch.arange(N, device=q.device) // Bk).clamp(max=n_blocks - 1)\n        k_tok_blk = q_tok_blk\n        token_keep = block_keep[q_tok_blk][:, k_tok_blk]   # (N, N) bool\n        if is_causal:\n            idx = torch.arange(N, device=q.device)\n            token_keep = token_keep & (idx[:, None] >= idx[None, :])\n\n        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)\n        self.last_density = float(token_keep.sum().item()) / max(denom, 1.0)\n\n        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale\n        attn = attn.masked_fill(~token_keep, float('-inf'))\n",
+       "new_str": "        scale = scale if scale is not None else 1.0 / math.sqrt(D)\n\n        mask = self._build_mask(N, q.device, is_causal)  # (N, N)\n        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)\n        self.last_density = float(mask.sum().item()) / max(denom, 1.0)\n\n        # Broadcast (N,N) mask across (B,H).\n        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale\n        attn = attn.masked_fill(~mask, float('-inf'))\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 71..87). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "This is the swap forward now needs: the whole block-keep helper and its sample cache come out, replaced by _build_mask -- anchor columns OR the row-relative last-W band, ANDed with the triangle, W derived per N from the density identity. Nothing draws at random any more, so there is nothing left to keep deterministic, and num_sinks is the only knob remaining in __init__.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        self.last_density = None\n        # Random-block cache, keyed by (N, device) — same pattern across calls\n        # for the same sequence length (deterministic per layer instance).\n        self._random_cache = {}\n\n    def _build_block_keep(self, N, device, is_causal):\n        Bk = self.BLOCK\n        if N % Bk != 0:\n            # Pad-aware: round up to whole blocks; the (N,N) mask gets clipped.\n            n_blocks = (N + Bk - 1) // Bk\n        else:\n            n_blocks = N // Bk\n        g = min(self.NUM_GLOBAL_BLOCKS, n_blocks)\n        w = self.NUM_WINDOW_BLOCKS\n        # Solve random-blocks count from the budget at the BLOCK level.\n        # The actual measured density (after random-block sampling and\n        # causal AND) tends to land slightly above the linear estimate, so\n        # apply a ~12% conservative margin to stay clear of the +0.02 slack\n        # ceiling at every context length we evaluate.\n        target = max(1, int(round(self.density_budget * 0.88 * n_blocks)))\n        used = g + w\n        r = max(0, min(target - used, n_blocks - used))\n        # Build (n_blocks, n_blocks) bool keep\n        keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool, device=device)\n        # global cols (every query block attends to first g blocks)\n        if g > 0:\n            keep[:, :g] = True\n        # global rows (first g blocks attend to everyone)\n        if g > 0:\n            keep[:g, :] = True\n        # window: |bi - bj| <= w//2\n        idx = torch.arange(n_blocks, device=device)\n        win = (idx[:, None] - idx[None, :]).abs() <= w // 2\n        keep |= win\n        # random: per query block, sample r blocks from the non-(global|window) pool\n        cache_key = (n_blocks, str(device), g, w, r)\n        if cache_key not in self._random_cache:\n            gen = torch.Generator(device='cpu')\n            gen.manual_seed(((0xBB ^ n_blocks) + int(torch.initial_seed()) - 42) & 0xFFFFFFFF)\n            rand_keep = torch.zeros(n_blocks, n_blocks, dtype=torch.bool)\n            base = keep.detach().to('cpu')\n            for bi in range(n_blocks):\n                avail = (~base[bi]).nonzero(as_tuple=False).flatten()\n                if avail.numel() == 0 or r == 0:\n                    continue\n                pick = avail[torch.randperm(avail.numel(), generator=gen)[:r]]\n                rand_keep[bi, pick] = True\n            self._random_cache[cache_key] = rand_keep.to(device)\n        keep |= self._random_cache[cache_key]\n        # Apply causal at block level (a query block i may attend to j<=i)\n        if is_causal:\n            keep = keep & (idx[:, None] >= idx[None, :])\n        return keep, n_blocks\n",
+       "new_str": "        # Default: 4 attention sinks — enough to recover almost all the\n        # dense-attention quality on streaming inputs.\n        self.num_sinks = 4\n        self.last_density = None\n\n    def _build_mask(self, N, device, is_causal):\n        idx = torch.arange(N, device=device)\n        if is_causal:\n            # Solve density = 2*(num_sinks+W)/(N+1) = budget for W.\n            W = max(1, int(round(self.density_budget * (N + 1) / 2.0)) - self.num_sinks)\n            di = idx[:, None] - idx[None, :]\n            local = (di >= 0) & (di < W)\n        else:\n            # Solve density = (num_sinks + 2W + 1)/N = budget for W.\n            W = max(1, (int(round(self.density_budget * float(N))) - self.num_sinks - 1) // 2)\n            di = idx[:, None] - idx[None, :]\n            local = di.abs() <= W\n        sinks = (idx[None, :] < min(self.num_sinks, N))\n        mask = local | sinks\n        if is_causal:\n            mask = mask & (idx[:, None] >= idx[None, :])\n        return mask\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 15..67). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Header last. Name it sink plus sliding window and put both branches in the docstring, since under causality the band is one-sided over the preceding W keys while the non-causal form is symmetric -- the two imply different solves, and I do not want the next reader guessing which convention the arithmetic assumed.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "# EDITABLE region of custom_sparse_attn.py — rung 2: BigBird (global + window + random)\nclass SparseAttention(nn.Module):\n    \"\"\"BigBird — global + window + random block-sparse pattern.\"\"\"\n\n    BLOCK = 64\n    NUM_GLOBAL_BLOCKS = 2  # first 2 blocks (128 tokens) act as global sinks\n    NUM_WINDOW_BLOCKS = 3  # band of 3 blocks around the query block\n",
+       "new_str": "# EDITABLE region of custom_sparse_attn.py — rung 3: StreamingLLM (sink + sliding window)\nclass SparseAttention(nn.Module):\n    \"\"\"StreamingLLM-style sink + sliding window attention.\n\n    Causal mode (LLM): row-relative last-W window (``i-W+1 <= j <= i``) plus\n    the first ``num_sinks`` columns.\n    Non-causal mode (ViT/DiT): symmetric window (``|i-j| <= W``) plus the\n    first ``num_sinks`` columns.\n    \"\"\"\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 1..7). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Forward now builds anchor columns plus a last-W band with W derived from N, and the block machinery is gone. The three densities should report essentially the same value, comfortably clear of the ceiling this time, with Qasper up on the reclaimed nearby context and retrieval sitting where it was, since neither the anchors nor the tail reaches a mid-document needle.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:streaming_llm` (`is_final,true`), seed 42.\n\n## niah_8k\n| seed | niah_acc | density |\n|---|---|---|\n| 42 | 0.2 | 0.2344 |\n| **mean** | **0.2** | **0.2344** |\n\n## longbench_qasper\n| seed | qasper_f1 | density |\n|---|---|---|\n| 42 | 0.1103 | 0.2344 |\n| **mean** | **0.1103** | **0.2344** |\n\n## longbench_multifieldqa_en\n| seed | multifieldqa_f1 | density |\n|---|---|---|\n| 42 | 0.213 | 0.2344 |\n| **mean** | **0.213** | **0.2344** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The floor is honest now: 0.2344 on all three, identical across tasks exactly as deriving W from N predicted, and well clear of the abort line the block pattern skimmed. Qasper climbed from 0.0871 to 0.1103, which is 0.78 of the 0.1406 ceiling, so pouring the random allowance into nearby context paid off there. Two numbers, though, are stuck, and both argue for the same next move.\n\nNIAH is at 0.2 again, the same value the block pattern produced. Two fixed geometries with almost nothing in common -- one with random long arcs and a 190-token band, one with no arcs and a band five times wider -- landing on an identical retrieval score is about as clean a control as I am going to get in four runs. So it is not the choice of geometry and not the sizing of the band. Anchors hold the opening, the band holds the tail, and something planted in the middle of 8K sits in neither, whatever ratio I pick.\n\nThe quieter one: MultiFieldQA actually slipped, 0.2298 down to 0.213. Only 0.0168, but the direction is the informative part, because I traded a random-diluted 190-token band for a clean 1020-token one and lost F1 doing it. Some of what those random blocks were catching must have been real evidence sitting outside the tail window -- the spray connected occasionally by luck, and refusing to spray missed it altogether. So one fix serves both symptoms: something that reaches far blocks because they match the question, rather than drawing them blind or writing them off.\n\nThat means the query has to drive the selection. Per-key top-K is the ideal and is unaffordable: finding the largest entries means computing them, which is the dense matrix I am supposed to avoid. The cache-keyed importance methods are out for a different reason -- with the cache disabled every forward re-reads the whole prefix from scratch, so there is no accumulated decode-window signal for them to score against. What is left is to rate importance on a unit coarser than the individual key. Attention arrives in contiguous runs, so adjacent keys rise and fall together and one number per 64-key block gives up little; summarize each block by the mean of its keys, put the queries on the same grid, and the scoring matrix is 128x128 per head instead of roughly 67M logits -- smaller by the square of the block width, and parameter-free, which matters because there is nothing here to train.\n\nI should price what the pooling costs, since retrieval is the case that stresses it hardest. The softmax responds to the largest logit inside a block, but pooling averages, so one strongly matching key sharing a block with 63 irrelevant ones is divided down by 64, while the block mean of 64 noisy dots only shrinks by the square root, a factor of 8. So the needle's block outranks the field only when its raw logit stands about 8 sigma above the filler spread. That converts retrieval into a threshold test: sharp matches get selected, mediocre ones get averaged below the between-block noise and their block never enters the kept set. Which is why I think retrieval finally moves off 0.2 here, and equally why I expect it to stop well short of the ceiling. It also settles the block width -- 64 stays, because doubling it doubles the bar a needle must clear.\n\nTwo details the selection needs. Causality gets enforced twice: future blocks masked out before the ranking and the kept set ANDed with the block triangle afterwards, then the strict token triangle inside the block on the diagonal, because keeping that block wholesale would let an early token in it read a key further along in the same block. And the diagonal gets forced in instead of competing: nearby context is nearly always the most relevant thing available, and a ranking built on noisy means offers no guarantee it wins a slot, so I push its score to -inf where the top-K cannot see it, take the best K-1 among the rest, and stitch the diagonal back on by hand. That is the local guarantee the previous run had as a fixed band, collapsed to a single block, with everything else free to move.\n\nK follows from the budget rather than from tuning. Query block i can see i+1 blocks and takes min(K, i+1) of them, which totals K(2n-K+1)/2 kept block-pairs against n(n+1)/2 available. Sanity check on a case I can count on my fingers, n=3 and K=2: 1+2+2 = 5, and the closed form returns 2*(6-2+1)/2 = 5. Setting the ratio to 0.25 at n=128 gives K^2 - 257K + 0.25*128*129 = 0, discriminant 66049 - 16512 = 49537, root about 222.6, so K comes out (257-222.6)/2, about 17, and the realized block density 17*240/16512 is about 0.247, just inside. That makes this an almost perfectly controlled comparison against the last run: it held 1024 tokens, sixteen blocks, in every filled row; this holds seventeen, the diagonal plus sixteen chosen ones. Same spend, different allocation policy, so any retrieval gain cannot be explained by keeping more of the matrix.\n\nThe plan for forward: pad N up to a whole number of blocks, mean-pool q and k per block, score the block pairs in float32, mask future and diagonal out of the contest, take the top K-1, scatter those plus the diagonal into a per-(batch, head) block keep-matrix, expand back to tokens, trim to [:N, :N], AND the token triangle so nothing padded can leak in, and report density from the realized mask. Then the anchor/band builder comes out and the class header goes on. One thing I do not need here: the group-level importance reduction a real GQA cache would demand, since the loop already replicated to 12 heads on both sides, so scoring per replicated head is the correct thing on this substrate.",
+   "content": "Going content-adaptive: NSA-style block top-K selection. This edit rewrites forward to score 64-token block pairs from mean-pooled q/k, keep the top K-1 causal blocks per query block plus a force-included diagonal, with K solved from the causal density quadratic.",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        scale = scale if scale is not None else 1.0 / math.sqrt(D)\n\n        mask = self._build_mask(N, q.device, is_causal)  # (N, N)\n        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)\n        self.last_density = float(mask.sum().item()) / max(denom, 1.0)\n\n        # Broadcast (N,N) mask across (B,H).\n        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale\n        attn = attn.masked_fill(~mask, float('-inf'))\n",
+       "new_str": "        Bk = self.BLOCK\n        scale = scale if scale is not None else 1.0 / math.sqrt(D)\n\n        # Pad N up to a multiple of BLOCK so we can pool cleanly.\n        Npad = ((N + Bk - 1) // Bk) * Bk\n        if Npad != N:\n            pad = Npad - N\n            qp = torch.nn.functional.pad(q, (0, 0, 0, pad))\n            kp = torch.nn.functional.pad(k, (0, 0, 0, pad))\n        else:\n            qp, kp = q, k\n\n        n_blocks = Npad // Bk\n\n        # Mean-pooled q / k per block: (B, H, n_blocks, D)\n        q_blocks = qp.view(B, H, n_blocks, Bk, D).mean(dim=3)\n        k_blocks = kp.view(B, H, n_blocks, Bk, D).mean(dim=3)\n\n        # Block-level scores (B, H, n_blocks, n_blocks)\n        scores = torch.einsum('bhmd,bhnd->bhmn',\n                              q_blocks.float(), k_blocks.float()) * scale\n\n        idx = torch.arange(n_blocks, device=q.device)\n        if is_causal:\n            causal_blk = idx[:, None] >= idx[None, :]   # (n_b, n_b)\n            scores = scores.masked_fill(~causal_blk, float('-inf'))\n\n        # Force-include diagonal: zero its score (irrelevant for topk choice)\n        diag_mask = torch.zeros(n_blocks, n_blocks, dtype=torch.bool, device=q.device)\n        diag_mask.fill_diagonal_(True)\n        scores_nodiag = scores.masked_fill(diag_mask, float('-inf'))\n\n        # Target top-K per query block under causal AND. With per-row keep K,\n        # mean kept block-pairs = K*(2n-K+1)/2, denom = n*(n+1)/2 (causal),\n        # so density = K*(2n-K+1)/(n*(n+1)). Solve K(2n+1-K) = budget*n*(n+1)\n        # via the quadratic root closer to 0:\n        #   K = ((2n+1) - sqrt((2n+1)^2 - 4*budget*n*(n+1))) / 2\n        n_b = n_blocks\n        if is_causal:\n            disc = max(0.0, (2 * n_b + 1) ** 2 - 4 * self.density_budget * n_b * (n_b + 1))\n            K_top = max(1, int(((2 * n_b + 1) - math.sqrt(disc)) / 2))\n        else:\n            K_top = max(1, int(round(self.density_budget * n_b)))\n        kk = max(0, min(K_top - 1, n_b - 1))\n        if kk > 0:\n            topk_idx = scores_nodiag.topk(kk, dim=-1).indices  # (B,H,n_b,kk)\n        else:\n            topk_idx = torch.empty(B, H, n_blocks, 0, dtype=torch.long, device=q.device)\n        diag_idx = idx.view(1, 1, n_blocks, 1).expand(B, H, n_blocks, 1)\n        sel = torch.cat([topk_idx, diag_idx], dim=-1)\n        block_keep = torch.zeros(B, H, n_blocks, n_blocks,\n                                 dtype=torch.bool, device=q.device)\n        block_keep.scatter_(-1, sel, True)\n        if is_causal:\n            block_keep = block_keep & causal_blk\n\n        # Expand block_keep -> token-level (B, H, Npad, Npad)\n        q_tok_blk = (torch.arange(Npad, device=q.device) // Bk)\n        k_tok_blk = q_tok_blk\n        # Index per-(b,h,qtok,ktok)\n        token_keep = block_keep[:, :, q_tok_blk, :][:, :, :, k_tok_blk]\n        token_keep = token_keep[:, :, :N, :N]\n        if is_causal:\n            tidx = torch.arange(N, device=q.device)\n            token_keep = token_keep & (tidx[:, None] >= tidx[None, :])\n\n        denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)\n        # Take per-(b,h) mean for reporting; harness aggregates further.\n        self.last_density = float(token_keep[0, 0].sum().item()) / max(denom, 1.0)\n\n        attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale\n        attn = attn.masked_fill(~token_keep, float('-inf'))\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 42..50). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "The band builder and num_sinks are dead weight now -- the kept set is computed inside each forward from that pass's own q and k, so there is nothing left to precompute from N alone. __init__ goes back to just last_density.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "        # Default: 4 attention sinks — enough to recover almost all the\n        # dense-attention quality on streaming inputs.\n        self.num_sinks = 4\n        self.last_density = None\n\n    def _build_mask(self, N, device, is_causal):\n        idx = torch.arange(N, device=device)\n        if is_causal:\n            # Solve density = 2*(num_sinks+W)/(N+1) = budget for W.\n            W = max(1, int(round(self.density_budget * (N + 1) / 2.0)) - self.num_sinks)\n            di = idx[:, None] - idx[None, :]\n            local = (di >= 0) & (di < W)\n        else:\n            # Solve density = (num_sinks + 2W + 1)/N = budget for W.\n            W = max(1, (int(round(self.density_budget * float(N))) - self.num_sinks - 1) // 2)\n            di = idx[:, None] - idx[None, :]\n            local = di.abs() <= W\n        sinks = (idx[None, :] < min(self.num_sinks, N))\n        mask = local | sinks\n        if is_causal:\n            mask = mask & (idx[:, None] >= idx[None, :])\n        return mask\n",
+       "new_str": "        self.last_density = None\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 17..38). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Header last, plus BLOCK=64 back on the class. The pooling width is what sets the bar a relevant block has to clear to win a slot, so it belongs at the top where I can see it, not buried in the reshape inside forward.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "sparse-attn-eval/custom_sparse_attn.py",
+       "old_str": "# EDITABLE region of custom_sparse_attn.py — rung 3: StreamingLLM (sink + sliding window)\nclass SparseAttention(nn.Module):\n    \"\"\"StreamingLLM-style sink + sliding window attention.\n\n    Causal mode (LLM): row-relative last-W window (``i-W+1 <= j <= i``) plus\n    the first ``num_sinks`` columns.\n    Non-causal mode (ViT/DiT): symmetric window (``|i-j| <= W``) plus the\n    first ``num_sinks`` columns.\n    \"\"\"\n",
+       "new_str": "# EDITABLE region of custom_sparse_attn.py — rung 4: Block-Top-K (NSA-style adaptive)\nclass SparseAttention(nn.Module):\n    \"\"\"NSA-style content-adaptive block-sparse top-K attention.\"\"\"\n\n    BLOCK = 64\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in sparse-attn-eval/custom_sparse_attn.py (lines 1..9). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Selection is now per batch and head off this forward's pooled q and k, with the diagonal forced in and K taken from the causal budget quadratic; density is measured on the trimmed token mask, so it should land at or a little below my block-level estimate. Retrieval is the number I care about -- this is the first pattern that can put a far block in the kept set because the query asked for it -- with the QA scores expected to hold near where the fixed band left them.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #4] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:block_topk` (`is_final,true`), seed 42.\n\n## niah_8k\n| seed | niah_acc | density |\n|---|---|---|\n| 42 | 0.26 | 0.242 |\n| **mean** | **0.26** | **0.242** |\n\n## longbench_qasper\n| seed | qasper_f1 | density |\n|---|---|---|\n| 42 | 0.1082 | 0.2291 |\n| **mean** | **0.1082** | **0.2291** |\n\n## longbench_multifieldqa_en\n| seed | multifieldqa_f1 | density |\n|---|---|---|\n| 42 | 0.2074 | 0.2331 |\n| **mean** | **0.2074** | **0.2331** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "Four results, and only three of them are candidates. Test #1 is the reference, not an entry: 1.0 / 0.1406 / 0.3447 at density 1.0, admitted only because the dense flag skips the check, so it answers a different question than the one posed. Among the budgeted runs, #2 gave 0.2 / 0.0871 / 0.2298 at densities 0.2601, 0.2421 and 0.2693 -- two above 0.25 and one within 0.0007 of aborting, which disqualifies it on robustness before the scores even matter. #3 gave 0.2 / 0.1103 / 0.213 at a flat 0.2344. #4 gave 0.26 / 0.1082 / 0.2074 at 0.242, 0.2291 and 0.2331.\n\nSo the real choice is #3 against #4. Test #4 concedes 0.0021 of Qasper and 0.0056 of MultiFieldQA, neither of which I would call a real regression off a single seed, and buys 0.06 on NIAH -- the only movement off 0.2 anywhere in the run, on the metric that had 0.8 of room against the ceiling rather than a couple of hundredths. Summed across the three environments that is 0.5756 versus 0.5233 for #3 and 0.5169 for #2, and it stays under budget on every task. Content-adaptive selection moved the one number two fixed geometries could not, so #4 is the submission.",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 4
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #4 as final.\n\nMeasured results — `baseline:block_topk` (`is_final,true`), seed 42.\n\n## niah_8k\n| seed | niah_acc | density |\n|---|---|---|\n| 42 | 0.26 | 0.242 |\n| **mean** | **0.26** | **0.242** |\n\n## longbench_qasper\n| seed | qasper_f1 | density |\n|---|---|---|\n| 42 | 0.1082 | 0.2291 |\n| **mean** | **0.1082** | **0.2291** |\n\n## longbench_multifieldqa_en\n| seed | multifieldqa_f1 | density |\n|---|---|---|\n| 42 | 0.2074 | 0.2331 |\n| **mean** | **0.2074** | **0.2331** |"
+  }
+ ]
+}
