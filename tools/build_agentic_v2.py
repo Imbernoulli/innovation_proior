@@ -484,13 +484,29 @@ def build_task(task_dir, task):
 # Lint mode: after the prose workflow, every slot must be replaced by real text.
 # ---------------------------------------------------------------------------
 SENTINEL = re.compile(r'\[\[(THINK|SAY)[^\]]*\]\]')
+# The prompt's numbered [EDITABLE] file dump IS the replay start state for every
+# scaffold_from_context task (148 of 164) — those episodes open on a str_replace,
+# never a create, so seeding the lint's replay from `None` failed all of them.
+PROMPT_DUMP = re.compile(r'^## \S+  \[EDITABLE — entire file\]\n```[a-zA-Z0-9_+-]*\n(.*?)\n```',
+                         re.S | re.M)
+LINENO = re.compile(r'^ *\d+: ')
+
+
+def seed_replay(messages):
+    """Recover the scaffold the builder started `replay` from (strip '%6d: ' prefixes)."""
+    if not messages or messages[0].get('role') != 'user':
+        return None
+    m = PROMPT_DUMP.search(messages[0].get('content') or '')
+    if not m:
+        return None
+    return '\n'.join(LINENO.sub('', ln, count=1) for ln in m.group(1).split('\n')) + '\n'
 
 
 def lint(paths):
     bad = 0
     for p in paths:
         d = json.load(open(p))
-        replay = None
+        replay = seed_replay(d.get('messages'))
         for i, m in enumerate(d['messages']):
             if m['role'] != 'assistant':
                 continue
