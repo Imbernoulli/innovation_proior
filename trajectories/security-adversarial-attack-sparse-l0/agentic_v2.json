@@ -1,0 +1,383 @@
+{
+ "task": "security-adversarial-attack-sparse-l0",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "torchattacks/bench/custom_attack.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 5,
+ "n_edit_ops": 6,
+ "best_test": 5,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nFool an image classifier under a strict **`L0`** budget: change at most `pixels` spatial pixels of a correctly classified image (a pixel counts as changed if any of its channels moves), but each changed pixel may take any color in `[0,1]`. This is the opposite trade from dense `L_inf`/`L_2` attacks, which cap the *magnitude* of a change spread across every pixel; here the count of touched pixels is capped and the amplitude is free. The single thing being designed is the attack procedure `run_attack` — which pixels to move, and to what — under a fixed budget `pixels = 24`. Everything else — the target models, the data, the validity checks — is frozen.\n\nThe targets are adversarially-robust `L2` models from the RobustBench zoo. On an undefended classifier a strong sparse attack saturates near 100%, so the informative regime is robust models, where success rates spread across the `[0,1]` range.\n\n## Prior art / Background / Baselines\n\n- **Box-constrained `L-BFGS` (Szegedy et al. 2014).** Minimizes `||r||_2` subject to misclassification and box constraints.\n- **Fast gradient sign method (Goodfellow et al. 2015).** Takes one step `eps*sign(grad_x J)`.\n- **Class saliency maps (Simonyan et al. 2014).** Backprops a class score to the input to highlight which pixels matter.\n- **DeepFool (Moosavi-Dezfooli et al. 2016).** Iteratively walks to the nearest linearized decision boundary with a minimal `L2` step.\n- **JSMA.** Greedy forward-derivative saliency map that picks pixels to increase the target-class score.\n- **One-pixel attack.** Uses differential evolution to change a small number of individual pixels.\n- **SparseFool.** Finds a minimal `L0` perturbation via local linearization of the decision boundary.\n- **Pixle.** Randomly perturbs pixel locations and keeps changes that improve success.\n\n## Fixed substrate / Code framework\n\nA single evaluation harness (`bench/run_eval.py`) is frozen and must not be touched. It loads one adversarially-robust `L2` CIFAR-10 model from the RobustBench zoo (`Rebuffi-R18-L2`, `Augustin-L2`, `Engstrom-L2`); collects up to 150 samples the model classifies correctly on clean input; passes a fresh deep copy of the model to the attack; runs `run_attack`; then validates every output and scores it. A returned image is counted as a failure unless it is finite, lies in `[0,1]` (within `1e-6`), and changes at most `pixels` spatial pixels — where a pixel is \"changed\" iff `((adv - x).abs() > 1e-5).any(dim=channels)`. The reported numbers are `clean_acc`, `robust_acc`, and `asr = 1 - robust_acc`. Higher ASR is stronger. The attack may use full model access including gradients; the budget, not the access, is the constraint.\n\n## Editable interface\n\nExactly one region is editable — the body of `run_attack` in `torchattacks/bench/custom_attack.py`. Every solution fills this contract:\n\n```\nrun_attack(model, images, labels, pixels, device, n_classes) -> adv_images\n```\n\n`images` is `(N, C, H, W)` in `[0,1]` on `device`; `labels` is `(N,)`; `pixels` is the `L0` budget (24); `n_classes` is 10. The return must be the same shape, in `[0,1]`, and respect the budget. The baselines `onepixel`, `sparsefool`, `jsma`, and `pixle` are thin wrappers around the reference implementations in `torchattacks`; `sparse_rs` is inlined because `torchattacks` has no Sparse-RS implementation. Each solution replaces exactly this function body and nothing else.\n\nThe starting point is the scaffold default: a no-op attack that returns the clean image untouched (ASR 0 by construction).\n\n```python\nimport torch\nimport torch.nn as nn\n\n# =====================================================================\n# EDITABLE: implement run_attack below\n# =====================================================================\ndef run_attack(\n    model: nn.Module,\n    images: torch.Tensor,\n    labels: torch.Tensor,\n    pixels: int,\n    device: torch.device,\n    n_classes: int,\n) -> torch.Tensor:\n    \"\"\"\n    Sparse L0 adversarial attack.\n    images: (N, C, H, W) in [0, 1] on device. labels: (N,) on device.\n    pixels: max number of modified spatial pixels (H, W) per sample.\n    n_classes: 10 for CIFAR-10, 100 for CIFAR-100.\n    Returns adv_images satisfying an L0 pixel budget validated by evaluator.\n    \"\"\"\n    _ = (model, labels, pixels, device, n_classes)\n    return images.clone()\n\n# =====================================================================\n# END EDITABLE REGION\n# =====================================================================\n```\n\n## Evaluation settings\n\nThree CIFAR-10 settings, each a different adversarially-robust `L2` RobustBench model: `Rebuffi-R18-L2`, `Augustin-L2`, and `Engstrom-L2` (hidden). One seed, 42. Budget `pixels = 24`, up to 150 correctly-classified samples per model. The single metric is ASR (`asr = 1 - robust_acc`) per model, higher is better; invalid outputs score as attack failures. Wall-clock per model is reported but not scored.\n\n## torchattacks/bench/custom_attack.py  [EDITABLE — entire file]\n```python\n     1: import torch\n     2: import torch.nn as nn\n     3: \n     4: # =====================================================================\n     5: # EDITABLE: implement run_attack below\n     6: # =====================================================================\n     7: def run_attack(\n     8:     model: nn.Module,\n     9:     images: torch.Tensor,\n    10:     labels: torch.Tensor,\n    11:     pixels: int,\n    12:     device: torch.device,\n    13:     n_classes: int,\n    14: ) -> torch.Tensor:\n    15:     \"\"\"\n    16:     Sparse L0 adversarial attack.\n    17:     images: (N, C, H, W) in [0, 1] on device. labels: (N,) on device.\n    18:     pixels: max number of modified spatial pixels (H, W) per sample.\n    19:     n_classes: 10 for CIFAR-10, 100 for CIFAR-100.\n    20:     Returns adv_images satisfying an L0 pixel budget validated by evaluator.\n    21:     \"\"\"\n    22:     _ = (model, labels, pixels, device, n_classes)\n    23:     return images.clone()\n    24: \n    25: # =====================================================================\n    26: # END EDITABLE REGION\n    27: # =====================================================================\n```\n\n## Your Budget\n- **Action budget**: 11 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 5 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=pixle seq=1]]",
+   "content": "[[SAY rung=1 slug=pixle seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "torchattacks/bench/custom_attack.py",
+       "old_str": "    \"\"\"\n    Sparse L0 adversarial attack.\n    images: (N, C, H, W) in [0, 1] on device. labels: (N,) on device.\n    pixels: max number of modified spatial pixels (H, W) per sample.\n    n_classes: 10 for CIFAR-10, 100 for CIFAR-100.\n    Returns adv_images satisfying an L0 pixel budget validated by evaluator.\n    \"\"\"\n    _ = (model, labels, pixels, device, n_classes)\n    return images.clone()\n\n# =====================================================================\n# END EDITABLE REGION\n# =====================================================================\n",
+       "new_str": "    import torchattacks\n\n    _ = (pixels, device, n_classes)\n    model.eval()\n    attack = torchattacks.Pixle(\n        model,\n        x_dimensions=(1, 2),\n        y_dimensions=(1, 2),\n        pixel_mapping=\"random\",\n        restarts=3,\n        max_iterations=5,\n        update_each_iteration=False,\n    )\n    return attack(images, labels)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in torchattacks/bench/custom_attack.py (lines 15..27). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=1 slug=pixle seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "torchattacks/bench/custom_attack.py",
+       "old_str": "import torch\nimport torch.nn as nn\n\n# =====================================================================\n# EDITABLE: implement run_attack below\n# =====================================================================\n",
+       "new_str": ""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in torchattacks/bench/custom_attack.py (lines 1..6). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=pixle seq=3]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (4 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:pixle` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).\n\n| model | seed | asr |\n|---|---|---|\n| Rebuffi-R18-L2 | 42 | 0.006667 |\n| Augustin-L2 | 42 | 0.020000 |\n| Engstrom-L2 | 42 | 0.006667 |\n| **mean** | | **0.011111** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=jsma seq=4]]",
+   "content": "[[SAY rung=2 slug=jsma seq=4]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "torchattacks/bench/custom_attack.py",
+       "old_str": "    _ = (pixels, device, n_classes)\n    model.eval()\n    attack = torchattacks.Pixle(\n        model,\n        x_dimensions=(1, 2),\n        y_dimensions=(1, 2),\n        pixel_mapping=\"random\",\n        restarts=3,\n        max_iterations=5,\n        update_each_iteration=False,\n    )\n",
+       "new_str": "    _ = (device, n_classes)\n    model.eval()\n\n    # gamma bounds total perturbed features (C*H*W space) to `pixels`, which\n    # is a sufficient upper bound on the number of distinct spatial pixels.\n    num_features = int(images.shape[1] * images.shape[2] * images.shape[3])\n    gamma = float(pixels) / float(num_features)\n\n    attack = torchattacks.JSMA(model, theta=1.0, gamma=gamma)\n    # Least-likely class as target -> strong untargeted proxy, works for any\n    # n_classes.\n    attack.set_mode_targeted_least_likely(quiet=True)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in torchattacks/bench/custom_attack.py (lines 11..21). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=jsma seq=5]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (3 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:jsma` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).\n\n| model | seed | asr |\n|---|---|---|\n| Rebuffi-R18-L2 | 42 | 0.026667 |\n| Augustin-L2 | 42 | 0.046667 |\n| Engstrom-L2 | 42 | 0.066667 |\n| **mean** | | **0.046667** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=onepixel seq=6]]",
+   "content": "[[SAY rung=3 slug=onepixel seq=6]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "torchattacks/bench/custom_attack.py",
+       "old_str": "\n    # gamma bounds total perturbed features (C*H*W space) to `pixels`, which\n    # is a sufficient upper bound on the number of distinct spatial pixels.\n    num_features = int(images.shape[1] * images.shape[2] * images.shape[3])\n    gamma = float(pixels) / float(num_features)\n\n    attack = torchattacks.JSMA(model, theta=1.0, gamma=gamma)\n    # Least-likely class as target -> strong untargeted proxy, works for any\n    # n_classes.\n    attack.set_mode_targeted_least_likely(quiet=True)\n",
+       "new_str": "    attack = torchattacks.OnePixel(\n        model,\n        pixels=pixels,\n        steps=6,\n        popsize=8,\n        inf_batch=128,\n    )\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in torchattacks/bench/custom_attack.py (lines 13..22). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=onepixel seq=7]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:onepixel` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).\n\n| model | seed | asr |\n|---|---|---|\n| Rebuffi-R18-L2 | 42 | 0.100000 |\n| Augustin-L2 | 42 | 0.180000 |\n| Engstrom-L2 | 42 | 0.180000 |\n| **mean** | | **0.153333** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=4 slug=sparsefool seq=8]]",
+   "content": "[[SAY rung=4 slug=sparsefool seq=8]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "torchattacks/bench/custom_attack.py",
+       "old_str": "    _ = (device, n_classes)\n    model.eval()\n    attack = torchattacks.OnePixel(\n        model,\n        pixels=pixels,\n        steps=6,\n        popsize=8,\n        inf_batch=128,\n",
+       "new_str": "    _ = (pixels, device, n_classes)\n    model.eval()\n    attack = torchattacks.SparseFool(\n        model,\n        steps=20,\n        lam=3.0,\n        overshoot=0.02,\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in torchattacks/bench/custom_attack.py (lines 11..18). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=4 slug=sparsefool seq=9]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #4] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:sparsefool` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).\n\n| model | seed | asr |\n|---|---|---|\n| Rebuffi-R18-L2 | 42 | 0.166667 |\n| Augustin-L2 | 42 | 0.113333 |\n| Engstrom-L2 | 42 | 0.280000 |\n| **mean** | | **0.186667** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=5 slug=sparse_rs seq=10]]",
+   "content": "[[SAY rung=5 slug=sparse_rs seq=10]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "torchattacks/bench/custom_attack.py",
+       "old_str": "    import torchattacks\n\n    _ = (pixels, device, n_classes)\n    model.eval()\n    attack = torchattacks.SparseFool(\n        model,\n        steps=20,\n        lam=3.0,\n        overshoot=0.02,\n    )\n    return attack(images, labels)\n",
+       "new_str": "    \"\"\"Sparse-RS L0 black-box attack (Croce et al., AAAI 2022).\"\"\"\n    import torch\n    import torch.nn.functional as F\n\n    _ = (n_classes,)\n    model.eval()\n\n    n_queries = 10000\n    p_init = 0.8\n    eps = int(pixels)\n\n    x = images.detach().clone().to(device)\n    y = labels.detach().clone().to(device)\n    B, C, H, W = x.shape\n    n_pixels = H * W\n\n    def _margin_and_loss(xb, yb):\n        with torch.no_grad():\n            logits = model(xb)\n        u = torch.arange(xb.shape[0], device=xb.device)\n        y_corr = logits[u, yb].clone()\n        logits[u, yb] = -float(\"inf\")\n        y_others = logits.max(dim=-1)[0]\n        margin = y_corr - y_others\n        return margin, margin  # 'margin' loss variant\n\n    def _p_selection(it):\n        # Rescaled schedule (see Sparse-RS paper Fig. 3 / rs_attacks.py).\n        it = int(it / n_queries * 10000)\n        if 0 < it <= 50:\n            return p_init / 2\n        if 50 < it <= 200:\n            return p_init / 4\n        if 200 < it <= 500:\n            return p_init / 5\n        if 500 < it <= 1000:\n            return p_init / 6\n        if 1000 < it <= 2000:\n            return p_init / 8\n        if 2000 < it <= 4000:\n            return p_init / 10\n        if 4000 < it <= 6000:\n            return p_init / 12\n        if 6000 < it <= 8000:\n            return p_init / 15\n        if 8000 < it:\n            return p_init / 20\n        return p_init\n\n    def _rand_colors(shape):\n        # Binary {0,1} random colors, as in Sparse-RS default.\n        return torch.randint(0, 2, shape, device=device, dtype=x.dtype)\n\n    # ---- Initialise: random eps pixels per image with random binary colors.\n    x_best = x.clone()\n    b_all = torch.zeros(B, eps, dtype=torch.long, device=device)\n    be_all = torch.zeros(B, n_pixels - eps, dtype=torch.long, device=device)\n    for i in range(B):\n        perm = torch.randperm(n_pixels, device=device)\n        ind_p = perm[:eps]\n        ind_np = perm[eps:]\n        x_best[i, :, ind_p // W, ind_p % W] = _rand_colors((C, eps)).clamp(0.0, 1.0)\n        b_all[i] = ind_p\n        be_all[i] = ind_np\n\n    margin_min, loss_min = _margin_and_loss(x_best, y)\n\n    for it in range(1, n_queries):\n        idx_to_fool = (margin_min > 0.0).nonzero().squeeze(-1)\n        if idx_to_fool.numel() == 0:\n            break\n\n        x_curr = x[idx_to_fool].clone()\n        x_best_curr = x_best[idx_to_fool].clone()\n        y_curr = y[idx_to_fool]\n        margin_curr = margin_min[idx_to_fool].clone()\n        loss_curr = loss_min[idx_to_fool].clone()\n        b_curr = b_all[idx_to_fool].clone()\n        be_curr = be_all[idx_to_fool].clone()\n\n        x_new = x_best_curr.clone()\n        eps_it = max(int(_p_selection(it) * eps), 1)\n        ind_p = torch.randperm(eps, device=device)[:eps_it]\n        ind_np = torch.randperm(n_pixels - eps, device=device)[:eps_it]\n\n        for i in range(x_new.shape[0]):\n            p_set = b_curr[i, ind_p]\n            np_set = be_curr[i, ind_np]\n            # Restore previously-perturbed positions to clean.\n            x_new[i, :, p_set // W, p_set % W] = x_curr[i, :, p_set // W, p_set % W]\n            # Perturb newly-selected positions with random binary colors.\n            if eps_it > 1:\n                x_new[i, :, np_set // W, np_set % W] = _rand_colors((C, eps_it)).clamp(0.0, 1.0)\n            else:\n                old = x_new[i, :, np_set // W, np_set % W].clone()\n                new = old.clone()\n                tries = 0\n                while (new == old).all() and tries < 16:\n                    new = _rand_colors((C, 1)).clamp(0.0, 1.0)\n                    tries += 1\n                x_new[i, :, np_set // W, np_set % W] = new\n\n        margin, loss = _margin_and_loss(x_new, y_curr)\n\n        idx_improved = (loss < loss_curr).float()\n        idx_miscl = (margin < -1e-6).float()\n        idx_keep = torch.max(idx_improved, idx_miscl)\n        nkeep = int(idx_keep.sum().item())\n\n        # Update loss whenever loss improves.\n        upd_loss = (idx_improved > 0).nonzero().squeeze(-1)\n        if upd_loss.numel() > 0:\n            loss_min[idx_to_fool[upd_loss]] = loss[upd_loss]\n\n        if nkeep > 0:\n            upd = (idx_keep > 0).nonzero().squeeze(-1)\n            margin_min[idx_to_fool[upd]] = margin[upd]\n            x_best[idx_to_fool[upd]] = x_new[upd]\n\n            # Swap mask indices for the accepted moves.\n            # `upd` comes from .squeeze(-1), so the batch dim is preserved\n            # (shape [K] with K>=1); always use the 2-D batched form.\n            t = b_curr[upd].clone()\n            te = be_curr[upd].clone()\n            t[:, ind_p] = be_curr[upd][:, ind_np]\n            te[:, ind_np] = b_curr[upd][:, ind_p]\n            b_all[idx_to_fool[upd]] = t\n            be_all[idx_to_fool[upd]] = te\n\n    return x_best.detach()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in torchattacks/bench/custom_attack.py (lines 9..19). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=5 slug=sparse_rs seq=11]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #5] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:sparse_rs` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).\n\n| model | seed | asr |\n|---|---|---|\n| Rebuffi-R18-L2 | 42 | 0.853333 |\n| Augustin-L2 | 42 | 0.946667 |\n| Engstrom-L2 | 42 | 0.966667 |\n| **mean** | | **0.922222** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=5 seq=12]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #5 as final.\n\nMeasured results — `baseline:sparse_rs` (`is_final,true`), seed 42. Metric: ASR (higher is stronger).\n\n| model | seed | asr |\n|---|---|---|\n| Rebuffi-R18-L2 | 42 | 0.853333 |\n| Augustin-L2 | 42 | 0.946667 |\n| Engstrom-L2 | 42 | 0.966667 |\n| **mean** | | **0.922222** |"
+  }
+ ]
+}

@@ -1,0 +1,278 @@
+{
+ "task": "security-poison-robust-learning",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "pytorch-vision/bench/poison/custom_robust_loss.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 3,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA fraction of the training labels has been adversarially flipped — each poisoned example's target is moved to `(original + 1) % num_classes` — and the poisoned indices are unknown. The design task is the **training objective**: a loss function (or a sample-weighting rule built into the loss) that still learns the true class structure without memorizing the corrupted targets. The model, optimizer, data pipeline, augmentation, learning-rate schedule, and poison injection are all fixed. The only editable surface is `RobustLoss.compute_loss(logits, labels, epoch)`, which returns the scalar minibatch loss.\n\n## Prior art / Background / Baselines\n\n- **ERM with cross entropy.** Train the softmax classifier by minimizing the mean `-log f_y` over the batch.\n\n- **Symmetric losses / noise-tolerance criterion (Ghosh, Kumar & Sastry, 2017).** A sufficient condition for noise tolerance is a loss whose class scores sum to a constant; mean absolute error satisfies this. The MAE gradient for a sample is `−2 f_y(1−f_y)`.\n\n- **Label smoothing (Szegedy et al., 2016).** Replace one-hot targets with a soft distribution that spreads a fixed mass over every class.\n\n## Fixed substrate / Code framework\n\nA research-scale vision training loop is frozen and must not be touched. Three architectures — ResNet-20, VGG-16-BN, MobileNetV2 — are built from scratch with Kaiming init and trained with SGD (`lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`) under cosine annealing for 100 epochs, batch size 128, with standard augmentation and normalization. The training set is wrapped by a fixed `PoisonedDataset` that selects a seeded random subset and flips each selected label to `(label + 1) % num_classes`. The loop calls `robust_loss.compute_loss(logits, labels, epoch)` once per minibatch in place of `nn.CrossEntropyLoss`, backpropagates, and steps the optimizer. Nothing else is exposed: the loss sees only the current logits, the possibly poisoned labels, and the integer epoch.\n\n## Editable interface\n\nExactly one region is editable — the `RobustLoss` class in `custom_robust_loss.py`. `compute_loss` receives `logits` of shape `(B, K)`, `labels` of shape `(B,)`, and `epoch` (0-indexed), and returns a scalar loss tensor. The module may hold fixed hyperparameters in `__init__`, but no per-sample state survives between calls. `torch` and `torch.nn.functional as F` are already imported.\n\nThe starting point is the scaffold default: **standard cross entropy on the poisoned labels** (ERM). Each method replaces exactly this method body and nothing else.\n\n```python\n# EDITABLE region of custom_robust_loss.py -- default fill (standard cross entropy / ERM)\nimport torch\nimport torch.nn.functional as F\n\n\nclass RobustLoss:\n    \"\"\"Default cross-entropy objective on the (possibly poisoned) labels.\"\"\"\n\n    def __init__(self):\n        pass\n\n    def compute_loss(self, logits, labels, epoch):\n        return F.cross_entropy(logits, labels)\n```\n\n## Evaluation settings\n\nThree fixed benchmarks, all seed 42: `resnet20-cifar10-labelflip` (ResNet-20 on CIFAR-10, 10% flip), `vgg16bn-cifar100-labelflip` (VGG-16-BN on CIFAR-100, 10% flip), and `mobilenetv2-fmnist-labelflip` (MobileNetV2 on FashionMNIST, 15% flip). Reported metrics are `test_acc` (clean test accuracy, higher is better), `poison_fit` (fraction of poisoned training samples predicted as the flipped label, lower is better), and `robust_score = (test_acc + (1 − poison_fit)) / 2` (higher is better). A method improves by raising clean accuracy while keeping poison_fit low.\n\n## pytorch-vision/bench/poison/custom_robust_loss.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of custom_robust_loss.py -- default fill (standard cross entropy / ERM)\n     2: import torch\n     3: import torch.nn.functional as F\n     4: \n     5: \n     6: class RobustLoss:\n     7:     \"\"\"Default cross-entropy objective on the (possibly poisoned) labels.\"\"\"\n     8: \n     9:     def __init__(self):\n    10:         pass\n    11: \n    12:     def compute_loss(self, logits, labels, epoch):\n    13:         return F.cross_entropy(logits, labels)\n```\n\n## Your Budget\n- **Action budget**: 6 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=bootstrap seq=1]]",
+   "content": "[[SAY rung=1 slug=bootstrap seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/poison/custom_robust_loss.py",
+       "old_str": "# EDITABLE region of custom_robust_loss.py -- default fill (standard cross entropy / ERM)\nimport torch\nimport torch.nn.functional as F\n\n\nclass RobustLoss:\n    \"\"\"Default cross-entropy objective on the (possibly poisoned) labels.\"\"\"\n\n    def __init__(self):\n        pass\n\n    def compute_loss(self, logits, labels, epoch):\n        return F.cross_entropy(logits, labels)\n",
+       "new_str": "class RobustLoss:\n    \"\"\"Interpolate labels with model predictions.\"\"\"\n\n    def __init__(self):\n        self.beta = 0.8\n\n    def compute_loss(self, logits, labels, epoch):\n        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()\n        soft = torch.softmax(logits.detach(), dim=1)\n        target = self.beta * hard + (1.0 - self.beta) * soft\n        log_probs = F.log_softmax(logits, dim=1)\n        return -(target * log_probs).sum(dim=1).mean()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/poison/custom_robust_loss.py (lines 1..13). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=bootstrap seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:bootstrap` (`is_final,true`), seed 42 (the single configured seed; mean equals the seed value).\n\n## resnet20-cifar10-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9025 | 0.1142 | 0.8942 |\n| **mean** | **0.9025** | **0.1142** | **0.8942** |\n\n## vgg16bn-cifar100-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.6814 | 0.5642 | 0.5586 |\n| **mean** | **0.6814** | **0.5642** | **0.5586** |\n\n## mobilenetv2-fmnist-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9480 | 0.0076 | 0.9702 |\n| **mean** | **0.9480** | **0.0076** | **0.9702** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=symmetric_ce seq=3]]",
+   "content": "[[SAY rung=2 slug=symmetric_ce seq=3]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/poison/custom_robust_loss.py",
+       "old_str": "    \"\"\"Interpolate labels with model predictions.\"\"\"\n\n    def __init__(self):\n        self.beta = 0.8\n\n    def compute_loss(self, logits, labels, epoch):\n        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()\n        soft = torch.softmax(logits.detach(), dim=1)\n        target = self.beta * hard + (1.0 - self.beta) * soft\n        log_probs = F.log_softmax(logits, dim=1)\n        return -(target * log_probs).sum(dim=1).mean()\n",
+       "new_str": "    \"\"\"Cross-entropy plus reverse-CE penalty.\"\"\"\n\n    def __init__(self):\n        self.alpha = 1.0\n        self.beta = 0.5\n\n    def compute_loss(self, logits, labels, epoch):\n        ce = F.cross_entropy(logits, labels)\n        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)\n        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)\n        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()\n        return self.alpha * ce + self.beta * rce\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/poison/custom_robust_loss.py (lines 2..12). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=symmetric_ce seq=4]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:symmetric_ce` (`is_final,true`), seed 42 (the single configured seed; mean equals the seed value).\n\n## resnet20-cifar10-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9076 | 0.0802 | 0.9137 |\n| **mean** | **0.9076** | **0.0802** | **0.9137** |\n\n## vgg16bn-cifar100-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.7032 | 0.1806 | 0.7613 |\n| **mean** | **0.7032** | **0.1806** | **0.7613** |\n\n## mobilenetv2-fmnist-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9431 | 0.0067 | 0.9682 |\n| **mean** | **0.9431** | **0.0067** | **0.9682** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=generalized_ce seq=5]]",
+   "content": "[[SAY rung=3 slug=generalized_ce seq=5]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/poison/custom_robust_loss.py",
+       "old_str": "    \"\"\"Cross-entropy plus reverse-CE penalty.\"\"\"\n\n    def __init__(self):\n        self.alpha = 1.0\n        self.beta = 0.5\n\n    def compute_loss(self, logits, labels, epoch):\n        ce = F.cross_entropy(logits, labels)\n        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)\n        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)\n        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()\n        return self.alpha * ce + self.beta * rce\n",
+       "new_str": "    \"\"\"Generalized cross-entropy for noisy labels.\"\"\"\n\n    def __init__(self):\n        self.q = 0.7\n\n    def compute_loss(self, logits, labels, epoch):\n        probs = torch.softmax(logits, dim=1)\n        p = probs.gather(1, labels[:, None]).clamp_min(1e-8)\n        return ((1.0 - p.pow(self.q)) / self.q).mean()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/poison/custom_robust_loss.py (lines 2..13). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=generalized_ce seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:generalized_ce` (`is_final,true`), seed 42 (the single configured seed; mean equals the seed value).\n\n## resnet20-cifar10-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9055 | 0.0404 | 0.9325 |\n| **mean** | **0.9055** | **0.0404** | **0.9325** |\n\n## vgg16bn-cifar100-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.6674 | 0.0264 | 0.8205 |\n| **mean** | **0.6674** | **0.0264** | **0.8205** |\n\n## mobilenetv2-fmnist-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9335 | 0.0050 | 0.9643 |\n| **mean** | **0.9335** | **0.0050** | **0.9643** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=3 seq=7]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured results — `baseline:generalized_ce` (`is_final,true`), seed 42 (the single configured seed; mean equals the seed value).\n\n## resnet20-cifar10-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9055 | 0.0404 | 0.9325 |\n| **mean** | **0.9055** | **0.0404** | **0.9325** |\n\n## vgg16bn-cifar100-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.6674 | 0.0264 | 0.8205 |\n| **mean** | **0.6674** | **0.0264** | **0.8205** |\n\n## mobilenetv2-fmnist-labelflip\n| seed | test_acc | poison_fit | robust_score |\n|---|---|---|---|\n| 42 | 0.9335 | 0.0050 | 0.9643 |\n| **mean** | **0.9335** | **0.0050** | **0.9643** |"
+  }
+ ]
+}

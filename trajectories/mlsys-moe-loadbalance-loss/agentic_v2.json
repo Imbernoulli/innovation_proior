@@ -1,0 +1,342 @@
+{
+ "task": "mlsys-moe-loadbalance-loss",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "workspace/custom_mlsys_moe_loadbalance_loss.py",
+ "filename_source": "synthesized",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 4,
+ "n_edit_ops": 5,
+ "best_test": 4,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA Mixture-of-Experts (MoE) layer replaces a dense feed-forward block with `N` expert FFNs and a small **router** that, for every token, emits a probability vector over the experts and sends the token to its **top-K** experts. Sparse scaling lets model capacity grow with `N` while per-token compute stays at `K` experts. The router is trained jointly with the language model by the cross-entropy objective.\n\nIn practice, MoE training often couples an auxiliary **load-balancing loss** `L_balance` added to the cross-entropy:\n\n```\nL_total = L_CE + λ · L_balance\n```\n\n`L_balance` is a differentiable penalty, computed from the router's own statistics, that encourages the router to spread token assignments across experts. What formulations of `L_balance` are effective for this role?\n\n## Prior art / Background / Baselines\n\n- **Switch Transformer / GShard auxiliary loss (Lepikhin et al. 2020; Fedus et al. 2021).** The standard formulation is a penalty proportional to `N · Σ_i f_i · P_i`, where `f_i` is the fraction of tokens dispatched to expert `i` and `P_i` is the mean router probability mass assigned to expert `i`. The product gives a differentiable proxy for load imbalance, and `f_i` is computed on the local micro-batch.\n\n- **DeepSeek auxiliary-loss-free balancing (Wang et al. 2024).** This approach maintains a per-expert bias added only to routing scores for top-K selection, updating it once per step based on recent load: over-used experts lose bias, under-used experts gain bias. The router weights receive no gradient from this balancing mechanism.\n\n- **Global-batch load-balancing loss (Qiu et al. 2025).** This keeps the Switch penalty form but computes `f_i` over the **global batch** rather than the local micro-batch, on the premise that load balance is a corpus-level property.\n\n## Fixed substrate / Code framework\n\nThe loss plugs into an otherwise fixed MoE training stack: token embeddings, `N`-expert top-K MoE blocks with a linear router producing a softmax probability vector `P` per token, a dispatch/combine around the expert FFNs, a language-model head, and a cross-entropy objective. From each MoE layer the router exposes exactly two statistics the loss may use:\n\n- `P_{ℓ,i}` — the **mean router probability mass** on expert `i` in layer `ℓ`, averaged over the tokens in scope. Differentiable in the router weights.\n- `f_{ℓ,i}` — the **fraction of (token, slot) assignments** routed to expert `i` in layer `ℓ`. A hard count; non-differentiable (its gradient must enter through the `P` it multiplies).\n\n`N`, `K`, the model, the data, the optimizer, and the CE objective are frozen. Only the function that turns `{P_{ℓ,i}, f_{ℓ,i}}` into the scalar `L_balance` is editable.\n\n## Editable interface\n\nExactly one function is editable: the per-step balancing loss. Every rung on the ladder is a different body for it. The control (no balancing) returns zero.\n\n```python\nimport torch\n\nN_EXPERTS = 8     # N\nTOP_K = 2         # K\n# probs_list[ℓ]: [tokens, N]  router softmax (P, differentiable)\n# topi_list[ℓ]:  [tokens, K]  chosen expert ids per token (hard, for the counts f)\n\ndef layer_f_P(probs, topi, N):\n    \"\"\"f_i = fraction of (token,slot) assignments to expert i; P_i = mean router prob mass.\"\"\"\n    counts = torch.bincount(topi.reshape(-1), minlength=N).float()\n    f = counts / counts.sum()        # hard counts -> non-differentiable\n    P = probs.mean(0)                # mean router probability -> differentiable\n    return f, P\n\n# ---- EDITABLE: the load-balancing loss added to L_CE. Default = no balancing. ----\ndef balance_loss(probs_list, topi_list, N):\n    return torch.tensor(0.0)         # control: router is free to collapse\n```\n\nThe loss must be a single scalar, differentiable in the router parameters through `P`, and must not drop tokens or alter the architecture. Everything else (how `f`, `P` are computed; the model; the data) is fixed.\n\n## Evaluation settings\n\nTwo numbers are measured on held-out data after training, and the design is judged on their trade-off:\n\n- **Language-model cross-entropy** `L_CE` — the model's actual task quality. A balancing loss that destroys specialization shows up as a higher CE.\n- **Load imbalance** `L_imb`, the L1 deviation of token allocation from uniform:\n\n  ```\n  L_imb = ½ · Σ_i | f_i − 1/N |,\n  ```\n\n  where `f_i` is the fraction of routed (token, slot) assignments that land on expert `i`. `L_imb` is `0` for perfectly uniform routing and approaches `1 − 1/N` for a fully collapsed one.\n\nThe two are combined into a single fitness to be **maximized**:\n\n```\nr = − ( L_CE + L_imb ).\n```\n\nSo a good balancing loss is one that drives `L_imb` toward `0` while keeping `L_CE` as low as a well-trained model allows — the best `r` is the best joint point, not the lowest imbalance alone.\n\nRecent large-scale MoE load-balance evaluations train models on the order of 556M parameters with `N=64` total experts and `K=8` active, using roughly 2B FineWeb tokens and a balancing weight near `λ = 0.01`, and compare baselines on downstream benchmarks. **This trajectory uses a deliberately small reproduction:** a tiny Transformer-style MoE (`N=8`, top-`K=2`, 2 MoE layers, `d=64`) on a synthetic latent-topic next-token task with genuine structure for experts to specialize on, run for a few thousand steps on CPU. Every reported `L_CE`, perplexity, and `L_imb` is the mean over 20 fresh held-out evaluation batches of a really-trained model; the fitness is `r = −(L_CE + L_imb)`. The fixed yardstick is the no-balancing control (router collapses, large `L_imb`) at the bottom and the strongest existing baseline at the top.\n\n## workspace/custom_mlsys_moe_loadbalance_loss.py  [EDITABLE — entire file]\n```python\n     1: import torch\n     2: \n     3: N_EXPERTS = 8     # N\n     4: TOP_K = 2         # K\n     5: # probs_list[ℓ]: [tokens, N]  router softmax (P, differentiable)\n     6: # topi_list[ℓ]:  [tokens, K]  chosen expert ids per token (hard, for the counts f)\n     7: \n     8: def layer_f_P(probs, topi, N):\n     9:     \"\"\"f_i = fraction of (token,slot) assignments to expert i; P_i = mean router prob mass.\"\"\"\n    10:     counts = torch.bincount(topi.reshape(-1), minlength=N).float()\n    11:     f = counts / counts.sum()        # hard counts -> non-differentiable\n    12:     P = probs.mean(0)                # mean router probability -> differentiable\n    13:     return f, P\n    14: \n    15: # ---- EDITABLE: the load-balancing loss added to L_CE. Default = no balancing. ----\n    16: def balance_loss(probs_list, topi_list, N):\n    17:     return torch.tensor(0.0)         # control: router is free to collapse\n```\n\n## Your Budget\n- **Action budget**: 9 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 4 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=no-balance seq=1]]",
+   "content": "[[SAY rung=1 slug=no-balance seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_mlsys_moe_loadbalance_loss.py",
+       "old_str": "N_EXPERTS = 8     # N\nTOP_K = 2         # K\n# probs_list[ℓ]: [tokens, N]  router softmax (P, differentiable)\n# topi_list[ℓ]:  [tokens, K]  chosen expert ids per token (hard, for the counts f)\n\ndef layer_f_P(probs, topi, N):\n    \"\"\"f_i = fraction of (token,slot) assignments to expert i; P_i = mean router prob mass.\"\"\"\n    counts = torch.bincount(topi.reshape(-1), minlength=N).float()\n    f = counts / counts.sum()        # hard counts -> non-differentiable\n    P = probs.mean(0)                # mean router probability -> differentiable\n    return f, P\n\n# ---- EDITABLE: the load-balancing loss added to L_CE. Default = no balancing. ----\ndef balance_loss(probs_list, topi_list, N):\n    return torch.tensor(0.0)         # control: router is free to collapse\n",
+       "new_str": "def balance_loss(probs_list, topi_list, N):\n    \"\"\"Control: no load balancing. The router is free to collapse.\"\"\"\n    return torch.tensor(0.0)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_mlsys_moe_loadbalance_loss.py (lines 3..17). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=no-balance seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (3 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `no-balance` (control, `balance_loss → 0`). Small-scale reproduction: tiny MoE\n(`N=8` experts, top-`K=2`, 2 MoE layers, `d=64`), synthetic latent-topic next-token task, 1200\ntraining steps, AdamW. `L_CE`, perplexity, and `L_imb` are the mean over 20 fresh held-out batches\nof the trained model; `r = −(L_CE + L_imb)`. Seed 1234.\n\n| Variant | `L_CE` | perplexity | `L_imb` | fitness `r` |\n|---|---|---|---|---|\n| no-balance (control) | 3.7280 | 41.594 | 0.1286 | −3.8566 |\n\nNotes: with no balancing term the router is visibly skewed — `L_imb = 0.1286`, where `0` is uniform\nand the ceiling at `N=8` is `1 − 1/8 = 0.875`. The cross-entropy is unremarkable (perplexity 41.6),\nconfirming the diagnosis: collapse barely hurts the LM loss, which is exactly why the LM loss does\nnothing to prevent it. This is the honest floor — the imbalance every later rung must cut and the\nfitness `r` every later rung must beat. (Reference scale: ShinkaEvolve's own eval used a\n556M/82M-active MoE, `N=64` top-8, ~2.10B FineWeb tokens, arXiv:2509.19349; this is a deliberately\nsmall reproduction of the mechanism.)"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=switch-aux seq=3]]",
+   "content": "[[SAY rung=2 slug=switch-aux seq=3]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_mlsys_moe_loadbalance_loss.py",
+       "old_str": "def balance_loss(probs_list, topi_list, N):\n    \"\"\"Control: no load balancing. The router is free to collapse.\"\"\"\n    return torch.tensor(0.0)\n",
+       "new_str": "def layer_f_P(probs, topi, N):\n    counts = torch.bincount(topi.reshape(-1), minlength=N).float()\n    f = counts / counts.sum()          # hard counts (non-differentiable)\n    P = probs.mean(0)                  # mean router prob mass (differentiable)\n    return f, P\n\ndef balance_loss_switch(probs_list, topi_list, N, alpha=1e-2):\n    \"\"\"Switch/GShard aux loss: alpha * N * sum_i f_i P_i, f over the micro-batch.\"\"\"\n    total = 0.0\n    for probs, topi in zip(probs_list, topi_list):\n        f, P = layer_f_P(probs, topi, N)\n        total = total + N * (f.detach() * P).sum()   # gradient enters via P\n    return alpha * total / len(probs_list)\n\n# At training time f is computed per micro-batch: split the batch into 4 micro-splits,\n# evaluate balance_loss_switch on each, and average — the micro-batch locality penalty.\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_mlsys_moe_loadbalance_loss.py (lines 3..5). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=switch-aux seq=4]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `switch-aux` (Switch/GShard aux loss `α·N·Σ_i f_i P_i`, `α=1e-2`, `f` on 4\nmicro-splits). Same tiny MoE, task, steps, seed, and held-out protocol as the control.\n\n| Variant | `L_CE` | perplexity | `L_imb` | fitness `r` |\n|---|---|---|---|---|\n| no-balance (control) | 3.7280 | 41.594 | 0.1286 | −3.8566 |\n| **switch-aux** | **3.7281** | **41.599** | **0.0587** | **−3.7868** |\n\nNotes: the aux loss cuts imbalance by **2.2×** (0.1286 → 0.0587) at essentially flat cross-entropy\n(Δ`L_CE` = +0.0001, within run noise), so fitness rises from −3.8566 to −3.7868 (+0.0698, almost all\nfrom the imbalance term). The `f·P` surrogate works as designed — the differentiable `P` carries the\nbalancing gradient steered by the detached counts `f`. The micro-batch `f` is the known limitation\n(over-constrains each slice); at this small scale the slices are fairly representative, so the\nspecialization cost does not yet show as a visible CE penalty — the next rung's global `f` is at\nleast as good on CE and sets up the under-use rescue."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=global-lbl seq=5]]",
+   "content": "[[SAY rung=3 slug=global-lbl seq=5]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_mlsys_moe_loadbalance_loss.py",
+       "old_str": "    f = counts / counts.sum()          # hard counts (non-differentiable)\n    P = probs.mean(0)                  # mean router prob mass (differentiable)\n    return f, P\n\ndef balance_loss_switch(probs_list, topi_list, N, alpha=1e-2):\n    \"\"\"Switch/GShard aux loss: alpha * N * sum_i f_i P_i, f over the micro-batch.\"\"\"\n    total = 0.0\n    for probs, topi in zip(probs_list, topi_list):\n        f, P = layer_f_P(probs, topi, N)\n        total = total + N * (f.detach() * P).sum()   # gradient enters via P\n    return alpha * total / len(probs_list)\n\n# At training time f is computed per micro-batch: split the batch into 4 micro-splits,\n# evaluate balance_loss_switch on each, and average — the micro-batch locality penalty.\n",
+       "new_str": "    f = counts / counts.sum()\n    P = probs.mean(0)\n    return f, P\n\ndef balance_loss_global(probs_list, topi_list, N, alpha=1e-2):\n    \"\"\"Global-batch LBL: alpha * N * sum_i f_i P_i, f computed over the GLOBAL batch.\"\"\"\n    total = 0.0\n    for probs, topi in zip(probs_list, topi_list):\n        f, P = layer_f_P(probs, topi, N)          # f over the full (global) batch\n        total = total + N * (f.detach() * P).sum()\n    return alpha * total / len(probs_list)\n\n# Optional DeepSeek auxiliary-loss-free bias (selection-only, no aux gradient):\n#   biased top-k uses (router_logits + b);  after each step, per layer:\n#   f, _ = layer_f_P(probs, topi, N);  c = f * N;  cbar = c.mean()\n#   b += u * torch.sign(cbar - c)         # u = 1e-3\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_mlsys_moe_loadbalance_loss.py (lines 5..18). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=global-lbl seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `global-lbl` (global-batch `α·N·Σ_i f_i P_i`, `α=1e-2`, `f` over the full batch),\nreported both alone and paired with DeepSeek's auxiliary-loss-free selection bias (`u=1e-3`,\nselection-only, no aux gradient). Same tiny MoE, task, steps, seed, held-out protocol.\n\n| Variant | `L_CE` | perplexity | `L_imb` | fitness `r` |\n|---|---|---|---|---|\n| no-balance (control) | 3.7280 | 41.594 | 0.1286 | −3.8566 |\n| switch-aux | 3.7281 | 41.599 | 0.0587 | −3.7868 |\n| global-lbl | 3.7279 | 41.592 | 0.0561 | −3.7840 |\n| **global-lbl + loss-free bias** | **3.7274** | **41.570** | **0.0160** | **−3.7434** |\n\nNotes: global-batch LBL alone slightly improves on the Switch loss's balance (`L_imb` 0.0561 vs\n0.0587) at a hair lower CE (41.592 vs 41.599) — consistent with the global scope not\nover-constraining slices, though at this small scale where micro-splits are representative the gap\nover Switch is marginal. The decisive effect is the **loss-free bias**: as a direct hard-count\ncontroller on the top-K selection it drives imbalance down **3.5×** (0.0561 → 0.0160), the lowest of\nany rung, lifting\nfitness to −3.7434 with CE actually slightly improved. This is an honest, expected outcome — a count\ncontroller balances counts more aggressively than a smooth `f·P` gradient. Its limitation is what\nmotivates the endpoint: the bias balances the *average* count but gives the router no gradient signal\nabout balance, and neither it nor the smooth term specifically rescues the under-used tail through\nthe router's own probabilities — the entropy-hinge does."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=4 slug=shinka-entropy-hinge seq=7]]",
+   "content": "[[SAY rung=4 slug=shinka-entropy-hinge seq=7]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_mlsys_moe_loadbalance_loss.py",
+       "old_str": "def balance_loss_global(probs_list, topi_list, N, alpha=1e-2):\n    \"\"\"Global-batch LBL: alpha * N * sum_i f_i P_i, f computed over the GLOBAL batch.\"\"\"\n    total = 0.0\n    for probs, topi in zip(probs_list, topi_list):\n        f, P = layer_f_P(probs, topi, N)          # f over the full (global) batch\n        total = total + N * (f.detach() * P).sum()\n    return alpha * total / len(probs_list)\n\n# Optional DeepSeek auxiliary-loss-free bias (selection-only, no aux gradient):\n#   biased top-k uses (router_logits + b);  after each step, per layer:\n#   f, _ = layer_f_P(probs, topi, N);  c = f * N;  cbar = c.mean()\n#   b += u * torch.sign(cbar - c)         # u = 1e-3\n",
+       "new_str": "def balance_loss_shinka(probs_list, topi_list, N):\n    \"\"\"ShinkaEvolve discovered loss:\n       global-batch LBL + entropy-weighted under-utilization hinge.\"\"\"\n    L = len(probs_list)\n    tau = 0.064 / N\n    term1 = 0.0\n    term2 = 0.0\n    for probs, topi in zip(probs_list, topi_list):\n        f, P = layer_f_P(probs, topi, N)\n        term1 = term1 + N * (f.detach() * P).sum()                 # global-batch LBL\n        Pn = P / (P.sum() + 1e-9)\n        H = -(Pn * (Pn + 1e-9).log()).sum()                        # router entropy\n        s = 0.5 + (1.0 - H / math.log(N))                          # entropy-complement weight\n        under = (tau - f.detach() > 0).float()                     # experts below the floor\n        # hinge gradient flows through P of the under-used experts (raise their mass)\n        term2 = term2 + s.detach() * (under * torch.clamp(tau - P, min=0.0)).sum()\n    return (term1 / L) + (0.1 / L) * term2\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_mlsys_moe_loadbalance_loss.py (lines 9..20). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=4 slug=shinka-entropy-hinge seq=8]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_mlsys_moe_loadbalance_loss.py",
+       "old_str": "import torch\n",
+       "new_str": "import math\nimport torch\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_mlsys_moe_loadbalance_loss.py (lines 1..1). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=4 slug=shinka-entropy-hinge seq=9]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #4] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured result — `shinka-entropy-hinge` (ShinkaEvolve discovered loss, arXiv:2509.19349 Eq. 1:\nglobal-batch LBL + entropy-weighted under-utilization hinge, `τ=0.064/N`,\n`s(P_ℓ)=0.5+(1−H(P_ℓ)/log N)`, hinge coefficient `0.1/L`). Same tiny MoE, task, steps, seed,\nheld-out protocol. Full ladder:\n\n| Variant | `L_CE` | perplexity | `L_imb` | fitness `r` |\n|---|---|---|---|---|\n| no-balance (control) | 3.7280 | 41.594 | 0.1286 | −3.8566 |\n| switch-aux (micro-batch `f·P`) | 3.7281 | 41.599 | 0.0587 | −3.7868 |\n| global-lbl (global `f·P`) | 3.7279 | 41.592 | 0.0561 | −3.7840 |\n| global-lbl + loss-free bias | 3.7274 | 41.570 | 0.0160 | −3.7434 |\n| **shinka-entropy-hinge** | **3.7276** | **41.579** | **0.0188** | **−3.7464** |\n\nNotes: among the **pure differentiable losses** the discovered loss is the best balance/CE point —\nit cuts imbalance from global-LBL's 0.0561 to **0.0188** (a 3.0× improvement over plain global, 6.8×\nover the control) at essentially unchanged CE (41.579 vs 41.592), lifting fitness from −3.7840 to\n−3.7464. This is exactly the predicted mechanism: the entropy-gated hinge actively rescues the\nunder-floor experts (which the smooth `f·P` term only averages over) without touching the healthy\nones, so balance improves with no specialization cost in CE. The one variant with lower imbalance,\n`global-lbl + loss-free bias` (0.0160), wins via a *non-gradient* hard-count selection controller —\na complementary mechanism, not a competing loss; the two are orthogonal and stack in principle.\nAmong loss functions scored on the ShinkaEvolve fitness, the entropy-hinge is the endpoint.\n\nThis is a deliberately small reproduction. The discovered loss's authoritative form is Eq. 1 of\narXiv:2509.19349 (the released repo github.com/SakanaAI/ShinkaEvolve does not ship the MoE example\ncode; the paper formula was confirmed verbatim). ShinkaEvolve's own eval: 556M/82M-active MoE,\n`N=64` top-8, ~2.10B FineWeb tokens, `λ=0.01`, beating DeepSeek/Qwen global-batch LBL on seven\ndownstream benchmarks — a scale this reproduction reproduces in mechanism and ordering, not in size."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=4 seq=10]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 4
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #4 as final.\n\nMeasured result — `shinka-entropy-hinge` (ShinkaEvolve discovered loss, arXiv:2509.19349 Eq. 1:\nglobal-batch LBL + entropy-weighted under-utilization hinge, `τ=0.064/N`,\n`s(P_ℓ)=0.5+(1−H(P_ℓ)/log N)`, hinge coefficient `0.1/L`). Same tiny MoE, task, steps, seed,\nheld-out protocol. Full ladder:\n\n| Variant | `L_CE` | perplexity | `L_imb` | fitness `r` |\n|---|---|---|---|---|\n| no-balance (control) | 3.7280 | 41.594 | 0.1286 | −3.8566 |\n| switch-aux (micro-batch `f·P`) | 3.7281 | 41.599 | 0.0587 | −3.7868 |\n| global-lbl (global `f·P`) | 3.7279 | 41.592 | 0.0561 | −3.7840 |\n| global-lbl + loss-free bias | 3.7274 | 41.570 | 0.0160 | −3.7434 |\n| **shinka-entropy-hinge** | **3.7276** | **41.579** | **0.0188** | **−3.7464** |\n\nNotes: among the **pure differentiable losses** the discovered loss is the best balance/CE point —\nit cuts imbalance from global-LBL's 0.0561 to **0.0188** (a 3.0× improvement over plain global, 6.8×\nover the control) at essentially unchanged CE (41.579 vs 41.592), lifting fitness from −3.7840 to\n−3.7464. This is exactly the predicted mechanism: the entropy-gated hinge actively rescues the\nunder-floor experts (which the smooth `f·P` term only averages over) without touching the healthy\nones, so balance improves with no specialization cost in CE. The one variant with lower imbalance,\n`global-lbl + loss-free bias` (0.0160), wins via a *non-gradient* hard-count selection controller —\na complementary mechanism, not a competing loss; the two are orthogonal and stack in principle.\nAmong loss functions scored on the ShinkaEvolve fitness, the entropy-hinge is the endpoint.\n\nThis is a deliberately small reproduction. The discovered loss's authoritative form is Eq. 1 of\narXiv:2509.19349 (the released repo github.com/SakanaAI/ShinkaEvolve does not ship the MoE example\ncode; the paper formula was confirmed verbatim). ShinkaEvolve's own eval: 556M/82M-active MoE,\n`N=64` top-8, ~2.10B FineWeb tokens, `λ=0.01`, beating DeepSeek/Qwen global-batch LBL on seven\ndownstream benchmarks — a scale this reproduction reproduces in mechanism and ordering, not in size."
+  }
+ ]
+}

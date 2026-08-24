@@ -1,0 +1,375 @@
+{
+ "task": "security-backdoor-defense",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 2,
+ "n_edit_ops": 8,
+ "best_test": 2,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA model is trained on data whose provenance the user does not control. An adversary injects a small fraction of training images carrying a fixed trigger — a corner patch or a faint blended pattern — and relabels them to an attacker-chosen target class. The trained model keeps clean test accuracy but classifies any triggered input as the target: a backdoor.\n\nThe design task is a poisoned-sample scoring rule. After the fixed harness trains the model, it provides the penultimate-layer features and logits for every training example. The defense must assign each example a suspicion score; the harness drops the highest-scoring fraction and retrains from scratch. Everything else — architecture, poison injection, removal budget, and retrain schedule — is frozen.\n\n## Prior art / Background / Baselines\n\n- **BadNets / Blended attacks** — the threat model. Core idea: stamp a small trigger on a fraction of one class, relabel those examples to the target class, and train normally; the model learns trigger → target while clean accuracy stays high.\n\n- **Confidence / per-class statistics** — a simple defense baseline. Core idea: score each point by softmax confidence on its label, or by a per-class confidence z-score, because poisoned examples are often classified confidently into the target.\n\n## Fixed substrate / Code framework\n\nThe harness is frozen. It: (1) builds a poisoned training set for a fixed trigger; (2) trains the victim model for 100 epochs (SGD, `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`, cosine annealing); (3) extracts penultimate-layer features and logits for the full training set; (4) calls the defense; (5) removes the top `1.5 * eps` fraction of highest-scoring samples and retrains from scratch for 100 epochs on the filtered set; (6) evaluates clean accuracy and attack success rate on triggered test inputs.\n\nThe objective is `defense_score = 0.5 * clean_acc + 0.5 * (1 - asr)`. The filter-stage `poison_recall` is reported as a diagnostic but is **not** part of `defense_score`: a defense that under-ranks poison but still gets the retrained model to forget the backdoor can still win, and a defense that ranks poison well but does not remove enough to break the shortcut will see `asr` stay high.\n\n## Editable interface\n\nOnly the `BackdoorDefense` class in `custom_backdoor_defense.py` is editable. The contract is:\n\n- `fit(features, labels, poison_fraction, **kwargs)` — `features` is `(N, D)` penultimate features, `labels` is `(N,)` training labels after poisoning, and `poison_fraction` upper-bounds the poison fraction. Cache any per-fit state needed for scoring.\n- `score_samples(features, logits)` — returns 1-D suspicion scores of length `N`, higher = more suspicious. `logits` is `(N, C)` and is offered by the interface but need not be used.\n\nThe starting point is the scaffold below, which scores by max softmax confidence. Each method replaces exactly this class body.\n\n```python\n# EDITABLE region of custom_backdoor_defense.py — default fill (max-confidence)\nimport numpy as np\nimport torch\n\n\nclass BackdoorDefense:\n    \"\"\"Sample-scoring defense for poisoned-example filtering.\n\n    Default baseline: score each sample by its max softmax confidence. Higher\n    scores indicate more suspicious (likely poisoned) examples; the fixed\n    harness removes the top fraction and retrains.\n    \"\"\"\n\n    def __init__(self):\n        self.class_means = None\n\n    def fit(self, features, labels, poison_fraction, **kwargs):\n        features = np.asarray(features)\n        labels = np.asarray(labels)\n        self.class_means = {}\n        for cls in np.unique(labels):\n            cls_features = features[labels == cls]\n            self.class_means[int(cls)] = cls_features.mean(axis=0)\n\n    def score_samples(self, features, logits):\n        probs = torch.softmax(torch.as_tensor(logits), dim=1).cpu().numpy()\n        return probs.max(axis=1)              # max-confidence suspicion score\n```\n\n## Evaluation settings\n\nThree benchmark settings, research-scale training, single seed `42`:\n\n- `resnet20-cifar10-badnets`: ResNet-20 on full CIFAR-10, BadNets trigger, 5% poison fraction.\n- `vgg16bn-cifar100-blend`: VGG-16-BN on full CIFAR-100, Blend trigger, 1% poison fraction.\n- `mobilenetv2-fmnist-badnets`: MobileNetV2 on full FashionMNIST, BadNets trigger, 8% poison fraction.\n\nReported per setting: `clean_acc` (higher better), `asr` (attack success rate on triggered test inputs, lower better), `poison_recall` (diagnostic), and `defense_score = 0.5*clean_acc + 0.5*(1-asr)` (ranking objective, higher better).\n\n## pytorch-vision/bench/backdoor/custom_backdoor_defense.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of custom_backdoor_defense.py — default fill (max-confidence)\n     2: import numpy as np\n     3: import torch\n     4: \n     5: \n     6: class BackdoorDefense:\n     7:     \"\"\"Sample-scoring defense for poisoned-example filtering.\n     8: \n     9:     Default baseline: score each sample by its max softmax confidence. Higher\n    10:     scores indicate more suspicious (likely poisoned) examples; the fixed\n    11:     harness removes the top fraction and retrains.\n    12:     \"\"\"\n    13: \n    14:     def __init__(self):\n    15:         self.class_means = None\n    16: \n    17:     def fit(self, features, labels, poison_fraction, **kwargs):\n    18:         features = np.asarray(features)\n    19:         labels = np.asarray(labels)\n    20:         self.class_means = {}\n    21:         for cls in np.unique(labels):\n    22:             cls_features = features[labels == cls]\n    23:             self.class_means[int(cls)] = cls_features.mean(axis=0)\n    24: \n    25:     def score_samples(self, features, logits):\n    26:         probs = torch.softmax(torch.as_tensor(logits), dim=1).cpu().numpy()\n    27:         return probs.max(axis=1)              # max-confidence suspicion score\n```\n\n## Your Budget\n- **Action budget**: 10 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 2 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=activation-clustering seq=1]]",
+   "content": "[[SAY rung=1 slug=activation-clustering seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "        self.class_means = None\n\n    def fit(self, features, labels, poison_fraction, **kwargs):\n        features = np.asarray(features)\n        labels = np.asarray(labels)\n        self.class_means = {}\n        for cls in np.unique(labels):\n            cls_features = features[labels == cls]\n            self.class_means[int(cls)] = cls_features.mean(axis=0)\n\n    def score_samples(self, features, logits):\n        probs = torch.softmax(torch.as_tensor(logits), dim=1).cpu().numpy()\n        return probs.max(axis=1)              # max-confidence suspicion score\n",
+       "new_str": "        self.class_labels_cluster = {}   # cls -> array of cluster labels per sample\n        self.class_small_center = {}     # cls -> centroid of smaller cluster\n        self.class_indices = {}          # cls -> global indices\n\n    def _kmeans2(self, X, max_iter=50):\n        \"\"\"Simple 2-means on rows of X. Returns labels (0 or 1).\"\"\"\n        n = len(X)\n        # Initialise with two spread-out points (deterministic)\n        idx0, idx1 = 0, n // 2\n        c0, c1 = X[idx0].copy(), X[idx1].copy()\n        labels = np.zeros(n, dtype=int)\n        for _ in range(max_iter):\n            d0 = np.linalg.norm(X - c0, axis=1)\n            d1 = np.linalg.norm(X - c1, axis=1)\n            new_labels = (d1 < d0).astype(int)   # 0 = closer to c0, 1 = closer to c1\n            if np.array_equal(new_labels, labels):\n                break\n            labels = new_labels\n            mask0 = labels == 0\n            mask1 = labels == 1\n            if mask0.any():\n                c0 = X[mask0].mean(axis=0)\n            if mask1.any():\n                c1 = X[mask1].mean(axis=0)\n        # Determine which cluster is smaller (= poison, minority assumption)\n        n0 = (labels == 0).sum()\n        n1 = (labels == 1).sum()\n        small_label = 0 if n0 <= n1 else 1\n        small_center = c0 if small_label == 0 else c1\n        return labels, small_label, small_center\n\n    def fit(self, features, labels, poison_fraction, **kwargs):\n        features = np.asarray(features, dtype=np.float64)\n        labels_arr = np.asarray(labels)\n        for cls in np.unique(labels_arr):\n            mask = labels_arr == cls\n            cls_feat = features[mask]\n            indices = np.where(mask)[0]\n            self.class_indices[int(cls)] = indices\n            if len(cls_feat) < 4:\n                # Too few samples to cluster\n                self.class_labels_cluster[int(cls)] = np.zeros(len(cls_feat), dtype=int)\n                self.class_small_center[int(cls)] = cls_feat.mean(axis=0)\n                continue\n            clust_labels, small_label, small_center = self._kmeans2(cls_feat)\n            self.class_labels_cluster[int(cls)] = (clust_labels == small_label).astype(int)\n            self.class_small_center[int(cls)] = small_center\n\n    def score_samples(self, features, logits):\n        features = np.asarray(features, dtype=np.float64)\n        scores = np.zeros(len(features))\n        for cls in self.class_indices:\n            indices = self.class_indices[cls]\n            is_small = self.class_labels_cluster[cls]\n            small_center = self.class_small_center[cls]\n            for j, global_idx in enumerate(indices):\n                # Dominant term: membership in the smaller (poison) cluster\n                membership_score = float(is_small[j]) * 10.0\n                # Tie-breaker: closeness to the small-cluster core\n                dist = np.linalg.norm(features[global_idx] - small_center)\n                closeness = 1.0 / (dist + 1e-8)\n                scores[global_idx] = membership_score + closeness\n        return scores\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 15..27). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=1 slug=activation-clustering seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "    \"\"\"Sample-scoring defense for poisoned-example filtering.\n\n    Default baseline: score each sample by its max softmax confidence. Higher\n    scores indicate more suspicious (likely poisoned) examples; the fixed\n    harness removes the top fraction and retrains.\n",
+       "new_str": "    \"\"\"Per-class 2-means activation clustering (Chen et al., 2018).\n\n    For each class, split features into two clusters via k-means.\n    The smaller cluster in a class is likely the poisoned sub-population.\n    Samples belonging to the smaller cluster get high suspicion scores.\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 7..11). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=1 slug=activation-clustering seq=3]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "# EDITABLE region of custom_backdoor_defense.py — default fill (max-confidence)\n",
+       "new_str": "# EDITABLE region of custom_backdoor_defense.py — step 1: activation clustering (Chen et al., 2018)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 1..1). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=activation-clustering seq=4]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:activation_clustering` (`is_final,true`), seed 42.\n\n| setting | clean_acc | asr | poison_recall | defense_score |\n|---|---|---|---|---|\n| resnet20-cifar10-badnets | 0.9209 | 0.9729 | 0.0016 | 0.4740 |\n| vgg16bn-cifar100-blend | 0.6467 | 1.0000 | 0.0000 | 0.3234 |\n| mobilenetv2-fmnist-badnets | 0.9472 | 1.0000 | 0.0000 | 0.4736 |\n| **mean** | **0.8383** | **0.9910** | **0.0005** | **0.4237** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=spectral-signature seq=5]]",
+   "content": "[[SAY rung=2 slug=spectral-signature seq=5]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "        scores = np.zeros(len(features))\n        for cls in self.class_indices:\n            indices = self.class_indices[cls]\n            is_small = self.class_labels_cluster[cls]\n            small_center = self.class_small_center[cls]\n            for j, global_idx in enumerate(indices):\n                # Dominant term: membership in the smaller (poison) cluster\n                membership_score = float(is_small[j]) * 10.0\n                # Tie-breaker: closeness to the small-cluster core\n                dist = np.linalg.norm(features[global_idx] - small_center)\n                closeness = 1.0 / (dist + 1e-8)\n                scores[global_idx] = membership_score + closeness\n",
+       "new_str": "        # Use TRAINING LABELS (cached in fit) to pick the per-class\n        # direction.  Using argmax(logits) would mismatch any sample whose\n        # prediction disagrees with its training label.\n        if self.cached_labels is not None and len(self.cached_labels) == len(features):\n            cls_for_sample = self.cached_labels\n        else:\n            cls_for_sample = np.asarray(logits).argmax(axis=1)\n\n        scores = np.zeros(len(features), dtype=np.float64)\n        for cls, direction in self.class_directions.items():\n            mask = (cls_for_sample == cls)\n            if not mask.any():\n                continue\n            centered = features[mask] - self.class_centers[cls]\n            proj = centered @ direction\n            scores[mask] = proj * proj  # tau_i = (centered . v)^2\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 65..76). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=2 slug=spectral-signature seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "        labels_arr = np.asarray(labels)\n        for cls in np.unique(labels_arr):\n            mask = labels_arr == cls\n            cls_feat = features[mask]\n            indices = np.where(mask)[0]\n            self.class_indices[int(cls)] = indices\n            if len(cls_feat) < 4:\n                # Too few samples to cluster\n                self.class_labels_cluster[int(cls)] = np.zeros(len(cls_feat), dtype=int)\n                self.class_small_center[int(cls)] = cls_feat.mean(axis=0)\n                continue\n            clust_labels, small_label, small_center = self._kmeans2(cls_feat)\n            self.class_labels_cluster[int(cls)] = (clust_labels == small_label).astype(int)\n            self.class_small_center[int(cls)] = small_center\n",
+       "new_str": "        labels = np.asarray(labels)\n        self.cached_labels = labels.copy()\n        for cls in np.unique(labels):\n            mask = labels == cls\n            cls_feat = features[mask]\n            if cls_feat.shape[0] < 2:\n                # Degenerate class; zero direction\n                self.class_centers[int(cls)] = cls_feat.mean(axis=0) if len(cls_feat) else np.zeros(features.shape[1])\n                self.class_directions[int(cls)] = np.zeros(features.shape[1])\n                continue\n            mu = cls_feat.mean(axis=0)\n            centered = cls_feat - mu\n            # Top right singular vector of the centered class matrix.\n            # np.linalg.svd returns vh with rows = right singular vectors.\n            _, _, vh = np.linalg.svd(centered, full_matrices=False)\n            self.class_centers[int(cls)] = mu\n            self.class_directions[int(cls)] = vh[0]\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 48..61). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=2 slug=spectral-signature seq=7]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "        self.class_labels_cluster = {}   # cls -> array of cluster labels per sample\n        self.class_small_center = {}     # cls -> centroid of smaller cluster\n        self.class_indices = {}          # cls -> global indices\n\n    def _kmeans2(self, X, max_iter=50):\n        \"\"\"Simple 2-means on rows of X. Returns labels (0 or 1).\"\"\"\n        n = len(X)\n        # Initialise with two spread-out points (deterministic)\n        idx0, idx1 = 0, n // 2\n        c0, c1 = X[idx0].copy(), X[idx1].copy()\n        labels = np.zeros(n, dtype=int)\n        for _ in range(max_iter):\n            d0 = np.linalg.norm(X - c0, axis=1)\n            d1 = np.linalg.norm(X - c1, axis=1)\n            new_labels = (d1 < d0).astype(int)   # 0 = closer to c0, 1 = closer to c1\n            if np.array_equal(new_labels, labels):\n                break\n            labels = new_labels\n            mask0 = labels == 0\n            mask1 = labels == 1\n            if mask0.any():\n                c0 = X[mask0].mean(axis=0)\n            if mask1.any():\n                c1 = X[mask1].mean(axis=0)\n        # Determine which cluster is smaller (= poison, minority assumption)\n        n0 = (labels == 0).sum()\n        n1 = (labels == 1).sum()\n        small_label = 0 if n0 <= n1 else 1\n        small_center = c0 if small_label == 0 else c1\n        return labels, small_label, small_center\n",
+       "new_str": "        self.class_centers = {}       # cls -> mean vector (D,)\n        self.class_directions = {}    # cls -> top right singular vector (D,)\n        self.cached_labels = None     # training labels from fit()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 15..44). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=2 slug=spectral-signature seq=8]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "    \"\"\"Per-class 2-means activation clustering (Chen et al., 2018).\n\n    For each class, split features into two clusters via k-means.\n    The smaller cluster in a class is likely the poisoned sub-population.\n    Samples belonging to the smaller cluster get high suspicion scores.\n",
+       "new_str": "    \"\"\"Per-class spectral signatures (Tran et al., NeurIPS 2018).\n\n    For each class c: compute the mean mu_c of its penultimate-layer\n    features, center them, take the top right singular vector v_c of\n    the centered matrix, and score each sample by\n        tau_i = ((r_i - mu_c) . v_c)^2.\n    Training labels from fit() route each sample to its class direction.\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 7..11). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=2 slug=spectral-signature seq=9]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/bench/backdoor/custom_backdoor_defense.py",
+       "old_str": "# EDITABLE region of custom_backdoor_defense.py — step 1: activation clustering (Chen et al., 2018)\n",
+       "new_str": "# EDITABLE region of custom_backdoor_defense.py — step 2: spectral signatures (Tran et al., 2018)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/bench/backdoor/custom_backdoor_defense.py (lines 1..1). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=spectral-signature seq=10]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:spectral_signature` (`is_final,true`), seed 42.\n\n| setting | clean_acc | asr | poison_recall | defense_score |\n|---|---|---|---|---|\n| resnet20-cifar10-badnets | 0.9211 | 0.9708 | 0.2688 | 0.4752 |\n| vgg16bn-cifar100-blend | 0.6470 | 0.9999 | 0.0000 | 0.3236 |\n| mobilenetv2-fmnist-badnets | 0.9373 | 1.0000 | 0.1192 | 0.4687 |\n| **mean** | **0.8351** | **0.9902** | **0.1293** | **0.4225** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=2 seq=11]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 2
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #2 as final.\n\nMeasured results — `baseline:spectral_signature` (`is_final,true`), seed 42.\n\n| setting | clean_acc | asr | poison_recall | defense_score |\n|---|---|---|---|---|\n| resnet20-cifar10-badnets | 0.9211 | 0.9708 | 0.2688 | 0.4752 |\n| vgg16bn-cifar100-blend | 0.6470 | 0.9999 | 0.0000 | 0.3236 |\n| mobilenetv2-fmnist-badnets | 0.9373 | 1.0000 | 0.1192 | 0.4687 |\n| **mean** | **0.8351** | **0.9902** | **0.1293** | **0.4225** |"
+  }
+ ]
+}

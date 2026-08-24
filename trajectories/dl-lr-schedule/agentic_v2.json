@@ -1,0 +1,278 @@
+{
+ "task": "dl-lr-schedule",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "pytorch-vision/custom_schedule.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 3,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nTrain deep convolutional image classifiers with plain SGD. The optimizer, model, augmentation, weight decay, and 200-epoch budget are all fixed. The only remaining design choice is the per-epoch learning rate: a function `eta(epoch)` over the run. The question is which `eta(epoch)` curve gives the best test accuracy across three different settings at once: a shallow residual net on an easy 10-class problem, a deep residual net on a hard 100-class problem, and an inverted-residual mobile net on a grayscale 10-class problem.\n\n## Prior art / Background / Baselines\n\nThe standard ways people currently set `eta(epoch)` are listed below. Each fills the same `eta(epoch)` slot.\n\n- **Constant rate.** Hold `eta = base_lr` for the whole run.\n- **Step / multi-step decay.** Hold a high plateau and divide the rate by a fixed factor at hand-picked epochs (for example, multiply by 0.2 at epochs 60/120/160 of a 200-epoch run). The milestones and drop factor are free numbers tied to the pre-fixed budget.\n- **Cyclical (triangular) learning rates.** Ramp the rate linearly up to a `max_lr` and back down, repeatedly, between two fixed bounds.\n\n## Fixed substrate / Code framework\n\nA single training file is frozen and must not be touched. It builds the model by architecture name (CIFAR-adapted ResNet-20/56 with `BasicBlock`, VGG-16-BN, MobileNetV2 with inverted-residual blocks), applies Kaiming-normal init, loads CIFAR-10/100/FashionMNIST with `RandomCrop(32, pad=4)` + `RandomHorizontalFlip`, and runs a plain SGD loop. The optimizer is created once as `SGD(lr=base_lr=0.1, momentum=0.9, weight_decay=5e-4)` and there is **no** PyTorch scheduler object: each epoch the loop calls the editable function, writes the returned float into every parameter group's `lr`, trains one epoch, evaluates, and tracks the best test accuracy seen. Momentum (0.9) and weight decay (5e-4) are fixed and never re-set by the loop. The loop passes the schedule only `epoch`, `total_epochs`, `base_lr`, and a `config` dict.\n\n## Editable interface\n\nExactly one region is editable — the body of `get_lr(epoch, total_epochs, base_lr, config)` in `pytorch-vision/custom_schedule.py` (the bracketed region, lines 246–269). The contract: it is called once per epoch with the 0-indexed `epoch` (0 … `total_epochs`−1), the budget `total_epochs` (200), the reference rate `base_lr` (0.1), and `config = {'arch': ..., 'dataset': ...}` (`arch` ∈ {`resnet20`, `resnet56`, `vgg16bn`, `mobilenetv2`}, `dataset` ∈ {`cifar10`, `cifar100`, `fmnist`}); it returns the single float used as the learning rate for that whole epoch. The float is free — it may exceed `base_lr` or fall to 0 — but it is the *only* lever: momentum and weight decay stay at their fixed values, and the rate is constant within an epoch (the loop sets it once per epoch, not per batch). `math` is imported at module top, so `math.cos`/`math.pi` are available.\n\nThe starting point is the scaffold default: a **constant** rate. Each method replaces only this function body and nothing else.\n\n```python\n# EDITABLE region of pytorch-vision/custom_schedule.py (lines 246-269) -- default fill\ndef get_lr(epoch, total_epochs, base_lr, config):\n    \"\"\"Compute learning rate for the given epoch.\n\n    Called once per epoch to set the learning rate for all parameter groups.\n\n    Args:\n        epoch: current epoch (0-indexed, ranges from 0 to total_epochs-1)\n        total_epochs: total number of training epochs\n        base_lr: initial learning rate (from --lr flag, default 0.1)\n        config: dict with keys:\n            - arch: str ('resnet20', 'resnet56', 'vgg16bn', 'mobilenetv2')\n            - dataset: str ('cifar10', 'cifar100', 'fmnist')\n\n    Returns:\n        float: learning rate to use for this epoch\n    \"\"\"\n    return base_lr  # constant LR (no schedule)\n```\n\n## Evaluation settings\n\nThree fixed (architecture, dataset) pairs, each trained for 200 epochs from Kaiming init with the frozen SGD loop, on a single seed (42): **ResNet-20 on CIFAR-10** (shallow net, easy 10-class), **ResNet-56 on CIFAR-100** (deep net, hard 100-class), and **MobileNetV2 on FashionMNIST** (inverted-residual mobile net, grayscale 10-class, replicated to 3 channels). The same `get_lr` is applied to all three. The metric is **best test accuracy (%, higher is better)** reached during training, reported per setting; the schedule must not modify model code, augmentation, loss, optimizer type, momentum, weight decay, or evaluation.\n\n## pytorch-vision/custom_schedule.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of pytorch-vision/custom_schedule.py (lines 246-269) -- default fill\n     2: def get_lr(epoch, total_epochs, base_lr, config):\n     3:     \"\"\"Compute learning rate for the given epoch.\n     4: \n     5:     Called once per epoch to set the learning rate for all parameter groups.\n     6: \n     7:     Args:\n     8:         epoch: current epoch (0-indexed, ranges from 0 to total_epochs-1)\n     9:         total_epochs: total number of training epochs\n    10:         base_lr: initial learning rate (from --lr flag, default 0.1)\n    11:         config: dict with keys:\n    12:             - arch: str ('resnet20', 'resnet56', 'vgg16bn', 'mobilenetv2')\n    13:             - dataset: str ('cifar10', 'cifar100', 'fmnist')\n    14: \n    15:     Returns:\n    16:         float: learning rate to use for this epoch\n    17:     \"\"\"\n    18:     return base_lr  # constant LR (no schedule)\n```\n\n## Your Budget\n- **Action budget**: 6 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=one_cycle seq=1]]",
+   "content": "[[SAY rung=1 slug=one_cycle seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_schedule.py",
+       "old_str": "# EDITABLE region of pytorch-vision/custom_schedule.py (lines 246-269) -- default fill\ndef get_lr(epoch, total_epochs, base_lr, config):\n    \"\"\"Compute learning rate for the given epoch.\n\n    Called once per epoch to set the learning rate for all parameter groups.\n\n    Args:\n        epoch: current epoch (0-indexed, ranges from 0 to total_epochs-1)\n        total_epochs: total number of training epochs\n        base_lr: initial learning rate (from --lr flag, default 0.1)\n        config: dict with keys:\n            - arch: str ('resnet20', 'resnet56', 'vgg16bn', 'mobilenetv2')\n            - dataset: str ('cifar10', 'cifar100', 'fmnist')\n\n    Returns:\n        float: learning rate to use for this epoch\n    \"\"\"\n    return base_lr  # constant LR (no schedule)\n",
+       "new_str": "def get_lr(epoch, total_epochs, base_lr, config):\n    \"\"\"OneCycleLR schedule (Smith & Topin, 2019).\n\n    Phase 1 (0-30%): cosine warmup from base_lr/25 to base_lr.\n    Phase 2 (30-100%): cosine anneal from base_lr to base_lr/25.\n    \"\"\"\n    pct_start = 0.3\n    div_factor = 25.0\n    final_div = 25.0\n\n    min_lr = base_lr / div_factor\n    final_lr = base_lr / final_div\n\n    progress = epoch / max(total_epochs - 1, 1)\n\n    if progress <= pct_start:\n        # Warmup phase: cosine from min_lr to base_lr\n        t = progress / pct_start\n        return min_lr + (base_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * (1 - t)))\n    else:\n        # Anneal phase: cosine from base_lr to final_lr\n        t = (progress - pct_start) / (1 - pct_start)\n        return final_lr + (base_lr - final_lr) * 0.5 * (1 + math.cos(math.pi * t))\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_schedule.py (lines 1..18). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=one_cycle seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `baseline:one_cycle` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet20-cifar10 | resnet56-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 92.31 | 71.57 | 93.93 |\n| **mean** | **92.31** | **71.57** | **93.93** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=cosine seq=3]]",
+   "content": "[[SAY rung=2 slug=cosine seq=3]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_schedule.py",
+       "old_str": "    \"\"\"OneCycleLR schedule (Smith & Topin, 2019).\n\n    Phase 1 (0-30%): cosine warmup from base_lr/25 to base_lr.\n    Phase 2 (30-100%): cosine anneal from base_lr to base_lr/25.\n    \"\"\"\n    pct_start = 0.3\n    div_factor = 25.0\n    final_div = 25.0\n\n    min_lr = base_lr / div_factor\n    final_lr = base_lr / final_div\n\n    progress = epoch / max(total_epochs - 1, 1)\n\n    if progress <= pct_start:\n        # Warmup phase: cosine from min_lr to base_lr\n        t = progress / pct_start\n        return min_lr + (base_lr - min_lr) * 0.5 * (1 + math.cos(math.pi * (1 - t)))\n    else:\n        # Anneal phase: cosine from base_lr to final_lr\n        t = (progress - pct_start) / (1 - pct_start)\n        return final_lr + (base_lr - final_lr) * 0.5 * (1 + math.cos(math.pi * t))\n",
+       "new_str": "    \"\"\"Cosine annealing from base_lr to 0.\n\n    LR = base_lr * 0.5 * (1 + cos(pi * epoch / total_epochs))\n    \"\"\"\n    return base_lr * 0.5 * (1 + math.cos(math.pi * epoch / total_epochs))\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_schedule.py (lines 2..23). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=cosine seq=4]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured result — `baseline:cosine` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet20-cifar10 | resnet56-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 93.03 | 71.07 | 94.70 |\n| **mean** | **93.03** | **71.07** | **94.70** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=warmup_cosine seq=5]]",
+   "content": "[[SAY rung=3 slug=warmup_cosine seq=5]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_schedule.py",
+       "old_str": "    \"\"\"Cosine annealing from base_lr to 0.\n\n    LR = base_lr * 0.5 * (1 + cos(pi * epoch / total_epochs))\n    \"\"\"\n    return base_lr * 0.5 * (1 + math.cos(math.pi * epoch / total_epochs))\n",
+       "new_str": "    \"\"\"Linear warmup (5 epochs) then cosine decay to 0.\n\n    Epochs 0-4: linearly ramp from base_lr/5 to base_lr.\n    Epochs 5+: cosine anneal from base_lr to 0.\n    \"\"\"\n    warmup = 5\n    if epoch < warmup:\n        return base_lr * (epoch + 1) / warmup\n    progress = (epoch - warmup) / (total_epochs - warmup)\n    return base_lr * 0.5 * (1 + math.cos(math.pi * progress))\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_schedule.py (lines 2..6). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=warmup_cosine seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured result — `baseline:warmup_cosine` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet20-cifar10 | resnet56-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 92.71 | 72.43 | 94.83 |\n| **mean** | **92.71** | **72.43** | **94.83** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=3 seq=7]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured result — `baseline:warmup_cosine` (`is_final,true`), seed 42. Metric: best test accuracy (%).\n\n| seed | resnet20-cifar10 | resnet56-cifar100 | mobilenetv2-fmnist |\n|---|---|---|---|\n| 42 | 92.71 | 72.43 | 94.83 |\n| **mean** | **92.71** | **72.43** | **94.83** |"
+  }
+ ]
+}

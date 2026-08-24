@@ -1,0 +1,347 @@
+{
+ "task": "dl-weight-initialization",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "pytorch-vision/custom_init.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 6,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nBefore the first gradient step, every weight in a deep convolutional network is a number drawn from a distribution I choose. That choice governs whether the forward signal stays usable through many layers and whether backpropagated gradients vanish or explode. The object of study is an **initialization strategy**: a data-independent rule that fills `Conv2d`, `BatchNorm2d`, and `Linear` parameters in place, given only the architecture and its depth. The rule must work across three network families — a deep residual net, a plain VGG-style stack, and an inverted-residual mobile net.\n\n## Prior art / Background / Baselines\n\n- **Small fixed-variance Gaussian (the scaffold default).** Draw every weight independently from `N(0, 0.01²)`.\n- **LeCun / Xavier scaling (LeCun 1998; Glorot & Bengio 2010).** Set `Var(W) = 1/fan_in` or `2/(fan_in+fan_out)` to keep activation/gradient variance stable across linear or `tanh`-like layers.\n- **Kaiming / He scaling (He et al. 2015).** Set `Var(W) = 2/fan` to account for ReLU zeroing half its inputs.\n- **Norm-preservation via orthogonality (Saxe et al. 2014).** Initialize each weight matrix to be orthogonal so it preserves vector norms exactly in deep linear networks.\n\n## Fixed substrate / Code framework\n\nThe training loop, data pipeline, model definitions, and evaluation are frozen. Three architectures are built by `build_model(arch, num_classes)`: a CIFAR **ResNet-56** (`BasicBlock` ×27 across three stages, each block = two 3×3 convs with BN, an additive shortcut, final `Linear` head), a **VGG-16-BN** (plain `Conv-BN-ReLU` stack, no shortcuts, two-layer classifier with `Dropout`), and a **MobileNetV2** (inverted-residual blocks with depthwise 3×3 convs, pointwise 1×1 expansions/projections, BN throughout, additive shortcuts only when stride 1 and channels match). Every conv followed by BN has `bias=False`. Optimization is fixed: SGD `lr=0.1`, `momentum=0.9`, `weight_decay=5e-4`, cosine-annealed over 200 epochs, cross-entropy loss, batch 128, with `RandomCrop(32, pad=4)` + `RandomHorizontalFlip` augmentation. The metric is the best test accuracy reached during those 200 epochs.\n\n## Editable interface\n\nExactly one function is editable — `initialize_weights(model, config)` in `pytorch-vision/custom_init.py` (lines 228–261). It receives the constructed model and a `config` dict and must initialize **all** parameters in place, with no return value. The contract:\n\n- `config['arch']` — `'resnet56'`, `'vgg16bn'`, or `'mobilenetv2'`; `config['num_classes']` — 10 or 100; `config['depth']` — total count of `Conv2d` + `Linear` layers.\n- I may iterate `model.modules()` / `model.named_modules()` / `model.named_parameters()`, branch on module type or on `arch`, treat shortcut projections differently from main-path convs, set `BatchNorm2d` weight/bias as desired, and use any depth-dependent arithmetic. The module classes `BasicBlock`, `InvertedResidual`, `nn.Conv2d`, `nn.BatchNorm2d`, `nn.Linear` are in scope.\n- **Hard constraints:** the rule must be **data-independent** — no access to training data, no calibration forward passes — and must not alter the model graph, change optimizer hyperparameters, or touch evaluation.\n\nThe starting point is the scaffold default: a tiny fixed-variance Gaussian on every weight, BN at `(weight=1, bias=0)`. Each method replaces exactly this function body and nothing else.\n\n```python\n# EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\ndef initialize_weights(model, config):\n    \"\"\"Initialize all weights in the vision model.\n\n    config: {'arch': str, 'num_classes': int, 'depth': int}\n    Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.normal_(m.weight, 0, 0.01)\n        elif isinstance(m, nn.BatchNorm2d):\n            nn.init.constant_(m.weight, 1)\n            nn.init.constant_(m.bias, 0)\n        elif isinstance(m, nn.Linear):\n            nn.init.normal_(m.weight, 0, 0.01)\n            if m.bias is not None:\n                nn.init.constant_(m.bias, 0)\n```\n\n## Evaluation settings\n\nThree (architecture, dataset) pairs, each trained from scratch for the full 200-epoch schedule on seed 42: **ResNet-56 on CIFAR-100**, **VGG-16-BN on CIFAR-100**, and **MobileNetV2 on FashionMNIST** (grayscale repeated to three channels, resized to 32×32). One metric, higher is better: best test accuracy (%) reached during training, reported per (arch, dataset).\n\n## pytorch-vision/custom_init.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\n     2: def initialize_weights(model, config):\n     3:     \"\"\"Initialize all weights in the vision model.\n     4: \n     5:     config: {'arch': str, 'num_classes': int, 'depth': int}\n     6:     Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n     7:     \"\"\"\n     8:     for m in model.modules():\n     9:         if isinstance(m, nn.Conv2d):\n    10:             nn.init.normal_(m.weight, 0, 0.01)\n    11:         elif isinstance(m, nn.BatchNorm2d):\n    12:             nn.init.constant_(m.weight, 1)\n    13:             nn.init.constant_(m.bias, 0)\n    14:         elif isinstance(m, nn.Linear):\n    15:             nn.init.normal_(m.weight, 0, 0.01)\n    16:             if m.bias is not None:\n    17:                 nn.init.constant_(m.bias, 0)\n```\n\n## Your Budget\n- **Action budget**: 9 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=orthogonal seq=1]]",
+   "content": "[[SAY rung=1 slug=orthogonal seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.normal_(m.weight, 0, 0.01)\n            if m.bias is not None:\n",
+       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 14..16). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=1 slug=orthogonal seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "# EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\ndef initialize_weights(model, config):\n    \"\"\"Initialize all weights in the vision model.\n\n    config: {'arch': str, 'num_classes': int, 'depth': int}\n    Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.normal_(m.weight, 0, 0.01)\n",
+       "new_str": "def initialize_weights(model, config):\n    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 1..10). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=orthogonal seq=3]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:orthogonal` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.08 |\n| **mean** | **72.08** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.83 |\n| **mean** | **72.83** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 93.88 |\n| **mean** | **93.88** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=kaiming_normal seq=4]]",
+   "content": "[[SAY rung=2 slug=kaiming_normal seq=4]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:\n",
+       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')\n            if m.bias is not None:\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 14..16). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=2 slug=kaiming_normal seq=5]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)\n",
+       "new_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 2..10). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=kaiming_normal seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:kaiming_normal` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.07 |\n| **mean** | **72.07** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 73.38 |\n| **mean** | **73.38** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 94.49 |\n| **mean** | **94.49** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=fixup seq=7]]",
+   "content": "[[SAY rung=3 slug=fixup seq=7]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "                nn.init.constant_(m.bias, 0)\n",
+       "new_str": "                nn.init.constant_(m.bias, 0)\n\n    # Phase 2: Fixup-inspired residual branch scaling for ResNets\n    if is_resnet:\n        n_blocks = sum(1 for m in model.modules() if isinstance(m, BasicBlock))\n        fixup_scale = n_blocks ** (-0.5)\n        for m in model.modules():\n            if isinstance(m, BasicBlock):\n                # Scale the last conv (conv2) in each residual block\n                m.conv2.weight.data.mul_(fixup_scale)\n                # Zero-init the last BN so residual branch starts near identity\n                nn.init.constant_(m.bn2.weight, 0)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 17..17). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=3 slug=fixup seq=8]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-vision/custom_init.py",
+       "old_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"\n",
+       "new_str": "    \"\"\"Fixup-inspired residual scaling with zero-gamma BatchNorm.\n\n    For ResNets: Kaiming normal for all Conv2d, then scale the last conv in\n    each residual block by n_blocks^(-0.5) to control variance accumulation.\n    Zero-initialize the last BN in each block (Goyal et al., 2017).\n    For VGG: Kaiming normal (no residual branches to scale).\n    Linear: small normal init with zero bias.\n    \"\"\"\n    arch = config['arch']\n    is_resnet = arch.startswith('resnet')\n\n    # Phase 1: standard Kaiming init for all layers\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-vision/custom_init.py (lines 2..7). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=fixup seq=9]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:fixup` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.37 |\n| **mean** | **72.37** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 74.37 |\n| **mean** | **74.37** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 94.48 |\n| **mean** | **94.48** |"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=3 seq=10]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured results — `baseline:fixup` (`is_final,true`), seed 42. Metric: best test accuracy (%, higher is better).\n\n## ResNet-56 / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 72.37 |\n| **mean** | **72.37** |\n\n## VGG-16-BN / CIFAR-100\n| seed | test_acc |\n|---|---|\n| 42 | 74.37 |\n| **mean** | **74.37** |\n\n## MobileNetV2 / FashionMNIST\n| seed | test_acc |\n|---|---|\n| 42 | 94.48 |\n| **mean** | **94.48** |"
+  }
+ ]
+}

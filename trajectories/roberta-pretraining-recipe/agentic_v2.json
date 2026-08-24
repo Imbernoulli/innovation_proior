@@ -1,0 +1,482 @@
+{
+ "task": "roberta-pretraining-recipe",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "workspace/custom_roberta_pretraining_recipe.py",
+ "filename_source": "synthesized",
+ "year": null,
+ "scaffold_from_context": false,
+ "baseline_in_prompt": null,
+ "n_rungs": 8,
+ "n_edit_ops": 8,
+ "best_test": 8,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nSelf-training language model pretraining (ELMo, GPT, BERT, XLM) has produced large downstream gains,\nbut it is hard to tell which parts of a given recipe are doing the work: pretraining is expensive,\ngroups train on private data of different sizes, and hyperparameter choices turn out to matter a lot,\nso published comparisons across papers routinely conflate several changes at once. This project holds\nthe model architecture fixed (the standard Transformer encoder BERT introduced) and treats the\n**pretraining procedure itself** as the object of study: masking strategy, input/segment format and\nthe auxiliary NSP loss, batch size, subword vocabulary, and pretraining data size/duration. The goal\nis to reproduce BERT's numbers under a controlled reimplementation, then test each procedural choice\none at a time against measured downstream performance, to find out whether BERT's published numbers\nrepresent the ceiling of the masked-language-modeling objective or whether the objective was simply\nundertrained.\n\n## Prior art / Background / Baselines\n\n- **BERT (Devlin et al. 2018).** Two pretraining objectives on a Transformer encoder: masked language\n  modeling (MLM) — uniformly select 15% of input tokens, replace 80% with `[MASK]`, 10% with a random\n  token, leave 10% unchanged, cross-entropy loss on recovering the originals — and Next Sentence\n  Prediction (NSP), a binary classifier over whether two input segments are contiguous in the source\n  text, positive/negative pairs sampled with equal probability. Input format: two concatenated\n  segments `[CLS] x_1...x_N [SEP] y_1...y_M [EOS]`, each segment possibly spanning multiple sentences,\n  combined length under 512 tokens. Masking is computed once during data preprocessing (a *static*\n  mask); to vary the mask seen across the 40 training epochs, the training data is duplicated 10x so\n  each sequence is masked 10 different ways (so any one masking of a sequence is still seen 4 times).\n  Optimizer: Adam (β1=0.9, β2=0.999, ε=1e-6), weight decay 0.01, learning rate warmed up over the\n  first 10,000 steps to a peak of 1e-4 then linearly decayed, dropout 0.1 on all layers and attention\n  weights, GELU activations. Pretrained for S=1,000,000 steps, batch size B=256 sequences, max\n  sequence length T=512. Trained on BookCorpus + English Wikipedia, 16GB of uncompressed text.\n  BERT-base: L=12 layers, H=768 hidden, A=12 attention heads, 110M params. BERT-large: L=24, H=1024,\n  A=16, 355M params. NSP was hypothesized by the original authors to matter: they report that removing\n  it hurts performance, with significant degradation on QNLI, MNLI and SQuAD 1.1.\n  Published BERT-base dev numbers (the reference this study targets): SQuAD 1.1/2.0 F1 88.5/76.3,\n  MNLI-m accuracy 84.3, SST-2 accuracy 92.8, RACE accuracy 64.3. Published BERT-large: SQuAD 1.1/2.0\n  F1 90.9/81.8, MNLI-m 86.6, SST-2 93.7.\n- **Text encoding.** The original BERT implementation uses a character-level Byte-Pair Encoding (BPE)\n  vocabulary of 30K subword units, learned after heuristic input tokenization. A more recent GPT-2-style\n  BPE variant instead operates over raw *bytes* rather than unicode characters, letting a modest\n  vocabulary (50K units) encode arbitrary input text with no \"unknown token\" fallback, at the cost of\n  roughly 15-20M extra embedding parameters depending on model size.\n  - **Recent challenges to NSP.** Several concurrent efforts (cross-lingual pretraining, autoregressive\n  permutation-based pretraining, span-based pretraining) have questioned whether the NSP loss is\n  actually necessary, in tension with the original BERT ablation.\n- **Large-batch optimization.** Prior work in neural machine translation has shown that training with\n  very large mini-batches, with an appropriately increased learning rate, can improve both optimization\n  speed and end-task performance. Concurrent work has shown BERT itself is amenable to large-batch\n  training, up to 32K sequences.\n- **More data, more compute.** A recently proposed alternative pretraining architecture (permutation\n  language modeling) is trained on nearly 10x more data than original BERT, with a batch size 8x\n  larger for half as many optimization steps — roughly 4x as many sequences seen in total — making it\n  unclear how much of its reported improvement over BERT is architecture/objective versus scale.\n\n## Fixed substrate\n\n- **Model architecture** is not touched at any point in this study: a standard Transformer encoder,\n  either the BERT-base shape (L=12, H=768, A=12, 110M params) or, from the point the recipe is\n  assembled and scaled, the BERT-large shape (L=24, H=1024, A=16, 355M params). Both match BERT's\n  published architectures exactly, so any downstream difference is attributable to the pretraining\n  procedure, not the model.\n- **Reimplementation framework:** fairseq. The original BERT optimization hyperparameters (Adam\n  betas/epsilon, weight decay, dropout, activation) are followed by default; only peak learning rate\n  and warmup steps are tuned per setting, plus, where noted, the Adam ε term and β2 (found to matter\n  for training stability, β2=0.98 helps stability at large batch sizes).\n  Sequences are packed to a fixed maximum length T=512 tokens throughout — no short-sequence warm-up\n  and no reduced-length prefix of training, unlike the original BERT schedule; only full-length\n  sequences are used.\n- **Hardware:** mixed-precision training on DGX-1 machines, 8x32GB V100 GPUs per machine,\n  Infiniband-interconnected.\n- **Downstream evaluation protocol is fixed across every rung:**\n  - **GLUE** (9 tasks: CoLA, SST, MRPC, STS-B, QQP, MNLI, QNLI, RTE, WNLI). For the design-choice\n    study, models are finetuned single-task (no multi-task training, no ensembling) on each task's\n    training data, following BERT's own finetuning procedure, and evaluated on the task's development\n    set. Reported numbers below are, where the source specifies it, medians over five random\n    initializations (seeds); accuracy is the metric for MNLI-m and SST-2.\n  - **SQuAD** v1.1 and v2.0. Span-extraction QA: v1.1 always has an answer in context; v2.0 adds\n    unanswerable questions, requiring an additional binary answerability classifier trained jointly\n    with the span predictor (loss terms summed). Metric: F1 on the development set, reported as\n    v1.1/v2.0.\n  - **RACE.** Reading comprehension from English exams (middle/high school), 4-way multiple choice per\n    question; each candidate answer is concatenated with the question and passage, encoded, and the\n    four `[CLS]` representations are scored by a shared fully-connected layer. Metric: accuracy.\n  - **Held-out perplexity (ppl).** For pretraining-only comparisons (e.g. batch size), perplexity on\n    held-out training data measures the masked-language-modeling objective directly, alongside\n    downstream accuracy.\n\n## What is under test (the free variable across rungs)\n\nEverything about the *pretraining procedure* is open to revision, one decision at a time, each\njustified by the previous rung's measured numbers: the masking strategy (static vs. dynamic), the\ninput segmentation and whether to keep the NSP loss, the training batch size (holding total compute /\nsequences-seen fixed via gradient accumulation), the subword vocabulary (character-level vs.\nbyte-level BPE), and, once a combined recipe is settled, the scale of pretraining itself — how much\ntext to pretrain over and for how many steps.\n\n## workspace/custom_roberta_pretraining_recipe.py\n(The file does not exist yet — your first edit must be edit(op='create', filename='workspace/custom_roberta_pretraining_recipe.py', content=...).)\n\n## Your Budget\n- **Action budget**: 16 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 8 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=bert_base_reimpl seq=1]]",
+   "content": "[[SAY rung=1 slug=bert_base_reimpl seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "create",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "content": "architecture:      BERT-base (L=12, H=768, A=12, ~110M params)\nobjective:         MLM (15% select; 80% [MASK] / 10% unchanged / 10% random) + NSP\nmasking:           static (fixed at preprocessing, 10x data duplication over 40 epochs)\ninput format:      segment-pair + NSP\noptimizer:         Adam, beta1=0.9, beta2=0.999, eps=1e-6, weight_decay=0.01\nlr schedule:       linear warmup (10,000 steps, per-original) to peak, then linear decay\n                    [peak LR / warmup steps tuned per-implementation if needed]\ndropout:           0.1 (all layers + attention)\nactivation:        GELU\nbatch size:        256 sequences\nmax seq length:    512 tokens\nsteps:             1,000,000\ndata:              BookCorpus + English Wikipedia, 16GB\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Created: workspace/custom_roberta_pretraining_recipe.py"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=bert_base_reimpl seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (7 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `bert_base_reimpl`, fairseq reimplementation of BERT-base (static masking,\nsegment-pair+NSP, batch 256, 1M steps, BookCorpus+Wikipedia 16GB), development-set numbers.\n\n## vs. BERT-base published (medians over 5 seeds where noted)\n| model | SQuAD 1.1/2.0 F1 | MNLI-m acc | SST-2 acc | RACE acc |\n|---|---|---|---|---|\n| BERT-base (published) | 88.5 / 76.3 | 84.3 | 92.8 | 64.3 |\n| our reimplementation (segment-pair+NSP) | 90.4 / 78.7 | 84.0 | 92.9 | 64.2 |\n\n## Cross-check (static-masking configuration, SQuAD2.0/MNLI-m/SST-2 only)\n| | SQuAD 2.0 F1 | MNLI-m acc | SST-2 acc |\n|---|---|---|---|\n| reference (published) | 76.3 | 84.3 | 92.8 |\n| our reimplementation (static masking) | 78.3 | 84.3 | 92.5 |\n\nNotes: SQuAD F1 (both v1.1 and v2.0) comes in above the published reference; MNLI-m and SST-2 are\nwithin 0.3 points of the reference in both directions; RACE matches to within 0.1 points. No task\nshows a large or systematic shortfall."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=dynamic_masking seq=3]]",
+   "content": "[[SAY rung=2 slug=dynamic_masking seq=3]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "old_str": "architecture:      BERT-base (L=12, H=768, A=12, ~110M params)\nobjective:         MLM (15% select; 80% [MASK] / 10% unchanged / 10% random) + NSP\nmasking:           static (fixed at preprocessing, 10x data duplication over 40 epochs)\ninput format:      segment-pair + NSP\noptimizer:         Adam, beta1=0.9, beta2=0.999, eps=1e-6, weight_decay=0.01\nlr schedule:       linear warmup (10,000 steps, per-original) to peak, then linear decay\n                    [peak LR / warmup steps tuned per-implementation if needed]\ndropout:           0.1 (all layers + attention)\nactivation:        GELU\nbatch size:        256 sequences\nmax seq length:    512 tokens\nsteps:             1,000,000\ndata:              BookCorpus + English Wikipedia, 16GB\n",
+       "new_str": "masking:      dynamic (regenerated per exposure at data-loading time; 15% select,\n              80% [MASK] / 10% unchanged / 10% random, same split as static)\n              — no tenfold data duplication needed\n[unchanged]:  segment-pair + NSP input format, batch 256, 1M steps,\n              BookCorpus+Wikipedia 16GB, BERT-base architecture\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..13). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=dynamic_masking seq=4]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (6 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `dynamic_masking`, BERT-base architecture, segment-pair+NSP input format, batch\n256, 1M steps, BookCorpus+Wikipedia 16GB. Development-set numbers, medians over 5 seeds.\n\n## Static vs. dynamic masking (our reimplementation)\n| masking | SQuAD 2.0 F1 | MNLI-m acc | SST-2 acc |\n|---|---|---|---|\n| reference (published) | 76.3 | 84.3 | 92.8 |\n| static (rung 1) | 78.3 | 84.3 | 92.5 |\n| dynamic (rung 2) | 78.7 | 84.0 | 92.9 |\n\nNotes: dynamic masking's SQuAD 2.0 F1 is 0.4 points above static; SST-2 is 0.4 points above static;\nMNLI-m is 0.3 points below static. No tenfold data duplication is needed under dynamic masking."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=full_sentences_no_nsp seq=5]]",
+   "content": "[[SAY rung=3 slug=full_sentences_no_nsp seq=5]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "old_str": "masking:      dynamic (regenerated per exposure at data-loading time; 15% select,\n              80% [MASK] / 10% unchanged / 10% random, same split as static)\n              — no tenfold data duplication needed\n[unchanged]:  segment-pair + NSP input format, batch 256, 1M steps,\n              BookCorpus+Wikipedia 16GB, BERT-base architecture\n",
+       "new_str": "input format:  4-way comparison — segment-pair+NSP / sentence-pair+NSP /\n               full-sentences(no NSP) / doc-sentences(no NSP)\n               batch size matched for total tokens per format\n[unchanged]:   dynamic masking, BERT-base architecture, ~1M-step-equivalent\n               training budget, BookCorpus+Wikipedia 16GB\n[commit]:      full-sentences carried forward as the format for subsequent rungs\n               regardless of the doc-sentences comparison, for batch-size-ablation\n               cleanliness\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..5). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=full_sentences_no_nsp seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (5 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `full_sentences_no_nsp` (4-way input-format comparison), BERT-base architecture,\ndynamic masking, ~1M-step-equivalent budget, BookCorpus+Wikipedia. Development-set numbers, medians\nover 5 seeds. SQuAD reported as v1.1/v2.0 F1.\n\n| format | SQuAD 1.1/2.0 F1 | MNLI-m acc | SST-2 acc | RACE acc |\n|---|---|---|---|---|\n| segment-pair+NSP (our reimpl.) | 90.4 / 78.7 | 84.0 | 92.9 | 64.2 |\n| sentence-pair+NSP (our reimpl.) | 88.7 / 76.2 | 82.9 | 92.1 | 63.0 |\n| full-sentences, no NSP (our reimpl.) | 90.4 / 79.1 | 84.7 | 92.5 | 64.8 |\n| doc-sentences, no NSP (our reimpl.) | 90.6 / 79.7 | 84.7 | 92.7 | 65.6 |\n| BERT-base (published reference) | 88.5 / 76.3 | 84.3 | 92.8 | 64.3 |\n| external base-scale model, K=7 (published reference) | -- / 81.3 | 85.8 | 92.7 | 66.1 |\n\nNotes: sentence-pair+NSP is the weakest of the four on every task despite retaining the NSP loss.\nBoth NSP-free formats (full-sentences, doc-sentences) meet or exceed segment-pair+NSP on every column\nexcept SST-2 (full-sentences 92.5 vs 92.9; doc-sentences 92.7 vs 92.9). doc-sentences scores marginally\nabove full-sentences on SQuAD 2.0 (79.7 vs 79.1) and RACE (65.6 vs 64.8), and ties it on SQuAD 1.1 and\nMNLI-m."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=4 slug=large_batches seq=7]]",
+   "content": "[[SAY rung=4 slug=large_batches seq=7]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "old_str": "input format:  4-way comparison — segment-pair+NSP / sentence-pair+NSP /\n               full-sentences(no NSP) / doc-sentences(no NSP)\n               batch size matched for total tokens per format\n[unchanged]:   dynamic masking, BERT-base architecture, ~1M-step-equivalent\n               training budget, BookCorpus+Wikipedia 16GB\n[commit]:      full-sentences carried forward as the format for subsequent rungs\n               regardless of the doc-sentences comparison, for batch-size-ablation\n               cleanliness\n",
+       "new_str": "batch size:    sweep {256, 2048, 8192} sequences, learning rate tuned per setting\nsteps:         {1,000,000, ~125,000, ~31,000} respectively — compute-matched\n               (same total sequences observed across all three)\n[unchanged]:   dynamic masking, full-sentences (no NSP), BERT-base architecture,\n               BookCorpus+Wikipedia 16GB\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..8). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=4 slug=large_batches seq=8]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #4] (4 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `large_batches`, BERT-base architecture, dynamic masking, full-sentences (no NSP),\nBookCorpus+Wikipedia 16GB, compute-matched batch-size sweep, learning rate tuned per setting.\n\n| bsz | steps | lr | held-out ppl | MNLI-m acc | SST-2 acc |\n|---|---|---|---|---|---|\n| 256 | 1M | 1e-4 | 3.99 | 84.7 | 92.7 |\n| 2K | 125K | 7e-4 | 3.68 | 85.2 | 92.9 |\n| 8K | 31K | 1e-3 | 3.77 | 84.6 | 92.8 |\n\nNotes: 2K batch posts the best number on all three columns (lowest ppl, highest MNLI-m, highest\nSST-2). 8K is worse than 2K on all three columns but still better than 256 on ppl and MNLI-m, and ties\n256 within 0.1 on SST-2. All three settings observe the same total number of sequences."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=5 slug=combined_recipe_bert_large seq=9]]",
+   "content": "[[SAY rung=5 slug=combined_recipe_bert_large seq=9]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "old_str": "batch size:    sweep {256, 2048, 8192} sequences, learning rate tuned per setting\nsteps:         {1,000,000, ~125,000, ~31,000} respectively — compute-matched\n               (same total sequences observed across all three)\n[unchanged]:   dynamic masking, full-sentences (no NSP), BERT-base architecture,\n               BookCorpus+Wikipedia 16GB\n",
+       "new_str": "architecture:   BERT-large (L=24, H=1024, A=16, ~355M params)\nmasking:        dynamic\ninput format:   full-sentences, no NSP\nbatch size:     8K sequences, learning rate retuned (peak LR 4e-4, warmup 30K steps)\nvocabulary:     byte-level BPE, 50K subword units\nsteps:          100,000\ndata:           BookCorpus + English Wikipedia, 16GB (same as original BERT-large)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..5). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=5 slug=combined_recipe_bert_large seq=10]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #5] (3 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `combined_recipe_bert_large` (dynamic masking + full-sentences/no-NSP + 8K batch +\nbyte-level BPE), BERT-large architecture, BookCorpus+Wikipedia 16GB, 100,000 steps. Development-set\nnumbers, SQuAD reported as v1.1/v2.0 F1.\n\n| model | data | bsz | steps | SQuAD 1.1/2.0 F1 | MNLI-m acc | SST-2 acc |\n|---|---|---|---|---|---|---|\n| combined recipe (this rung) | 16GB | 8K | 100K | 93.6 / 87.3 | 89.0 | 95.3 |\n| BERT-large (published, original recipe) | 13GB | 256 | 1M | 90.9 / 81.8 | 86.6 | 93.7 |\n\nNotes: the combined recipe at 100K steps (a tenth of the original's step count) and no additional data\nexceeds BERT-large's published numbers on every column: +2.7/+5.5 SQuAD F1, +2.4 MNLI-m, +1.6 SST-2."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=6 slug=more_data seq=11]]",
+   "content": "[[SAY rung=6 slug=more_data seq=11]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "old_str": "architecture:   BERT-large (L=24, H=1024, A=16, ~355M params)\nmasking:        dynamic\ninput format:   full-sentences, no NSP\nbatch size:     8K sequences, learning rate retuned (peak LR 4e-4, warmup 30K steps)\nvocabulary:     byte-level BPE, 50K subword units\nsteps:          100,000\ndata:           BookCorpus + English Wikipedia, 16GB (same as original BERT-large)\n",
+       "new_str": "data:          BookCorpus + English Wikipedia (16GB) + news-crawl corpus (~76GB\n               after filtering) + open web-text recreation (~38GB) +\n               narrative-style crawl (~31GB) -- ~160GB total\n[unchanged]:   combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n               byte-level BPE), BERT-large architecture, 100,000 steps\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..7). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=6 slug=more_data seq=12]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #6] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `more_data` (combined recipe + additional pretraining data), BERT-large\narchitecture, 8K batch, 100,000 steps. Development-set numbers, SQuAD reported as v1.1/v2.0 F1.\n\n| model | data | bsz | steps | SQuAD 1.1/2.0 F1 | MNLI-m acc | SST-2 acc |\n|---|---|---|---|---|---|---|\n| combined recipe, 16GB (rung 5) | 16GB | 8K | 100K | 93.6 / 87.3 | 89.0 | 95.3 |\n| combined recipe + additional data (this rung) | 160GB | 8K | 100K | 94.0 / 87.7 | 89.3 | 95.6 |\n\nNotes: holding steps fixed at 100K, adding the additional pretraining data (16GB -> 160GB) improves\nevery column relative to rung 5: +0.4/+0.4 SQuAD F1, +0.3 MNLI-m, +0.3 SST-2. Improvements are in the\nfew-tenths range on every metric, not a large jump."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=7 slug=pretrain_300k seq=13]]",
+   "content": "[[SAY rung=7 slug=pretrain_300k seq=13]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "old_str": "data:          BookCorpus + English Wikipedia (16GB) + news-crawl corpus (~76GB\n               after filtering) + open web-text recreation (~38GB) +\n               narrative-style crawl (~31GB) -- ~160GB total\n[unchanged]:   combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n               byte-level BPE), BERT-large architecture, 100,000 steps\n",
+       "new_str": "steps:          300,000 (up from 100,000)\n[unchanged]:    combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n                byte-level BPE), BERT-large architecture, 160GB combined data\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..5). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=7 slug=pretrain_300k seq=14]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #7] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `pretrain_300k` (combined recipe, 160GB data, extended to 300,000 steps),\nBERT-large architecture, 8K batch. Development-set numbers, SQuAD reported as v1.1/v2.0 F1.\n\n| model | data | bsz | steps | SQuAD 1.1/2.0 F1 | MNLI-m acc | SST-2 acc |\n|---|---|---|---|---|---|---|\n| combined recipe + additional data, 100K (rung 6) | 160GB | 8K | 100K | 94.0 / 87.7 | 89.3 | 95.6 |\n| combined recipe + additional data, 300K (this rung) | 160GB | 8K | 300K | 94.4 / 88.7 | 90.0 | 96.1 |\n\nNotes: holding data fixed at 160GB, extending 100K -> 300K steps improves every column relative to\nrung 6: +0.4/+1.0 SQuAD F1, +0.7 MNLI-m, +0.5 SST-2. The SQuAD 2.0 and MNLI-m gains here are larger\nthan the gains produced by the data-only increase in rung 6 (+0.4 SQuAD2.0, +0.3 MNLI-m)."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=8 slug=pretrain_500k seq=15]]",
+   "content": "[[SAY rung=8 slug=pretrain_500k seq=15]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "old_str": "steps:          300,000 (up from 100,000)\n",
+       "new_str": "steps:          500,000 (up from 300,000)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..1). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=8 slug=pretrain_500k seq=16]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #8] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `pretrain_500k` (combined recipe, 160GB data, extended to 500,000 steps),\nBERT-large architecture, 8K batch. Development-set numbers, SQuAD reported as v1.1/v2.0 F1.\n\n| model | data | bsz | steps | SQuAD 1.1/2.0 F1 | MNLI-m acc | SST-2 acc |\n|---|---|---|---|---|---|---|\n| combined recipe + additional data, 100K | 160GB | 8K | 100K | 94.0 / 87.7 | 89.3 | 95.6 |\n| combined recipe + additional data, 300K | 160GB | 8K | 300K | 94.4 / 88.7 | 90.0 | 96.1 |\n| combined recipe + additional data, 500K (this rung) | 160GB | 8K | 500K | 94.6 / 89.4 | 90.2 | 96.4 |\n\nNotes: 100K -> 300K step gains were +0.4/+1.0 SQuAD F1, +0.7 MNLI-m, +0.5 SST-2. 300K -> 500K step\ngains are +0.2/+0.7 SQuAD F1, +0.2 MNLI-m, +0.3 SST-2 — smaller than the 100K-to-300K gains on every\ncolumn but still positive on every column; no metric stalls or reverses. This 500K-step configuration\nposts the best number in every column measured across all eight rungs of this study."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=8 seq=17]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 8
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #8 as final.\n\nMeasured results — `pretrain_500k` (combined recipe, 160GB data, extended to 500,000 steps),\nBERT-large architecture, 8K batch. Development-set numbers, SQuAD reported as v1.1/v2.0 F1.\n\n| model | data | bsz | steps | SQuAD 1.1/2.0 F1 | MNLI-m acc | SST-2 acc |\n|---|---|---|---|---|---|---|\n| combined recipe + additional data, 100K | 160GB | 8K | 100K | 94.0 / 87.7 | 89.3 | 95.6 |\n| combined recipe + additional data, 300K | 160GB | 8K | 300K | 94.4 / 88.7 | 90.0 | 96.1 |\n| combined recipe + additional data, 500K (this rung) | 160GB | 8K | 500K | 94.6 / 89.4 | 90.2 | 96.4 |\n\nNotes: 100K -> 300K step gains were +0.4/+1.0 SQuAD F1, +0.7 MNLI-m, +0.5 SST-2. 300K -> 500K step\ngains are +0.2/+0.7 SQuAD F1, +0.2 MNLI-m, +0.3 SST-2 — smaller than the 100K-to-300K gains on every\ncolumn but still positive on every column; no metric stalls or reverses. This 500K-step configuration\nposts the best number in every column measured across all eight rungs of this study."
+  }
+ ]
+}

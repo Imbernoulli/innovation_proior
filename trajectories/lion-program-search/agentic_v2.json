@@ -1,0 +1,277 @@
+{
+ "task": "lion-program-search",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "workspace/custom_lion_program_search.py",
+ "filename_source": "synthesized",
+ "year": null,
+ "scaffold_from_context": false,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 3,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nEssentially every state-of-the-art deep model — large language models, vision transformers,\nmultimodal contrastive models, diffusion models — is trained with one of a tiny handful of\nhand-designed first-order optimizers, overwhelmingly AdamW (Adam with decoupled weight decay) or\nAdafactor. These were invented by human intuition and have stuck for years. Two questions follow.\nFirst, are the human-designed update rules actually optimal, or is there a better one nobody has\nstumbled onto by hand? Second — since the space of possible update rules is enormous and human\nsearch is slow — can the optimizer itself be *discovered automatically* in a way that generalizes\nfrom cheap small-scale search experiments up to the real, expensive, state-of-the-art training\nregime, without exceeding the memory an optimizer like Adam already uses?\n\n## Background\n\n**Adam** (Kingma & Ba 2014) maintains an exponential moving average of the gradient\nmₜ = β₁mₜ₋₁ + (1−β₁)gₜ and of the squared gradient vₜ = β₂vₜ₋₁ + (1−β₂)gₜ², and steps with\nmₜ/(√vₜ + ε) — a per-coordinate learning rate set by the gradient's second moment, with bias\ncorrection on both moments. **AdamW** (Loshchilov & Hutter 2019) decouples weight decay from the\ngradient-based update: instead of folding the L2 penalty into g (which then gets divided by √v\nand distorted), it shrinks the weights directly, θ ← θ − η(update + λθ). Both keep *two* extra\nbuffers (m and v), doubling the optimizer's memory relative to the parameters.\n\n**signSGD** (Bernstein et al. 2018), foreshadowed by Rprop (Riedmiller & Braun 1993), steps with\nsign(g): every coordinate moves by the same magnitude, only the direction comes from the\ngradient. This is communication-efficient (one bit per coordinate), provably robust to\nheterogeneous gradient scales, and tends to work well at large batch sizes where the sign of the\naveraged gradient is reliable. Its momentum variant signs an EMA of the gradient — one constant,\none role. **NAdam** (Dozat 2016) folds the freshly-updated first moment together with the current\ngradient when computing the step (Nesterov-style look-ahead inside Adam), but keeps Adam's\ncoupled second moment and does not decouple a tracking rate from an application rate.\n\nOn the discovery side: **Learning to optimize** (Andrychowicz et al. 2016; Metz et al. 2019,\n2022) parameterizes the update rule as a small neural network trained to output updates on a\nhandful of small tasks — a black box that gives no handle on *why* it does what it does and no\nobvious transfer to a training regime orders of magnitude bigger than what it was trained on.\n**Symbolic / program search for optimizers** (Bello et al. 2017, \"Neural Optimizer Search\") is\nthe more promising thread: it uses RL or Monte Carlo sampling over expression trees built from a\n*fixed* set of operands (the gradient g and a bias-corrected EMA of it, m) and a *fixed, bounded*\nset of unary/binary math operators. This keeps the search tractable, but the operand set is fixed\n— the search can shape how g and m are *combined*, but it cannot change how m itself is tracked\nor how many buffers exist. The two named optimizers this search surfaced are **PowerSign**\n(update = αf(t)·sign(g)·sign(m)·g, default α=e, f(t)=1) and **AddSign**\n(update = (α + f(t)·sign(g)·sign(m))·g, default α=1, f(t)=1). **AutoML-Zero** (Real et al. 2020)\nis the ambitious extreme in the other direction: search every component of an ML algorithm as a\nlinear program of primitive operations, via regularized evolution, evaluated on toy tasks — full\nprograms, but only ever validated on toy scale.\n\nThe relevant phenomena to keep in mind for any search-based approach: the space of programs is\nlarge and sparse, so undirected sampling is unlikely to find anything good; and there is a gap\nbetween proxy tasks (minutes on one chip) and target tasks (>10⁴× more compute), a\n*meta-overfitting* phenomenon where search fitness on the proxy may not transfer to larger tasks.\n\n## Pre-existing, measured facts (the bar to clear)\n\nAdamW, thoroughly tuned (peak learning rate and decoupled weight decay swept on a log scale, same\nprotocol every entrant below gets), training ViT-S/16 and ViT-B/16 from scratch on ImageNet with\nRandAugment + Mixup, 300 epochs, batch 4,096, evaluated on three held-out sets (top-1 accuracy,\naveraged over three runs):\n\n| Model | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| ViT-S/16 | 78.89 | 84.61 | 66.73 |\n| ViT-B/16 | 80.12 | 85.46 | 68.14 |\n\nThis is the number every candidate rule has to beat, on every column, at both scales, to count as\na real improvement rather than noise.\n\n## Code framework\n\nThe substrate is a program-search harness over optimizer programs, plus the ordinary training\nloop the optimizer plugs into. An optimizer is represented as a `train` function with the *same\ninput/output signature as AdamW* — inputs are the weight `w`, gradient `g`, learning-rate value\n`lr`, and a bounded number of extra state variables; output is the `update` and the new state —\nso any discovered program has memory no larger than Adam.\n\n```python\nimport numpy as np\n\ndef interp(x, y, a):\n    # linear interpolation primitive available to the search\n    return (1.0 - a) * x + a * y\n\n# The optimizer program: this `train` body is the open slot the search fills in.\n# Signature fixed to match AdamW (two extra state vars v1, v2, both init 0),\n# so the discovered optimizer's memory footprint <= Adam's.\ndef train(w, g, v1, v2, lr):\n    # TODO: a sequence of assignment statements over {w, g, v1, v2, lr} and\n    #       primitive math functions (interp, sign, sqrt, abs, clip, ...).\n    #       Must return (update, v1, v2).\n    update = ...  # TODO\n    return update, v1, v2\n\n# Outer training loop (already known):\n# for w, g, lr in training_stream:\n#     update, v1, v2 = train(w, g, v1, v2, lr)\n#     w = w - update\n\n# Search harness scaffold (already-known evolutionary machinery, available if I choose to run it):\ndef mutate(program):\n    # insert / delete / modify one statement; new constants ~ N(0, 1)\n    pass\n\ndef abstract_execute(program):\n    # infer types/shapes (reject invalid), hash semantics (dedup cache),\n    # mark redundant statements\n    pass\n\ndef regularized_evolution(proxy_tasks, meta_validation_tasks):\n    # tournament selection, warm-start population, restarts;\n    # fitness = proxy performance; select by meta-validation to fight meta-overfitting;\n    # then simplify the winner (remove redundant / low-impact statements,\n    # rewrite to mathematically-equivalent simpler form)\n    pass\n```\n\nThe proxy task, if I do run this machinery: a 3-layer, 96-hidden-unit, 3-head ViT on 10% of\nImageNet for 30k steps, batch 64, 64×64 images, patch 16 — completes in under 20 minutes on one\nchip, versus days on hundreds of chips for the target scale above.\n\n## Evaluation settings\n\nEvery candidate rule below is plugged into the same training recipe — ViT-S/16 and ViT-B/16\ntrained from scratch on ImageNet, RandAugment + Mixup, 300 epochs, batch 4,096 — with its own\npeak learning rate and weight decay tuned on a log scale, and reported as top-1 accuracy on\nImageNet, ImageNet-ReaL, and ImageNet-V2, averaged over three runs. Higher is better on all three\ncolumns, at both model scales.\n\n## workspace/custom_lion_program_search.py\n(The file does not exist yet — your first edit must be edit(op='create', filename='workspace/custom_lion_program_search.py', content=...).)\n\n## Your Budget\n- **Action budget**: 6 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=priorauto seq=1]]",
+   "content": "[[SAY rung=1 slug=priorauto seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "create",
+       "filename": "workspace/custom_lion_program_search.py",
+       "content": "PowerSign:  update = e^{sign(g) * sign(m)} * g       # alpha = e\nAddSign:    update = (1 + sign(g) * sign(m)) * g      # alpha = 1\n# m: bias-corrected exponential moving average of g (standard Adam-style momentum)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "Created: workspace/custom_lion_program_search.py"
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=priorauto seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — PowerSign (α=e, default) and AddSign (α=1, default), tuned lr/λ, ImageNet\ntop-1 / ReaL top-1 / V2 top-1, three-run average. AdamW row repeated for reference.\n\n## ViT-S/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 78.89 | 84.61 | 66.73 |\n| PowerSign | 77.36 | 83.39 | 65.17 |\n| AddSign | 77.37 | 83.36 | 64.52 |\n\n## ViT-B/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 80.12 | 85.46 | 68.14 |\n| PowerSign | 78.95 | 84.76 | 67.46 |\n| AddSign | 78.50 | 84.49 | 65.95 |\n\nBoth PowerSign and AddSign fall below AdamW on all three columns at both scales. Neither clears\nthe bar."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=single_beta seq=3]]",
+   "content": "[[SAY rung=2 slug=single_beta seq=3]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_lion_program_search.py",
+       "old_str": "PowerSign:  update = e^{sign(g) * sign(m)} * g       # alpha = e\nAddSign:    update = (1 + sign(g) * sign(m)) * g      # alpha = 1\n# m: bias-corrected exponential moving average of g (standard Adam-style momentum)\n",
+       "new_str": "def train(w, g, m, lr):           # ONE extra state buffer, not two\n    m = interp(g, m, beta)        # (1-beta)*g + beta*m\n    update = sign(m)\n    update = update + w * weight_decay\n    update = update * lr\n    return update, m\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_lion_program_search.py (lines 1..3). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=single_beta seq=4]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — Ablation_0.9 and Ablation_0.99 (`m = interp(g, m, β); update = sign(m)`),\ntuned lr/λ, ImageNet top-1 / ReaL top-1 / V2 top-1, three-run average. AdamW and rung-1 rows\nrepeated for reference.\n\n## ViT-S/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 78.89 | 84.61 | 66.73 |\n| PowerSign | 77.36 | 83.39 | 65.17 |\n| AddSign | 77.37 | 83.36 | 64.52 |\n| Ablation_0.9 | 78.23 | 84.28 | 66.13 |\n| Ablation_0.99 | 78.19 | 84.17 | 65.96 |\n\n## ViT-B/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 80.12 | 85.46 | 68.14 |\n| PowerSign | 78.95 | 84.76 | 67.46 |\n| AddSign | 78.50 | 84.49 | 65.95 |\n| Ablation_0.9 | 79.54 | 85.10 | 68.07 |\n| Ablation_0.99 | 79.90 | 85.36 | 68.20 |\n\nBoth Ablation_0.9 and Ablation_0.99 beat both PowerSign and AddSign on every column at both\nscales. Neither clears AdamW's ImageNet number at either scale (78.23/78.19 vs 78.89 on\nViT-S/16; 79.54/79.90 vs 80.12 on ViT-B/16); on ReaL both also stay below AdamW. On V2 at\nViT-B/16, Ablation_0.99 (68.20) edges AdamW (68.14); every other column stays below AdamW."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=lion seq=5]]",
+   "content": "[[SAY rung=3 slug=lion seq=5]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "workspace/custom_lion_program_search.py",
+       "old_str": "def train(w, g, m, lr):           # ONE extra state buffer, not two\n    m = interp(g, m, beta)        # (1-beta)*g + beta*m\n    update = sign(m)\n    update = update + w * weight_decay\n    update = update * lr\n    return update, m\n",
+       "new_str": "from __future__ import annotations\nfrom typing import Tuple, Callable\nimport torch\nfrom torch.optim.optimizer import Optimizer\n\n\ndef update_fn(p, grad, exp_avg, lr, wd, beta1, beta2):\n    # decoupled weight decay: theta <- theta * (1 - lr*lambda)\n    p.data.mul_(1. - lr * wd)\n\n    # the step: sign of the interpolated momentum  c = beta1*m + (1-beta1)*g\n    update = exp_avg.clone().mul_(beta1).add(grad, alpha=1. - beta1).sign_()\n    p.add_(update, alpha=-lr)                      # theta <- theta - lr * sign(c)\n\n    # the momentum buffer updates on its OWN, slower constant beta2 (decoupled from the step)\n    exp_avg.mul_(beta2).add_(grad, alpha=1. - beta2)\n\n\nclass Lion(Optimizer):\n    def __init__(self, params, lr: float = 1e-4, betas: Tuple[float, float] = (0.9, 0.99),\n                 weight_decay: float = 0.0):\n        assert lr > 0.\n        assert all([0. <= beta <= 1. for beta in betas])\n        defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)\n        super().__init__(params, defaults)\n        self.update_fn = update_fn\n\n    @torch.no_grad()\n    def step(self, closure: Callable | None = None):\n        loss = None\n        if closure is not None:\n            with torch.enable_grad():\n                loss = closure()\n        for group in self.param_groups:\n            for p in filter(lambda p: p.grad is not None, group['params']):\n                grad, lr, wd, beta1, beta2, state = (\n                    p.grad, group['lr'], group['weight_decay'], *group['betas'], self.state[p]\n                )\n                if len(state) == 0:\n                    state['exp_avg'] = torch.zeros_like(p)\n                self.update_fn(p, grad, state['exp_avg'], lr, wd, beta1, beta2)\n        return loss\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in workspace/custom_lion_program_search.py (lines 1..6). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=lion seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — Lion (decoupled β₁=0.9 / β₂=0.99 sign-momentum), tuned lr/λ, ImageNet top-1 /\nReaL top-1 / V2 top-1, three-run average. All prior rows repeated for reference.\n\n## ViT-S/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 78.89 | 84.61 | 66.73 |\n| PowerSign | 77.36 | 83.39 | 65.17 |\n| AddSign | 77.37 | 83.36 | 64.52 |\n| Ablation_0.9 | 78.23 | 84.28 | 66.13 |\n| Ablation_0.99 | 78.19 | 84.17 | 65.96 |\n| Lion | 79.46 | 85.25 | 67.68 |\n\n## ViT-B/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 80.12 | 85.46 | 68.14 |\n| PowerSign | 78.95 | 84.76 | 67.46 |\n| AddSign | 78.50 | 84.49 | 65.95 |\n| Ablation_0.9 | 79.54 | 85.10 | 68.07 |\n| Ablation_0.99 | 79.90 | 85.36 | 68.20 |\n| Lion | 80.77 | 86.15 | 69.19 |\n\nLion beats every prior entrant — AdamW, PowerSign, AddSign, Ablation_0.9, Ablation_0.99 — on\nevery column at both scales. Margin over the better of the two ablations: +1.23 ImageNet /\n+0.97 ReaL / +1.55 V2 at ViT-S/16; +0.87 ImageNet / +0.79 ReaL / +0.99 V2 at ViT-B/16. Margin over\nAdamW: +0.57 / +0.64 / +0.95 (ViT-S/16); +0.65 / +0.69 / +1.05 (ViT-B/16)."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=3 seq=7]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured results — Lion (decoupled β₁=0.9 / β₂=0.99 sign-momentum), tuned lr/λ, ImageNet top-1 /\nReaL top-1 / V2 top-1, three-run average. All prior rows repeated for reference.\n\n## ViT-S/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 78.89 | 84.61 | 66.73 |\n| PowerSign | 77.36 | 83.39 | 65.17 |\n| AddSign | 77.37 | 83.36 | 64.52 |\n| Ablation_0.9 | 78.23 | 84.28 | 66.13 |\n| Ablation_0.99 | 78.19 | 84.17 | 65.96 |\n| Lion | 79.46 | 85.25 | 67.68 |\n\n## ViT-B/16\n| optimizer | ImageNet | ReaL | V2 |\n|---|---|---|---|\n| AdamW | 80.12 | 85.46 | 68.14 |\n| PowerSign | 78.95 | 84.76 | 67.46 |\n| AddSign | 78.50 | 84.49 | 65.95 |\n| Ablation_0.9 | 79.54 | 85.10 | 68.07 |\n| Ablation_0.99 | 79.90 | 85.36 | 68.20 |\n| Lion | 80.77 | 86.15 | 69.19 |\n\nLion beats every prior entrant — AdamW, PowerSign, AddSign, Ablation_0.9, Ablation_0.99 — on\nevery column at both scales. Margin over the better of the two ablations: +1.23 ImageNet /\n+0.97 ReaL / +1.55 V2 at ViT-S/16; +0.87 ImageNet / +0.79 ReaL / +0.99 V2 at ViT-B/16. Margin over\nAdamW: +0.57 / +0.64 / +0.95 (ViT-S/16); +0.65 / +0.69 / +1.05 (ViT-B/16)."
+  }
+ ]
+}

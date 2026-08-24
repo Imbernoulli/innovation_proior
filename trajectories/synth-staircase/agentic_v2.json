@@ -1,0 +1,393 @@
+{
+ "task": "synth-staircase",
+ "schema": "agentic_v2",
+ "harness": "mlsbench-devfix-2026-08-23",
+ "file": "pytorch-examples/synth_staircase/custom_strategy.py",
+ "filename_source": "june_skeleton",
+ "year": null,
+ "scaffold_from_context": true,
+ "baseline_in_prompt": null,
+ "n_rungs": 3,
+ "n_edit_ops": 8,
+ "best_test": 3,
+ "system": "You are an ML scientist. Your goal is to propose and implement a novel algorithmic contribution that improves performance on the given task.\n\nWhat counts as a good contribution:\n- A new loss function or objective formulation\n- A new policy update rule or gradient estimation method\n- A novel exploration or regularization strategy\n- A new way to parameterize or combine components, with clear motivation\n\nWhat does NOT count:\n- Trivially increasing network capacity to brute-force a metric (a per-task parameter cap is enforced before each test)\n- Hyperparameter tuning (learning rates, batch sizes, etc.)\n- Copying a reference baseline with cosmetic changes\n- Pure engineering tricks without algorithmic novelty\n\nParameter count is capped (enforced before each test); architectural changes within that budget are encouraged.\n\nIMPORTANT workflow:\n1. FIRST call edit() to implement your improved algorithm. Do NOT call test() before making edits.\n2. THEN call test() to run the experiment. Each run is numbered (#1, #2, ...).\n3. Review the metrics, then edit() to improve your solution based on the feedback.\n4. Call test() again to verify the improvement. You MUST iterate at least once (edit → test → review → edit → test) before submitting, unless only 1 test is allowed.\n5. When satisfied, call submit(n=N) to submit your best test #N as final.\nYou have a limited number of test() calls, so make each one count by editing first.\n\nAvailable tools:\n- edit(op, filename, ...): Modify files in the workspace by exact string match.\n  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n    (old_str must reproduce the file's text and be unique). Keep old_str SHORT — a few distinctive lines is enough, and\n    short anchors are far more reliable than pasting a whole class or docstring.\n  - op='create': create a new file (only if allow_create=true)\n- view(filename, start_line=None, end_line=None): Read the file back. The line\n  numbers shown in the prompt and in view() output are a display prefix\n  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n  whenever you are unsure of the exact text, and always after an undo().\n- test(): Run a new experiment. Executes training and evaluation. Each run is\n  numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.\n  You have a limited budget of test() calls, so make each one count by editing first.\n  If max tests is reached, the last test is auto-submitted.\n- submit(n=N): Submit the result from test #N as your final answer (1-indexed).\n  This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.\n  You must call test() at least once before you can submit.\n- undo(n=1): Revert the last n edit operations.\n\nConstraints:\n- Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].\n  Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.\n- You MUST call test() at least once before you can call submit().\n- When you are done, call submit(n=N) to submit your best test result.\n- If your algorithm requires new hyperparameters that are not in the existing config,\n  hardcode their values directly in your code (e.g., in __init__).\n  You cannot modify the training loop or config to pass them via command line.\n",
+ "tools": [
+  {
+   "type": "function",
+   "function": {
+    "name": "edit",
+    "description": "Edit files in the workspace by exact string replacement. Two operations:\n  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n    `old_str` must match the file exactly (including whitespace and indentation) and must\n    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n    to delete `old_str`.\n  create: Create a new file with the given `content`.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "op": {
+       "type": "string",
+       "enum": [
+        "str_replace",
+        "create"
+       ],
+       "description": "The edit operation to perform."
+      },
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path to the file."
+      },
+      "old_str": {
+       "type": "string",
+       "description": "Exact text to replace (required for op='str_replace'). Must match the file text and be unique."
+      },
+      "new_str": {
+       "type": "string",
+       "description": "Replacement text (for op='str_replace'). An empty string deletes `old_str`."
+      },
+      "content": {
+       "type": "string",
+       "description": "Content to write (required for op='create')."
+      }
+     },
+     "required": [
+      "op",
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text — old_str must reproduce the file's text, and this is how you check it. Line numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "test",
+    "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
+    "parameters": {
+     "type": "object",
+     "properties": {}
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "submit",
+    "description": "Submit a previous test result as your final answer. This does NOT re-run anything — it selects a result you already obtained. You must have run test() at least once before calling submit().",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."
+      }
+     },
+     "required": [
+      "n"
+     ]
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "undo",
+    "description": "Revert the last n file modification actions (create/str_replace) by restoring pre-edit snapshots. Does not undo test calls.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "n": {
+       "type": "integer",
+       "description": "Number of edit actions to undo (default: 1)."
+      }
+     }
+    }
+   }
+  }
+ ],
+ "messages": [
+  {
+   "role": "user",
+   "content": "## Research question\n\nA two-layer fully connected network of width `M` is trained by online batch-SGD on the hypercube\n`{+1,-1}^d`. It has to recover a latent sparse target `f*(x) = h*(x_{j_1},...,x_{j_P})` that depends\non only `P=4` of the `d=100` coordinates. The single design choice is the **learning strategy**:\nmodel architecture, initialization, parametrization, optimizer, and one-step update. The uniform\n`{+1,-1}^d` sampler, the three targets, the squared loss, and the evaluation are fixed.\n\nThree targets span the hierarchy: the leap-1 staircase `h1(z)=z1+z1z2+z1z2z3`, the leap-2 non-MSP\nchain `h2(z)=z1z2+z2z3+z3z4`, and the leap-3 monomial `h3(z)=z1z2z3`. A strategy that succeeds on\n`h1` but fails on `h3` scores poorly, because the aggregate is a geometric mean over the three\nenvironments.\n\n## Prior art / Background / Baselines\n\nWhich sparse Boolean functions plain SGD finds depends on the *hierarchical structure* of the\ntarget's Fourier support.\n\n- **Fixed-feature lower bounds.** Any linear method on a *fixed* feature map needs `n = Omega(d^k)`\n  samples to fit a `k`-sparse parity. With the budget here (`n = b·T = 150·4000 = 6·10^5`, `d = 100`)\n  this covers degree-1 and degree-2 components but not the degree-3 monomial.\n- **Mean-field limit of two-layer SGD.** With the `1/M` output normalization the weights travel an\n  `O(1)` distance, so the network stays in the *feature-learning* regime and SGD concentrates onto a\n  Wasserstein gradient flow on the empirical measure of neurons — features can move toward latent\n  coordinates.\n- **Saddle-to-saddle / hierarchical pickup.** Starting from a near-origin init, the mean-field flow\n  leaves signal directions at saddles; a coordinate's weight escapes only once lower-degree supports\n  beneath it are active, so components are learned in increasing degree, with higher stairs orders\n  of magnitude slower.\n\n## Fixed substrate\n\nThe harness is fixed and must not be touched. It sets: ambient dimension `d=100`, latent dimension\n`P=4`, width `M=100`, batch size `b=150`, total online-SGD steps `T=4000` (one-pass, every batch\nfreshly sampled from `Unif({+1,-1}^d)`), and a test set of `8192` fresh samples. For each top-level\nseed it draws a fresh random latent subset `I` of size `P`, builds `f*(x)=h*(x_I)`, trains one run,\nand reports test MSE and Fourier recovery. The data sampler, the three targets `h1/h2/h3`, the\nsquared loss, the Fourier-recovery evaluation, and the `train_one_run`/`run_benchmark` driver are all\nfixed. The driver calls the three editable functions: it builds the model once per run via\n`build_model`, wraps it with `get_optimizer`, and at every step samples a fresh `(x,y)` and calls\n`train_step`.\n\n## Editable interface\n\nOnly one region of `pytorch-examples/synth_staircase/custom_strategy.py` is editable — the three\nfunctions `build_model(config)`, `get_optimizer(model, config)`, and\n`train_step(model, optimizer, x, y)`. The contract: `build_model` returns a fresh `nn.Module`\nconsuming `[B,d]` (entries in `{+1,-1}`) and returning `[B]` or `[B,1]`; `get_optimizer` wraps only\n`model.parameters()` (or a filtered subset); `train_step` performs one optimizer step on a fresh\nbatch and returns the scalar training loss as a Python `float` (it must call\n`optimizer.zero_grad()` itself). `config` is the fixed `TaskConfig` (`config.d`, `config.width`,\n`config.batch_size`, ...). Every method is a fill of exactly this contract.\n\nThe starting scaffold is a two-layer mean-field network with shifted-sigmoid activation, random\n`+-1` readout signs, `N(0,I_d)` first layer, no bias, plain SGD at `lr=0.5`. Each method replaces\nexactly these three definitions and nothing else.\n\n```python\n# EDITABLE region of custom_strategy.py — default fill (mean-field two-layer SGD)\ndef build_model(config: TaskConfig) -> nn.Module:\n    class TwoLayerMeanField(nn.Module):\n        def __init__(self, d: int, M: int) -> None:\n            super().__init__()\n            self.fc1 = nn.Linear(d, M, bias=False)\n            self.fc2 = nn.Linear(M, 1, bias=False)\n            # Mean-field init: w_j ~ N(0, I_d); no trainable first-layer bias.\n            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)\n            with torch.no_grad():\n                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0\n                self.fc2.weight.copy_(signs.t())          # a_j ~ Unif({+1,-1})\n            self.M = M\n\n        @staticmethod\n        def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:\n            return torch.sigmoid(u - 0.5)                  # sigma(x) = (1 + e^{-x+0.5})^{-1}\n\n        def forward(self, x: torch.Tensor) -> torch.Tensor:\n            h = self._shifted_sigmoid(self.fc1(x))\n            return self.fc2(h).view(-1) / self.M           # 1/M mean-field normalization\n\n    return TwoLayerMeanField(d=config.d, M=config.width)\n\n\ndef get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:\n    return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)  # plain SGD, eta = 1/2\n\n\ndef train_step(model, optimizer, x, y) -> float:\n    optimizer.zero_grad(set_to_none=True)\n    pred = model(x).view(-1)\n    loss = ((pred - y) ** 2).mean()                        # square loss, fresh batch\n    loss.backward()\n    optimizer.step()\n    return float(loss.item())\n```\n\n## Evaluation settings\n\nThree environments, one per latent target — `h1` (leap-1 / MSP staircase), `h2` (leap-2 non-MSP\nchain), `h3` (leap-3 monomial) — each over three top-level seeds `{42, 123, 456}`, one run per seed\nwith a fresh latent subset `I`. For each environment three quantities are reported:\n`test_mse_{env}` (squared error of `model(x)` against `h*(x_I)` on the held-out test set, lower is\nbetter), `fourier_recovery_{env}` (mean `|hat_S(model) - hat_S(h*)|` over the latent monomials, lower\nis better), and the primary leaderboard metric `score_{env} = exp(-test_mse_{env})`, bounded in\n`(0,1]`, higher is better. The aggregate task score is the geometric mean of the three\nper-environment scores, so a catastrophic failure on any one environment is not hidden by a strong\nresult on another.\n\n## pytorch-examples/synth_staircase/custom_strategy.py  [EDITABLE — entire file]\n```python\n     1: # EDITABLE region of custom_strategy.py — default fill (mean-field two-layer SGD)\n     2: def build_model(config: TaskConfig) -> nn.Module:\n     3:     class TwoLayerMeanField(nn.Module):\n     4:         def __init__(self, d: int, M: int) -> None:\n     5:             super().__init__()\n     6:             self.fc1 = nn.Linear(d, M, bias=False)\n     7:             self.fc2 = nn.Linear(M, 1, bias=False)\n     8:             # Mean-field init: w_j ~ N(0, I_d); no trainable first-layer bias.\n     9:             nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)\n    10:             with torch.no_grad():\n    11:                 signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0\n    12:                 self.fc2.weight.copy_(signs.t())          # a_j ~ Unif({+1,-1})\n    13:             self.M = M\n    14: \n    15:         @staticmethod\n    16:         def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:\n    17:             return torch.sigmoid(u - 0.5)                  # sigma(x) = (1 + e^{-x+0.5})^{-1}\n    18: \n    19:         def forward(self, x: torch.Tensor) -> torch.Tensor:\n    20:             h = self._shifted_sigmoid(self.fc1(x))\n    21:             return self.fc2(h).view(-1) / self.M           # 1/M mean-field normalization\n    22: \n    23:     return TwoLayerMeanField(d=config.d, M=config.width)\n    24: \n    25: \n    26: def get_optimizer(model: nn.Module, config: TaskConfig) -> torch.optim.Optimizer:\n    27:     return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)  # plain SGD, eta = 1/2\n    28: \n    29: \n    30: def train_step(model, optimizer, x, y) -> float:\n    31:     optimizer.zero_grad(set_to_none=True)\n    32:     pred = model(x).view(-1)\n    33:     loss = ((pred - y) ** 2).mean()                        # square loss, fresh batch\n    34:     loss.backward()\n    35:     optimizer.step()\n    36:     return float(loss.item())\n```\n\n## Your Budget\n- **Action budget**: 11 total tool calls (every edit / test / undo counts; submit does not)\n- **Test invocations**: at most 3 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=1 slug=ntk seq=1]]",
+   "content": "[[SAY rung=1 slug=ntk seq=1]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "    return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)  # plain SGD, eta = 1/2\n\n\ndef train_step(model, optimizer, x, y) -> float:\n    optimizer.zero_grad(set_to_none=True)\n    pred = model(x).view(-1)\n    loss = ((pred - y) ** 2).mean()                        # square loss, fresh batch\n",
+       "new_str": "    \"\"\"SGD on the trainable parameters (just the readout in lazy training).\"\"\"\n    params = [p for p in model.parameters() if p.requires_grad]\n    return torch.optim.SGD(params, lr=0.5 / config.d, momentum=0.0)\n\n\ndef train_step(\n    model: nn.Module,\n    optimizer: torch.optim.Optimizer,\n    x: torch.Tensor,\n    y: torch.Tensor,\n) -> float:\n    optimizer.zero_grad(set_to_none=True)\n    pred = model(x).view(-1)\n    loss = ((pred - y) ** 2).mean()\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 27..33). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=1 slug=ntk seq=2]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "# EDITABLE region of custom_strategy.py — default fill (mean-field two-layer SGD)\ndef build_model(config: TaskConfig) -> nn.Module:\n    class TwoLayerMeanField(nn.Module):\n        def __init__(self, d: int, M: int) -> None:\n            super().__init__()\n            self.fc1 = nn.Linear(d, M, bias=False)\n            self.fc2 = nn.Linear(M, 1, bias=False)\n            # Mean-field init: w_j ~ N(0, I_d); no trainable first-layer bias.\n            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)\n            with torch.no_grad():\n                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0\n                self.fc2.weight.copy_(signs.t())          # a_j ~ Unif({+1,-1})\n            self.M = M\n\n        @staticmethod\n        def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:\n            return torch.sigmoid(u - 0.5)                  # sigma(x) = (1 + e^{-x+0.5})^{-1}\n\n        def forward(self, x: torch.Tensor) -> torch.Tensor:\n            h = self._shifted_sigmoid(self.fc1(x))\n            return self.fc2(h).view(-1) / self.M           # 1/M mean-field normalization\n\n    return TwoLayerMeanField(d=config.d, M=config.width)\n",
+       "new_str": "def build_model(config: TaskConfig) -> nn.Module:\n    \"\"\"Random-feature / NTK-style network: freeze first layer, train head.\"\"\"\n\n    class RandomFeaturesNTK(nn.Module):\n        def __init__(self, d: int, M: int) -> None:\n            super().__init__()\n            self.fc1 = nn.Linear(d, M, bias=True)\n            self.fc2 = nn.Linear(M, 1, bias=False)\n            # He / NTK-style init for ReLU: w ~ N(0, 1/d), b ~ N(0, 1).\n            nn.init.normal_(self.fc1.weight, mean=0.0, std=(1.0 / d) ** 0.5)\n            nn.init.normal_(self.fc1.bias, mean=0.0, std=1.0)\n            nn.init.zeros_(self.fc2.weight)\n            # Freeze first-layer weights (the \"lazy\" / NTK regime where features\n            # are fixed at initialization).\n            self.fc1.weight.requires_grad_(False)\n            self.fc1.bias.requires_grad_(False)\n            self.M = M\n\n        def forward(self, x: torch.Tensor) -> torch.Tensor:\n            h = torch.relu(self.fc1(x))\n            # 1/sqrt(M) normalization for NTK-style output.\n            return self.fc2(h).view(-1) / (self.M ** 0.5)\n\n    return RandomFeaturesNTK(d=config.d, M=config.width)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 1..23). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=1 slug=ntk seq=3]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #1] (2 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:ntk` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## h1 (leap-1 staircase)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 2.832301 | 0.968078 | 0.058877 |\n| 123 | 2.748306 | 0.948356 | 0.064036 |\n| 456 | 2.771983 | 0.951305 | 0.062538 |\n| **mean** | **2.784197** | **0.955913** | **0.061817** |\n\n## h2 (leap-2 non-MSP chain)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 2.957280 | 0.986024 | 0.051960 |\n| 123 | 3.033480 | 1.011253 | 0.048148 |\n| 456 | 2.988389 | 0.996408 | 0.050368 |\n| **mean** | **2.993050** | **0.997895** | **0.050159** |\n\n## h3 (leap-3 monomial)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 0.999993 | 0.999961 | 0.367882 |\n| 123 | 0.999632 | 0.999795 | 0.368015 |\n| 456 | 0.999983 | 0.999988 | 0.367886 |\n| **mean** | **0.999869** | **0.999915** | **0.367928** |\n\nAggregate (geometric mean of per-env `score` means): **0.1045**."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=2 slug=mean-field-sgd seq=4]]",
+   "content": "[[SAY rung=2 slug=mean-field-sgd seq=4]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "    \"\"\"SGD on the trainable parameters (just the readout in lazy training).\"\"\"\n    params = [p for p in model.parameters() if p.requires_grad]\n    return torch.optim.SGD(params, lr=0.5 / config.d, momentum=0.0)\n",
+       "new_str": "    \"\"\"Plain SGD with eta_k = 1/2.\"\"\"\n    return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 28..30). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=2 slug=mean-field-sgd seq=5]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "    \"\"\"Random-feature / NTK-style network: freeze first layer, train head.\"\"\"\n\n    class RandomFeaturesNTK(nn.Module):\n        def __init__(self, d: int, M: int) -> None:\n            super().__init__()\n            self.fc1 = nn.Linear(d, M, bias=True)\n            self.fc2 = nn.Linear(M, 1, bias=False)\n            # He / NTK-style init for ReLU: w ~ N(0, 1/d), b ~ N(0, 1).\n            nn.init.normal_(self.fc1.weight, mean=0.0, std=(1.0 / d) ** 0.5)\n            nn.init.normal_(self.fc1.bias, mean=0.0, std=1.0)\n            nn.init.zeros_(self.fc2.weight)\n            # Freeze first-layer weights (the \"lazy\" / NTK regime where features\n            # are fixed at initialization).\n            self.fc1.weight.requires_grad_(False)\n            self.fc1.bias.requires_grad_(False)\n            self.M = M\n\n        def forward(self, x: torch.Tensor) -> torch.Tensor:\n            h = torch.relu(self.fc1(x))\n            # 1/sqrt(M) normalization for NTK-style output.\n            return self.fc2(h).view(-1) / (self.M ** 0.5)\n\n    return RandomFeaturesNTK(d=config.d, M=config.width)\n",
+       "new_str": "    \"\"\"Two-layer mean-field network (Abbe et al. Fig. 1 default).\"\"\"\n\n    class TwoLayerMeanField(nn.Module):\n        def __init__(self, d: int, M: int) -> None:\n            super().__init__()\n            self.fc1 = nn.Linear(d, M, bias=False)\n            self.fc2 = nn.Linear(M, 1, bias=False)\n            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)\n            # No trainable bias in the Abbe et al. mean-field setup.\n            with torch.no_grad():\n                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0\n                self.fc2.weight.copy_(signs.t())\n            self.M = M\n\n        @staticmethod\n        def _shifted_sigmoid(u: torch.Tensor) -> torch.Tensor:\n            return torch.sigmoid(u - 0.5)\n\n        def forward(self, x: torch.Tensor) -> torch.Tensor:\n            h = self._shifted_sigmoid(self.fc1(x))\n            return self.fc2(h).view(-1) / self.M\n\n    return TwoLayerMeanField(d=config.d, M=config.width)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 2..24). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=2 slug=mean-field-sgd seq=6]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #2] (1 test remaining; call submit(n=N) to choose which test result to submit as final)\n\nMeasured results — `baseline:mean_field_sgd` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## h1 (leap-1 staircase)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 2.431203 | 0.883939 | 0.087931 |\n| 123 | 2.480340 | 0.894372 | 0.083715 |\n| 456 | 2.433240 | 0.879936 | 0.087752 |\n| **mean** | **2.448261** | **0.886082** | **0.086466** |\n\n## h2 (leap-2 non-MSP chain)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 2.960399 | 0.986299 | 0.051798 |\n| 123 | 3.034799 | 1.011238 | 0.048084 |\n| 456 | 2.991479 | 0.996699 | 0.050213 |\n| **mean** | **2.995559** | **0.998079** | **0.050032** |\n\n## h3 (leap-3 monomial)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 1.000052 | 0.999219 | 0.367860 |\n| 123 | 1.001326 | 0.999886 | 0.367392 |\n| 456 | 1.000471 | 0.999491 | 0.367706 |\n| **mean** | **1.000616** | **0.999532** | **0.367653** |\n\nAggregate (geometric mean of per-env `score` means): **0.1167**."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=design rung=3 slug=curriculum-layerwise seq=7]]",
+   "content": "[[SAY rung=3 slug=curriculum-layerwise seq=7]]",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "    optimizer.zero_grad(set_to_none=True)\n    pred = model(x).view(-1)\n    loss = ((pred - y) ** 2).mean()\n    loss.backward()\n    optimizer.step()\n    return float(loss.item())\n",
+       "new_str": "    \"\"\"Layer-wise alternating Adam: feature step, then readout step.\n\n    The alternation drives the saddle-to-saddle dynamics: each layer in turn\n    is updated to follow the next-easiest monomial in the leap ordering.\n    \"\"\"\n    fc1_params = [p for n, p in model.named_parameters() if n.startswith(\"fc1\") and p.requires_grad]\n    fc2_params = [p for n, p in model.named_parameters() if n.startswith(\"fc2\") and p.requires_grad]\n\n    # 1) Feature step (freeze readout).\n    for p in fc2_params:\n        p.requires_grad_(False)\n    optimizer.zero_grad(set_to_none=True)\n    pred = model(x).view(-1)\n    loss1 = ((pred - y) ** 2).mean()\n    loss1.backward()\n    optimizer.step()\n    for p in fc2_params:\n        p.requires_grad_(True)\n\n    # 2) Readout step (freeze features).\n    for p in fc1_params:\n        p.requires_grad_(False)\n    optimizer.zero_grad(set_to_none=True)\n    pred = model(x).view(-1)\n    loss2 = ((pred - y) ** 2).mean()\n    loss2.backward()\n    optimizer.step()\n    for p in fc1_params:\n        p.requires_grad_(True)\n\n    return float(0.5 * (loss1.item() + loss2.item()))\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 38..43). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=3 slug=curriculum-layerwise seq=8]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "    \"\"\"Plain SGD with eta_k = 1/2.\"\"\"\n    return torch.optim.SGD(model.parameters(), lr=0.5, momentum=0.0)\n",
+       "new_str": "    \"\"\"Adam with mu-P-style per-layer learning rates.\n\n    First layer gets a larger LR so that it picks up the low-frequency monomial\n    quickly (the saddle-to-saddle \"leap-1\" warm-up); the readout uses a\n    moderate LR proportional to 1/sqrt(M).\n    \"\"\"\n    fc1_params = []\n    fc2_params = []\n    for name, p in model.named_parameters():\n        if not p.requires_grad:\n            continue\n        if name.startswith(\"fc1\"):\n            fc1_params.append(p)\n        else:\n            fc2_params.append(p)\n    width = config.width\n    return torch.optim.Adam(\n        [\n            {\"params\": fc1_params, \"lr\": 1e-2},\n            {\"params\": fc2_params, \"lr\": 1e-2 / (width ** 0.5)},\n        ],\n        betas=(0.9, 0.999),\n        eps=1e-8,\n    )\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 28..29). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=3 slug=curriculum-layerwise seq=9]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "            return self.fc2(h).view(-1) / self.M\n\n    return TwoLayerMeanField(d=config.d, M=config.width)\n",
+       "new_str": "            # mu-P-style 1/M readout normalization.\n            return self.fc2(h).view(-1) / self.M\n\n    return MuPTwoLayer(d=config.d, M=config.width)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 22..24). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=followup rung=3 slug=curriculum-layerwise seq=10]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "edit",
+      "arguments": {
+       "op": "str_replace",
+       "filename": "pytorch-examples/synth_staircase/custom_strategy.py",
+       "old_str": "    \"\"\"Two-layer mean-field network (Abbe et al. Fig. 1 default).\"\"\"\n\n    class TwoLayerMeanField(nn.Module):\n        def __init__(self, d: int, M: int) -> None:\n            super().__init__()\n            self.fc1 = nn.Linear(d, M, bias=False)\n            self.fc2 = nn.Linear(M, 1, bias=False)\n            nn.init.normal_(self.fc1.weight, mean=0.0, std=1.0)\n            # No trainable bias in the Abbe et al. mean-field setup.\n            with torch.no_grad():\n                signs = torch.randint(0, 2, (M, 1), dtype=torch.float32) * 2.0 - 1.0\n                self.fc2.weight.copy_(signs.t())\n",
+       "new_str": "    \"\"\"mu-P-style two-layer net with shifted-sigmoid activation.\n\n    The shifted sigmoid used by Abbe-Boix-Adsera-Misiakiewicz has nonzero low\n    derivatives around the origin, avoiding the zero even derivatives of tanh.\n    \"\"\"\n\n    class MuPTwoLayer(nn.Module):\n        def __init__(self, d: int, M: int) -> None:\n            super().__init__()\n            self.fc1 = nn.Linear(d, M, bias=True)\n            self.fc2 = nn.Linear(M, 1, bias=False)\n            # mu-P-style init: w ~ N(0, 1/d), readout small.\n            nn.init.normal_(self.fc1.weight, mean=0.0, std=(1.0 / d) ** 0.5)\n            nn.init.zeros_(self.fc1.bias)\n            nn.init.normal_(self.fc2.weight, mean=0.0, std=1.0)\n"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "OK: Replaced 1 occurrence in pytorch-examples/synth_staircase/custom_strategy.py (lines 2..13). Editable range: entire file."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=pre_test rung=3 slug=curriculum-layerwise seq=11]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "test",
+      "arguments": {}
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[Test #3] (0 tests remaining; call submit(n=N) to choose which test result to submit as final)\n\n[NOTE] This was your last test. You MUST now call submit(n=X) to choose which test result to submit as your final answer.\n\nMeasured results — `baseline:curriculum_layerwise` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## h1 (leap-1 staircase)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 0.469305 | 0.324915 | 0.625437 |\n| 123 | 0.460783 | 0.323251 | 0.630790 |\n| 456 | 0.459798 | 0.327509 | 0.631411 |\n| **mean** | **0.463295** | **0.325225** | **0.629213** |\n\n## h2 (leap-2 non-MSP chain)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 0.978321 | 0.530963 | 0.375942 |\n| 123 | 1.033402 | 0.553062 | 0.355794 |\n| 456 | 0.980105 | 0.536057 | 0.375272 |\n| **mean** | **0.997276** | **0.540027** | **0.369003** |\n\n## h3 (leap-3 monomial)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 0.015073 | 0.116411 | 0.985040 |\n| 123 | 0.020387 | 0.131951 | 0.979820 |\n| 456 | 0.018889 | 0.128862 | 0.981288 |\n| **mean** | **0.018116** | **0.125741** | **0.982049** |\n\nAggregate (geometric mean of per-env `score` means): **0.6109**."
+  },
+  {
+   "role": "assistant",
+   "reasoning_content": "[[THINK kind=submit best=3 seq=12]]",
+   "content": "",
+   "tool_calls": [
+    {
+     "type": "function",
+     "function": {
+      "name": "submit",
+      "arguments": {
+       "n": 3
+      }
+     }
+    }
+   ]
+  },
+  {
+   "role": "tool",
+   "content": "[submit] Submitting result from test #3 as final.\n\nMeasured results — `baseline:curriculum_layerwise` (`is_final,true`), seeds {42, 123, 456} and mean.\n\n## h1 (leap-1 staircase)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 0.469305 | 0.324915 | 0.625437 |\n| 123 | 0.460783 | 0.323251 | 0.630790 |\n| 456 | 0.459798 | 0.327509 | 0.631411 |\n| **mean** | **0.463295** | **0.325225** | **0.629213** |\n\n## h2 (leap-2 non-MSP chain)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 0.978321 | 0.530963 | 0.375942 |\n| 123 | 1.033402 | 0.553062 | 0.355794 |\n| 456 | 0.980105 | 0.536057 | 0.375272 |\n| **mean** | **0.997276** | **0.540027** | **0.369003** |\n\n## h3 (leap-3 monomial)\n| seed | test_mse | fourier_recovery | score |\n|---|---|---|---|\n| 42 | 0.015073 | 0.116411 | 0.985040 |\n| 123 | 0.020387 | 0.131951 | 0.979820 |\n| 456 | 0.018889 | 0.128862 | 0.981288 |\n| **mean** | **0.018116** | **0.125741** | **0.982049** |\n\nAggregate (geometric mean of per-env `score` means): **0.6109**."
+  }
+ ]
+}
