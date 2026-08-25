@@ -115,7 +115,7 @@ mkdir -p "$ALE_BENCH_APPTAINER_DIR"
 # ---- eval configuration (protocol identical to cc_eval_cpu_client.sh) ---------
 export EVAL_DECOUPLE=1 RESUME="${RESUME:-1}"
 export CONCURRENCY="${CONCURRENCY:-96}"
-export EVAL_SCORE_CONCURRENCY="${EVAL_SCORE_CONCURRENCY:-12}"
+export EVAL_SCORE_CONCURRENCY="${EVAL_SCORE_CONCURRENCY:-4}"   # dockerd fd ceiling: 12-way container bursts killed rootless docker twice (AleInfraError storms); 4-way verified stable. Generation concurrency untouched.
 export MAX_TOKENS="${MAX_TOKENS:-32768}"
 export TEMPERATURE="${TEMPERATURE:-1.0}"
 export TOP_P="${TOP_P:-0.95}"
