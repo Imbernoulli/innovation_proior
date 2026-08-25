@@ -22,6 +22,13 @@ SD="$(cd "$(dirname "$0")" && pwd)"
 source "$SD/env_jiaolab.sh"
 FS="$FS_ROOT"
 
+# Passing the SAME gpu index twice selects single-engine mode: one serve, both
+# shard clients pointed at it. On a contested box the 2-GPU topology strands a
+# lone free card -- the queue sat 2h with exactly one card free and could not
+# start anything, while druv could take it at any moment. Sharding is a
+# CLIENT-side split of the problem set (NUM_SHARDS/SHARD_IDX), so which engine
+# answers is a throughput choice, not a protocol one: single-engine results are
+# byte-comparable with two-engine ones, just slower.
 M="${1:?usage: launch_pool_eval.sh <model_dir|hf_id> <tag> <fcsale|ale|fcs> [gpuA] [gpuB]}"
 TAG="${2:?tag required}"
 KIND="${3:-fcsale}"
@@ -41,16 +48,24 @@ case "$KIND" in
   *) echo "bad KIND=$KIND (fcsale|ale|fcs)"; exit 1;;
 esac
 
-for g in "$GA" "$GB"; do
+if [ "$GA" = "$GB" ]; then NENG=1; GPULIST="$GA"; else NENG=2; GPULIST="$GA $GB"; fi
+for g in $GPULIST; do
   GPUS=$g TP=1 TAG=$TAG DAEMON=1 IDLE_EXIT=1 VLLM_RPC_TIMEOUT=600000 \
     EXTRA_VLLM_ARGS="--no-enable-prefix-caching" bash "$SD/serve_local.sh" "$M" "$TAG" \
     > "$FS/logs/serve_pool_${TAG}_gpu$g.log" 2>&1
 done
 
-echo "[$TAG] waiting for 2 registered engines ..."
-until [ "$(ls "$FS/.cache/vllm_pool/${TAG}"__*.json 2>/dev/null | wc -l)" -ge 2 ]; do sleep 15; done
+echo "[$TAG] waiting for $NENG registered engine(s) ..."
+until [ "$(ls "$FS/.cache/vllm_pool/${TAG}"__*.json 2>/dev/null | wc -l)" -ge "$NENG" ]; do sleep 15; done
 P0=$(ls "$FS/.cache/vllm_pool/${TAG}"__*.json | sed -n 1p | grep -oE "[0-9]+\.json" | tr -d '.json')
-P1=$(ls "$FS/.cache/vllm_pool/${TAG}"__*.json | sed -n 2p | grep -oE "[0-9]+\.json" | tr -d '.json')
+if [ "$NENG" = 2 ]; then
+  P1=$(ls "$FS/.cache/vllm_pool/${TAG}"__*.json | sed -n 2p | grep -oE "[0-9]+\.json" | tr -d '.json')
+else
+  P1="$P0"
+  # Both clients now share one engine's KV cache; 2x64 in-flight 32k requests
+  # would thrash it, so halve each client's concurrency.
+  CONCURRENCY="${CONCURRENCY:-32}"
+fi
 
 for i in 0 1; do
   eval "P=\$P$i"
@@ -60,7 +75,7 @@ for i in 0 1; do
     VLLM_BASE_URL=http://127.0.0.1:$P/v1 setsid nohup bash "$SD/eval_client_local.sh" \
     > "$FS/logs/cli_${TAG}_${SRC}${i}_pool.log" 2>&1 &
 done
-echo "[$TAG/$KIND] pool :$P0/:$P1 gpus $GA,$GB clients launched"
+echo "[$TAG/$KIND] pool :$P0/:$P1 gpus $GPULIST (engines=$NENG) clients launched"
 echo "  serve logs:  $FS/logs/serve_pool_${TAG}_gpu{$GA,$GB}.log"
 echo "  client logs: $FS/logs/cli_${TAG}_${SRC}{0,1}_pool.log"
 echo "  outputs:     $FS/outputs/cc_eval_${TAG}_*"

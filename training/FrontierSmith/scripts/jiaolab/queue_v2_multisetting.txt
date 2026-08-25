@@ -1,8 +1,17 @@
-# v2 multisetting 4B on jiaolab -- ordered by scientific value, not by arm name.
-# alpha=0.1 first: the agentic-ablation table shows soup quality is monotone in
-# alpha (a10 4.45/4.08 > a20 2.95/3.06 > raw arm 1.29/1.23), so a10 is the
-# setting that decides whether souping rescues an over-length arm at all.
+# jiaolab eval queue. Columns: <model_dir_basename> <tag> [kind=fcsale|ale|fcs]
+#
+# alpha=0.1 first: soup quality is monotone in alpha (a10 > a20 > raw arm) on
+# both campaigns, and a10 is the only setting that beats base.
+#
+# The two agentic-ablation a10 soups need ALE ONLY: their FrontierCS numbers are
+# already clean on gpublaze over the full 188 problems, but their ALE scored
+# 24/40 and 1/40 during the dockerd fd-exhaustion outage. Redoing ALE here (not
+# on gpublaze) puts them on the same node as jiaolab's base ALE, which is the
+# only way the three are comparable -- ALE scoring is CPU-speed dependent and
+# gpublaze/jiaolab differ by ~1.8x.
 v2_multisetting_4b__soup_full_wd01_a10  ja_v2_multisetting_4b_soup_full_wd01_a10
 v2_multisetting_4b__soup_full_wd03_a10  ja_v2_multisetting_4b_soup_full_wd03_a10
+agentic_ablation_4b__soup_withag_a10    ja_q35_4b_soup_withag_a10   ale
+agentic_ablation_4b__soup_noag_a10      ja_q35_4b_soup_noag_a10     ale
 v2_multisetting_4b__soup_lora_r32_a10   ja_v2_multisetting_4b_soup_lora_r32_a10
 v2_multisetting_4b__soup_lora_r32_a20   ja_v2_multisetting_4b_soup_lora_r32_a20

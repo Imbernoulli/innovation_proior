@@ -13,7 +13,9 @@ kernel 6.8、driver 580.126。无 slurm。所有 Princeton 历史脚本（`slurm
   （默认 70G）**的卡，`fs_pick_free_gpus N` 自动挑最空的 N 张。
   serve 的 `GPU_MEMORY_UTILIZATION` 默认 **0.85**（gpublaze 是 0.90），给共租者
   留 ~9G 余量；KV cache 大小只影响吞吐，不影响分数。
-- **`/` 只剩 ~490G（93% 满）**。大下载前先算空间。
+- **`/` 只剩 ~360G（95% 满）**。大下载前先算空间。（2026-08-25 MLS-Bench 移植
+  又吃掉 ~30G：harness+vendor 2.3G + 10 个包 env + driver env 28G，见 §2.4.4。
+  `vendor/workspace` 还会随每轮 MLS run 增长 ~1.7G，要定期清。）
 - **docker 需要 sudo（不可用）**，**没有 bwrap**，**apptainer 1.3.1 可用** ——
   ALE-Bench 判分只能走 apptainer（§2.2）。
 - **真 go-judge 跑不起来**：Ubuntu 24.04 的
@@ -41,6 +43,8 @@ kernel 6.8、driver 580.126。无 slurm。所有 Princeton 历史脚本（`slurm
 | `sbatch cc_serve_only.sh` | `scripts/gpublaze/serve_local.sh` | `GPUS=3 bash scripts/jiaolab/serve_local.sh <MODEL> <TAG>` |
 | `sbatch cc_eval_cpu_client.sh` | `scripts/gpublaze/eval_client_local.sh` | `TAG=.. SOURCE=.. bash scripts/jiaolab/eval_client_local.sh` |
 | `cc_eval_split_submit.sh` | `scripts/gpublaze/eval_split_local.sh` | `GPUS=3 bash scripts/jiaolab/eval_split_local.sh <MODEL> [TAG] [KIND] [SHARDS]` |
+| `sbatch cc_eval_mlsbench_cpu_ailab.sh` | `scripts/gpublaze/eval_mlsbench_local.sh` | **`GPUS=2 MODEL_PATH=.. TAG=.. bash scripts/jiaolab/eval_mlsbench_local.sh`**（parser 换 `qwen3_xml`，见 §2.4.1） |
+| （MLS N 轮基线） | `scripts/gpublaze/run_4b_base_mls_research_baseline.sh` | `scripts/jiaolab/run_mls_cpu_baseline.sh`（只做 MLS 一半；research 走 `eval_client_local.sh`） |
 | （池化 2 卡） | `scripts/gpublaze/launch_pool_eval.sh` | **`bash scripts/jiaolab/launch_pool_eval.sh <MODEL> <TAG> fcsale [gpuA gpuB]`** ← 生产用法 |
 | GPFS registry | `.cache/vllm_pool/` | 同（协议逐字节兼容） |
 | Apptainer judge SIF | 宿主机直跑 node server | 同（node v18） |
@@ -152,15 +156,194 @@ docker 要 sudo、没有 bwrap → **apptainer 是本机唯一沙箱**。
 但 research 的数据集（cant_be_late traces、SIFT1M、pysr/Julia 等）**没有搬到
 本机**。本轮 jiaolab 只做 **FCS-alg + ALE40**。
 
-### 2.4 MLS-Bench ❌ 本轮不做（留在 gpublaze）
+### 2.4 MLS-Bench CPU（22 题）✅ 已移植，冒烟通过（2026-08-25）
 
-补丁版 harness 本身只有 2.0G（gpublaze `.cache/mlsbench-eval`），但它跑任务要
-gpublaze 的 conda envs：**`/srv/home/bohanlyu/miniconda3/envs` = 212G / 44 个
-env**，另加 `vendor/{data,workspace,external_packages}`（symlink 到 dev
-checkout，未计）。jiaolab `/` 只剩 **~490G（93% 满）**，而本轮排队要评的 9 个
-模型（3 setting + 6 soup）本身就要 ~81G。212G + 81G 会把可用空间压到 ~200G，
-在一块与他人共用、已经 93% 满的盘上不可接受，且搬运本身 ~35 分钟。
-**结论：jiaolab 只做 FCS+ALE，MLS 留 gpublaze。**
+**结论先行**：本机现在可以跑 22 题 MLS-Bench CPU eval，协议与 gpublaze 完全一致，
+只有两处必要的机器差异：**tool-call parser 必须是 `qwen3_xml`**，
+以及 GPU 守卫/显存留白走本机口径。
+
+```bash
+# 单卡自起 vLLM（守卫会拒绝空闲 <70G 的卡；绝不碰 druv 的卡）
+GPUS=2 MODEL_PATH=<hf_dir> TAG=<tag> bash scripts/jiaolab/eval_mlsbench_local.sh
+
+# 挂到已有 engine（不占卡，TAG 必须等于那个 server 的 --served-model-name）
+EXTERNAL_VLLM_URL=http://127.0.0.1:8006/v1 TAG=<served> \
+  bash scripts/jiaolab/eval_mlsbench_local.sh
+
+# 发表口径：N>=3 轮 + 固定分母 22 的聚合
+GPUS=2 MODEL_PATH=<hf_dir> SERVED=<tag> N_ROLLOUTS=3 \
+  bash scripts/jiaolab/run_mls_cpu_baseline.sh
+```
+
+#### 2.4.1 `--tool-call-parser qwen3_xml`（**本机与 gpublaze 唯一的协议级差异，不可省**）
+
+MLS agent 全靠 tool call 驱动（edit / test / view / undo）。gpublaze 的
+`eval_mlsbench_local.sh` 传的是 `hermes`；**在 Qwen3.5 上 `hermes` 会接受请求
+但一个 tool call 都解析不出来**——HTTP 200、`finish_reason=stop`、
+`tool_calls=[]`，XML 原样留在 `content` 里，于是 agent 一步都走不了，
+**3 分钟内静默拿到 0/22，日志全绿**。本机实测（同一个 Qwen3.5-4B，同一个探针）：
+
+```
+# --tool-call-parser hermes
+finish_reason= stop
+tool_calls= []
+content[:400]= 'The user is asking me to run a first experiment ... \n</think>\n\n
+               <tool_call>\n<function=test>\n</function>\n</tool_call>'
+
+# --tool-call-parser qwen3_xml
+[tools-gate] parsed tool_calls: [{"id": "chatcmpl-tool-9da64054b19bd3ff",
+  "type": "function", "function": {"name": "test", "arguments": "{}"}}]
+```
+
+所以 `scripts/jiaolab/eval_mlsbench_local.sh`：
+- 默认 `TOOL_CALL_PARSER=qwen3_xml`（可用同名 env 覆盖）；
+- **起完 vLLM 之后必须过 tool-call 解析闸门 `mls_tools_ok`**：temperature 0
+  的确定性探针，要求返回**非空的已解析 `tool_calls` 数组**——只回 200 不算数。
+  自己起的 server 解析不出来就直接 abort（探针结果写到
+  `$OUTPUT_BASE/tool_call_probe.txt`）；`EXTERNAL_VLLM_URL` 模式下改成轮询等待
+  （`WAIT_TOOLS_SEC`，默认 1800s），因为别人的 engine 可能还在热身，
+  **绝不去动别人的 server**。
+
+#### 2.4.2 harness：**必须是打过补丁的那棵树**
+
+`.cache/mlsbench-eval` = fresh clone @805adf733 + FrontierSmith 补丁层
+（含 view+str_replace+rewrite edit contract）。**重新 clone 一份 MLS-Bench 不等价**，
+分数不是一个口径。本机是从 gpublaze **rsync** 过来的同一棵树：
+
+```
+$ grep -c VIEW_SCHEMA .cache/mlsbench-eval/src/mlsbench/agent/tools.py
+1
+$ git -C .cache/mlsbench-eval rev-parse --short HEAD
+2861229a4          # 与 gpublaze 一致，branch fix/oracle-leakage-pilot
+```
+
+`eval_mlsbench_local.sh` 没有这两样就 hard-fail（`VIEW_SCHEMA` 与 `--use-replace`），
+`mlsbench_preflight.sh` 会更早地拦住。
+
+搬过来时**排除**了 `logs/`、`paper_assets/`、`.scheduler*`、`.saves/`
+（都是 gpublaze 的历史产物，与评测无关），实传 903MB。
+
+#### 2.4.3 `vendor/` 是真目录，不是 symlink
+
+gpublaze 上 `vendor/{data,external_packages,workspace}` 是指向
+`/srv/home/bohanlyu/MLS-Bench/` dev checkout 的 symlink（data 508G、
+external_packages 12G、workspace 67G）。本机没有那个 checkout，所以这三个做成
+**真目录**，只装 22 题 CPU 集真正用到的东西：
+
+| 目录 | 内容 | 大小 |
+|---|---|---|
+| `vendor/external_packages/` | 10 个包：`badge causal-bnlearn causal-learn deap eplb gplearn naslib scaling-law-lab scikit-learn SMPyBandits` | 1.3G |
+| `vendor/data/` | `sklearn`(134M) `badge`(4.9M) `scaling_law`(680K) `adbench`(568K) —— 就是这 10 个包 config 里出现过的全部 data 引用 | 139M |
+| `vendor/workspace/` | 空目录；每次 run 的产物落在这里（`<task>/vllm_<tag>_<ts>/`） | 随 run 增长 |
+
+**`vendor/workspace` 会长**：一次 run 会把包整个拷进 run 目录，naslib 单次 ~562M、
+SMPyBandits ~470M，一轮 22 题大约 +1.7G。盘只剩 ~360G（95%），**定期清**。
+
+#### 2.4.4 conda envs：`container_runtime: local` 的运行时
+
+`container_runtime: local` 表示每个包在自己的 `mlsbench-<pkg>` conda env 里跑
+（docker 在本机要 sudo，用不了）。22 题只用到 **10 个 env**（不是 gpublaze 那 44 个），
+从 gpublaze **rsync + 前缀重定位**过来：`/srv/home/bohanlyu/miniconda3` →
+`/home/bohan/miniconda3`（文本文件直接替换，二进制文件替换后按原长度补 NUL，
+即 conda-unpack 的做法；新前缀更短所以安全）。重定位脚本进了版本库：
+`scripts/jiaolab/relocate_conda_prefix.py <旧前缀> <新前缀> <env 目录>`。
+
+> 为什么不在本机重新 `pip install` 一套：install_cmds 大多没锁版本，重装出来的
+> 是**另一个包集**，也就是另一个打分口径。搬过来才是同一口径。
+
+driver（跑 `python -m mlsbench agent/score` 的那个解释器）另起一个
+`mlsbench-driver` env（python 3.13.15），版本对齐 gpublaze conda base：
+`numpy 2.4.4 / scipy 1.17.1 / pandas 2.3.3 / openai 2.24.0 / PyYAML 6.0.3 /
+packaging 25.0 / huggingface_hub 1.10.1 / networkx 3.6.1 / tqdm 4.67.3 /
+scikit-learn 1.8.0 / statsmodels 0.14.6 / pydot 4.0.1 / momentchi2 0.1.8 /
+matplotlib 3.10.9`。
+
+**故意不装 `causal-learn`**：gpublaze 的 driver base 里也没有，所以
+`causal-observational-linear-gaussian` 的 `parser.py` 在那边 import 失败、
+该题记 `agent_failed`。这边装上就会多得一题分——**那是另一个口径**。
+
+**坑（静默）**：MLS-Bench 的 `_has_conda_support()` 找不到 conda 就会
+**不报错地**退化成 `PIP_TARGET` site-packages 模式，跑出来的是完全不同的运行时。
+本机 `conda` 不在非登录 shell 的 PATH 上，所以 wrapper 里显式
+`export CONDA_EXE=/home/bohan/miniconda3/condabin/conda` 并把 `condabin` 塞进
+PATH，preflight 还会断言 `wrap_with_conda()` 真的吐出 `conda run --name ...`。
+
+磁盘占用合计：harness+vendor **2.3G** + 11 个 conda env **28G** ≈ **30G**。
+（本文旧版说要 212G，那是把 gpublaze 全部 44 个 env 都算进去了；22 题 CPU 集只要 10 个。）
+
+#### 2.4.5 preflight（**先跑这个，不占卡**）
+
+```bash
+bash scripts/jiaolab/mlsbench_preflight.sh                 # 22 题全量检查
+TASKS="ml-calibration" bash scripts/jiaolab/mlsbench_preflight.sh
+BUILD_LOCAL=1 bash scripts/jiaolab/mlsbench_preflight.sh   # 顺便预热 local runtime
+```
+
+检查项：harness 身份 + VIEW_SCHEMA + `--use-replace`；`vendor/*` 是真目录且非空；
+driver python 解析到的是**补丁版** mlsbench（不是别的副本）+ openai；
+conda-backed local runtime 真的生效；每个要用的 `mlsbench-<pkg>` env 存在且 python 能跑。
+`eval_mlsbench_local.sh` 会自动先跑它（`SKIP_PREFLIGHT=1` 可跳）。
+
+`BUILD_LOCAL=1` **必须跑一次**：MLS-Bench 的 "已构建" 指纹里含**绝对路径**
+（`pkg_dir` + `data_root`），从 gpublaze 搬过来的树在本机永远算"没建过"，
+于是第一次 eval 的第一题要付 `build_local_package` 的钱（在 conda env 里重跑
+install_cmds）。绝大多数是 `already satisfied`，但有两处要联网：
+scikit-learn 重新抓 adbench 的 4 个 npz；**scaling-law-lab 的 `prepare_data.py`
+会无条件重拉 `pkuHaowei/sldbench`**（它不是幂等的，`vendor/data/scaling_law`
+已经有文件也拦不住它）。所以 preflight 的 BUILD_LOCAL 段**故意**用
+`HF_HUB_OFFLINE=0` 跑（`BUILD_HF_OFFLINE=1` 可强制离线）——
+**这是 setup，不是 eval**：eval 本身永远离线（`eval_mlsbench_local.sh` 和
+gpublaze 一样 export `HF_HUB_OFFLINE=1`）。该脚本里的 dataset revision 是**钉死**的，
+本机重拉的产物与 gpublaze 搬来的文件**逐 md5 一致**（13 个文件全等），
+所以口径没变。哪天本机断网，就直接预写
+`vendor/images/local/<pkg>.json` 的 stamp。
+
+2026-08-25 实跑：**10 个包全部 `[build] ... ready`**，preflight `ALL CHECKS PASSED`。
+
+#### 2.4.6 冒烟验收（2026-08-25，GPU 2 单卡，Qwen3.5-4B base，TP=1）
+
+3 题、`CONCURRENCY=3`，其余全默认（`max_steps 20 / max_tests 3 /
+budget_tokens 10000 / reasoning_effort high / seeds [42] / MAX_MODEL_LEN 40960 /
+EVAL_RESEARCHER_YEAR 2026 / --use-replace`）：
+
+| task | jiaolab status | jiaolab score | gpublaze run1 参考 |
+|---|---|---|---|
+| `ml-selective-deferral` | scored | **0.3597** | 0.3894 |
+| `ml-anomaly-detection` | scored | **0.3633** | 0.3633 |
+| `optimization-evolution-strategy` | agent_failed+scored | **0.3478** | 0.0226 |
+
+3 题均值 0.3569（`outputs/mls_cpu_smoke_jiaolab_qwen35-4b-base/summary.json`）。
+task log 里能看到完整的 `edit / test / view / undo` 步骤，`view` 正是补丁版
+edit contract 的工具，说明 harness 补丁层在本机确实生效。
+
+**这三个数不是任何结论**：3 题 ≠ 22 题，单轮 ≠ N>=3 轮的发表口径；
+而且按 §0 铁律 1，**jiaolab 的 MLS 数只能和 jiaolab 的 MLS 数同表**
+（Xeon 8358 vs EPYC 9654，CPU 任务对算力敏感）。要出可比的数就跑
+`run_mls_cpu_baseline.sh`，在本机自己建锚点。
+
+还跑了两个不占卡的旁证：
+- **闸门的反向验证**：挂到一个**没带** `--enable-auto-tool-choice` 起的池 engine
+  上，闸门吐出服务端原文并拒绝启动（不去动别人的 server）：
+  ```
+  [tools-gate] no usable response ('choices'); body: {"error":{"message":
+    "\"auto\" tool choice requires --enable-auto-tool-choice and
+     --tool-call-parser to be set","type":"BadRequestError",...,"code":400}}
+  ERROR: http://127.0.0.1:40457/v1 never returned parsed tool_calls after 1s.
+    Restart that server with: --enable-auto-tool-choice --tool-call-parser qwen3_xml
+  ```
+- `run_mls_cpu_baseline.sh` 的 `PHASES=aggregate` 用上面这份 summary 跑通，
+  固定分母 22、`agent_failed+scored` 记 0 的语义与 gpublaze chain 完全一致。
+
+**尚未验证（明确列出，别当成跑过了）**：
+- 22 题全量跑、`N_ROLLOUTS>=3` 的完整 chain；
+- 除 `scikit-learn`/`deap` 之外 8 个包的**出分**（env 与
+  `build_local_package` 已预热通过，`causal-bnlearn` 也真的跑起了
+  `eval_hailfinder.sh`，但那次 run 为了**还卡**被我提前掐了，没有出分 ——
+  见 `outputs/mls_cpu_smoke2_jiaolab_qwen35-4b-base/NOTE_INCOMPLETE.md`）；
+- 本机 MLS 的**墙钟**：那次单题跑了 38 分钟还没跑完同一个 test
+  （当时全机 load ~180，其他用户的 eval 在跑），gpublaze 上同题 22 并发总共
+  310s。**CONCURRENCY=20 + TASK_TIMEOUT=5400 在本机大概率不够**，
+  第一次跑全量前先看 load，必要时调大 `TASK_TIMEOUT`。
 
 ## 3. 环境（venv）
 
@@ -350,6 +533,10 @@ scripts/jiaolab/
   eval_model_from_gpublaze.sh           # 在 gpublaze 上跑：搬模型 → 起池 → 评测
   apply_vllm_penalty_fastpath_jiaolab.sh
   ale_apptainer_selftest.py             # ALE apptainer 后端验收套件（compile/fault/concurrency/compare/report）
+  eval_mlsbench_local.sh                # MLS-Bench CPU 22 题（parser=qwen3_xml + tool-call 解析闸门；协议同 gpublaze）
+  mlsbench_preflight.sh                 # MLS 开跑前的全部非 GPU 检查；BUILD_LOCAL=1 顺便预热 conda 运行时
+  run_mls_cpu_baseline.sh               # MLS N 轮 rollout + 固定分母 22 聚合（gpublaze chain 的 MLS 一半）
+  relocate_conda_prefix.py              # conda env 跨机前缀重定位（conda-unpack 的等价物）
   pysite/sitecustomize.py               # 按 ALE_BENCH_CONTAINER_BACKEND 装后端（host 直接拒绝）
   pysite/ale_apptainer_backend.py       # 急切启动 + 1 核绑定的 apptainer 沙箱
 docs/EVAL_ON_JIAOLAB_zh.md              # 本文
@@ -358,7 +545,10 @@ docs/EVAL_ON_JIAOLAB_zh.md              # 本文
 运行时资产（gitignored）：`.cache/external/Frontier-CS/algorithmic/{problems,solutions}`、
 `.cache/bin/go-judge`、`.cache/ale-bench/rust-tool-builds`、`.cache/jiaolab/judge_app`、
 `.venv-jiaolab`（`.venv` symlink）、`/home/bohan/venv-vllm-jiaolab`、
-`/home/bohan/sif/*.sif`、`data/alebench/local_data`。
+`/home/bohan/sif/*.sif`、`data/alebench/local_data`、
+**`.cache/mlsbench-eval`（补丁版 MLS harness + 真 `vendor/`，2.3G）**、
+**`/home/bohan/miniconda3/envs/mlsbench-{driver,<10 个包>}`（28G）**、
+**`/home/bohan/miniconda3/envs/mlsbench-driver`（MLS driver 解释器）**。
 
 ## 7. 待办 / 已知限制
 
@@ -368,6 +558,14 @@ docs/EVAL_ON_JIAOLAB_zh.md              # 本文
   这也是锚点必须留在本机的原因之一。
 - **ALE 沙箱无网络隔离**（非特权 apptainer 限制，与 Princeton shim 同）。
 - **research 64 题**：数据未搬，本机不跑。
-- **MLS-Bench**：conda env 体量 + 磁盘余量，留在 gpublaze。
+- **MLS-Bench**：已移植并冒烟通过（§2.4）。**仍未验证**：22 题全量、
+  `N_ROLLOUTS>=3` 的完整 chain、`scikit-learn`/`deap` 之外 8 个包的出分、
+  以及本机 MLS 的真实墙钟（单题实测 >38 min 未完，默认
+  `TASK_TIMEOUT=5400` 很可能不够）。本机还没有 MLS 锚点 —— 出数前先用
+  `run_mls_cpu_baseline.sh` 建一个。
+- **MLS 的 `--tool-call-parser` 绝不能退回 `hermes`**：在 Qwen3.5 上它 200 但
+  解析不出 tool call，静默 0/22（§2.4.1 有两边实测输出）。
+  `eval_mlsbench_local.sh` 的闸门会拦住，但如果有人绕过 wrapper 手起 server，
+  就没有人拦了。
 - **`/` 93% 满**：每评一个模型 +9G。评完的模型目录可以删
   （`/home/bohan/models_from_gpublaze/<name>`），outputs 很小。
