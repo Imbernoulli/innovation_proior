@@ -80,9 +80,25 @@ fi
 export FS_PERTASK_REWARD_NORM="${FS_PERTASK_REWARD_NORM:-1}"
 export FS_PERTASK_REWARD_NORM_TARGET="${FS_PERTASK_REWARD_NORM_TARGET:-1.0}"
 
-# ---- anti-dead-group knobs: blueprint defaults (all OFF = vanilla GRPO) -------
-export ADAPTIVE_N_ENABLE="${ADAPTIVE_N_ENABLE:-0}"
-export FS_OVERLONG_PENALTY="${FS_OVERLONG_PENALTY:-0}"
+# ---- anti-dead-group knobs: the HOUSE RECIPE, not vanilla GRPO ---------------
+# These defaults are transcribed from scripts/launch_rlv13_y26.sh:36-41, the
+# winning production recipe (rlv12/rlv13 on 9B). They used to default to "all
+# OFF = vanilla GRPO", which is how ms_qwen35_4b_grpo_v6fresh silently ran with
+# no length control at all: response length drifted 14.2k -> 20.6k and the 32k
+# truncation rate went 3.3% -> 21% over 4 steps, doubling step time, because a
+# truncated rollout scored exactly the same 0 as any other failure and nothing
+# in the objective distinguished them. Do not flip these back to 0 without a
+# reason written down here.
+export ADAPTIVE_N_ENABLE="${ADAPTIVE_N_ENABLE:-1}"
+export ADAPTIVE_N_INWAVE="${ADAPTIVE_N_INWAVE:-1}"
+export ADAPTIVE_N_OVERLAP="${ADAPTIVE_N_OVERLAP:-0}"
+export ADAPTIVE_N_MAX="${ADAPTIVE_N_MAX:-32}"
+export ADAPTIVE_N_MAX_EXTRA="${ADAPTIVE_N_MAX_EXTRA:-512}"
+export ADAPTIVE_N_MAX_EXTRA_PER_WORKER="${ADAPTIVE_N_MAX_EXTRA_PER_WORKER:-256}"
+export ADAPTIVE_N_AGENTS="${ADAPTIVE_N_AGENTS:-single_turn_agent}"
+export FS_OVERLONG_PENALTY="${FS_OVERLONG_PENALTY:-1}"
+export FS_OVERLONG_PENALTY_FACTOR="${FS_OVERLONG_PENALTY_FACTOR:-0.15}"
+export FS_OVERLONG_FILTER="${FS_OVERLONG_FILTER:-0}"
 export LOSS_AGG_MODE="${LOSS_AGG_MODE:-seq-mean-token-mean}"
 
 # ---- data ---------------------------------------------------------------------
@@ -118,7 +134,14 @@ export VAL_N="${VAL_N:-1}"
 export ACTOR_PARAM_OFFLOAD="${ACTOR_PARAM_OFFLOAD:-False}"
 export ACTOR_OPTIMIZER_OFFLOAD="${ACTOR_OPTIMIZER_OFFLOAD:-True}"
 export REF_PARAM_OFFLOAD="${REF_PARAM_OFFLOAD:-True}"
-export GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.5}"
+# 0.5 was an OOM-panic leftover; the real OOM cause was non-fused logits (fixed
+# by use_fused_kernels). rlv13's house value is 0.90, but that is the 9B-over-8-
+# GPUs figure: there each GPU holds only ~2.3G of actor shard before vLLM
+# profiles. Colocated 4B-over-2-GPUs leaves ~10.5G resident, so vLLM sees
+# 68.65/79.19 GiB free and 0.90 (71.27 GiB) hard-fails at engine init with
+# "Free memory on device cuda:0 ... is less than desired GPU memory
+# utilization". 0.85 (67.3 GiB) is the largest that fits this topology.
+export GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.85}"
 
 # ---- context: no MLS rows -> prompt budget shrinks 26624 -> 10240 (FCS max).
 # verl packing assert: PPO_MAX_TOKEN_LEN_PER_GPU x ULYSSES_SP >= prompt+response.
@@ -161,6 +184,16 @@ echo "[rl-local] TRAIN_DATA=$TRAIN_DATA"
 echo "[rl-local] MODEL=$MODEL_PATH GPUS=$GPUS NGPU=$NGPU TP=$TP steps=$TOTAL_TRAINING_STEPS batch=${TRAIN_BATCH_SIZE}x${ROLLOUT_N}"
 echo "[rl-local] judge=$FRONTIERCS_JUDGE_URL synth_root=$FRONTIERSMITH_SYNTH_ROOT"
 echo "[rl-local] ctx: prompt=$MAX_PROMPT_LENGTH resp=$MAX_RESPONSE_LENGTH model_len=$MAX_MODEL_LEN gpu_util=$GPU_MEMORY_UTILIZATION"
+# Length control is the single knob that decides whether a run converges or
+# inflates: v6fresh ran with FS_OVERLONG_PENALTY=0 and drifted 14.2k -> 20.6k
+# tokens / 3.3% -> 21% truncation over 4 steps, doubling step time. It was off
+# purely because nobody passed it. Print it so "off" is never silent again.
+if [ "$FS_OVERLONG_PENALTY" = "1" ]; then
+  echo "[rl-local] length control: overlong penalty ON (buffer=${FS_OVERLONG_BUFFER_LEN:-4096} factor=${FS_OVERLONG_PENALTY_FACTOR:-1.0} -> ramp starts at $(( MAX_RESPONSE_LENGTH - ${FS_OVERLONG_BUFFER_LEN:-4096} )) tok)"
+else
+  echo "[rl-local] WARNING: length control OFF (FS_OVERLONG_PENALTY=0) -- nothing bounds response growth; expect length inflation and rising step time" >&2
+fi
+echo "[rl-local] adaptive-n=$ADAPTIVE_N_ENABLE pertask_norm=$FS_PERTASK_REWARD_NORM loss_agg=$LOSS_AGG_MODE"
 
 # ---- sandbox preflight (synth rows FAIL_SOFT to silent 0.0 without bwrap) -----
 if [ "${SKIP_BWRAP_PREFLIGHT:-0}" != "1" ]; then
