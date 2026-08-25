@@ -5,10 +5,10 @@ Two outputs, both committed (small index + gzipped shards):
 
   1. agentic.json
        Index for the "Agentic" browse mode. One entry per task that has a
-       trajectories/<task>/agentic_messages.json transcript, joined with the
+       trajectories/<task>/agentic_v2_filled.json transcript, joined with the
        title/domain/year from trajectories.json. The transcripts themselves are
-       fetched directly from trajectories/<task>/agentic_messages.json (already
-       in the repo) — no duplication here.
+       fetched directly from trajectories/<task>/agentic_v2_filled.json (already
+       in the repo; agentic v2 = rewrite-contract episodes, see tools/build_agentic_v2.py) — no duplication here.
 
   2. sft/viewer/index.json  +  sft/viewer/<dataset>-NNN.json.gz
        A browsable catalogue of EVERY SFT training example. index.json holds
@@ -51,7 +51,7 @@ def build_agentic_index():
     meta_by_task = {t["task"]: t for t in traj}
 
     rows = []
-    for path in sorted(glob.glob(os.path.join(ROOT, "trajectories", "*", "agentic_messages.json"))):
+    for path in sorted(glob.glob(os.path.join(ROOT, "trajectories", "*", "agentic_v2_filled.json"))):
         task = os.path.basename(os.path.dirname(path))
         try:
             rec = json.load(open(path))

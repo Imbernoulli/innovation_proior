@@ -7,7 +7,7 @@
  *                  ordered files (initial context -> baselines -> feedback -> finale).
  *  - Agentic:      the SAME research lines rendered as an *agent transcript* — the model
  *                  edits code and calls run_experiment via tool calls. agentic.json ->
- *                  #a/<task>, reads trajectories/<task>/agentic_messages.json (a list of
+ *                  #a/<task>, reads trajectories/<task>/agentic_v2_filled.json (a list of
  *                  system/user/assistant(+reasoning,tool_calls)/tool messages).
  *  - Training:     the full SFT corpus the traces are assembled into. sft/viewer/index.json
  *                  lists every example; bodies lazy-load (and gunzip in-browser via pako)
@@ -503,6 +503,7 @@
   function renderAgenticHtml(rec) {
     var html = "";
     var sys = "";
+    if (rec.system) sys = rec.system;  // agentic v2 keeps the system prompt top-level
     (rec.messages || []).forEach(function (m) { if (m.role === "system" && !sys) sys = m.content || ""; });
     html += sysBlock(sys);
     html += toolsBlock(rec.tools);
@@ -548,7 +549,7 @@
 
   function loadAgentic(a) {
     if (agCache[a.task]) { paintHtml(agContentEl, renderAgenticHtml(agCache[a.task])); return; }
-    var url = "trajectories/" + a.task + "/agentic_messages.json";
+    var url = "trajectories/" + a.task + "/agentic_v2_filled.json";
     var token = ++fetchToken;
     setStatus(agContentEl, "loading", "Loading agentic transcript…");
     fetch(url, { cache: "no-cache" })
