@@ -23,11 +23,12 @@ all-turns or last-turn-only). Train with mask_history=False (default); the loss 
   (a) methods   : single-turn Q&A (full reasoning).
   (b) trajectory: Mode 1 (feedback = observation) + Mode 2 (prior rungs folded, feedback = user
                   boundary, current rung full).
-  (c) agentic   : v2 (agentic_v2_filled.json, devfix harness contract) — DEDUPED folded-only:
-                  one example per round c=0..n-1 (test() result = user boundary, edit result =
-                  observation; every action trained EXACTLY once across the set; trailing
-                  submit turn = its own final round). Legacy v1 (run_experiment files) builds
-                  only while no *_filled exist: Mode 1 full + Mode 2 folded as before.
+  (c) agentic   : v2 (agentic_v2_filled.json, live rewrite harness contract) — DEDUPED
+                  folded-only: one example per round c=0..n-1 (test() result = user
+                  boundary, edit result = observation; every action trained EXACTLY once
+                  across the set; trailing submit turn = its own final round). The legacy
+                  v1 files were retired with tag agentic-v2-retires-v1; the v1 code path
+                  below only runs on checkouts that still carry them.
 
 System prompt carries the discovery YEAR (method year; trajectory first-method year).
 """

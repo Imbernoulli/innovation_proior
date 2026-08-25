@@ -98,9 +98,24 @@ source, in one file:
   reasoning-stripped history. A round = one rung (trajectory) / one `run_experiment` block (agentic).
 
 Covers methods (single-turn), trajectories (Mode 1 feedback-as-observation + Mode 2 per-rung),
-agentic (Mode 1 all-results-as-observation + Mode 2 per-round; assistant tool steps use the
-structured `function_call` role → LF renders qwen3 JSON / qwen3_5 XML). Literal structural tokens
-in content are neutralized to `⟨think⟩`/`⟨tool_call⟩`/….
+agentic (assistant tool steps use the structured `function_call` role → LF renders qwen3 JSON /
+qwen3_5 XML). Literal structural tokens in content are neutralized to `⟨think⟩`/`⟨tool_call⟩`/….
+
+**Agentic v2 (2026-08-24)** — the June `agentic_messages.json` corpus was rebuilt from scratch
+(tag `agentic-v2-retires-v1`, generated data deleted; tools: `tools/build_agentic_v2.py` deterministic skeleton +
+Opus prose fills via `tools/apply_agentic_fills.py`, per-task `agentic_v2.json` /
+`agentic_v2_fills.json` / `agentic_v2_filled.json`). v2 = **164 tasks** (127 originals kept +
+37 new; 8 decontam tasks excluded), speaking the **live three-way harness contract** (SFT =
+RL = eval): `edit(op='rewrite'|'str_replace'|'create')` + `view` + `test()`/`submit(n)`, the
+post-edit current-file echo, real harness result strings, budgets, and line-numbered file
+dumps. Framing is **deduped folded-only**: one example per round c=0..n-1 (test result = user
+boundary) plus a trailing submit round — every action enters the loss **exactly once** across
+the 752 rows (v1 trained the same text up to 4×/epoch). Every trained turn carries a real
+think (v1 had 33.6% zero-think turns rendered as empty `<think>` in the loss); think shapes
+are calibrated on real rollouts (long design think per rung, short followups, pre-test
+expectations, submit comparison). Nine cumulative-stack ladders (airbench, nanoGPT chain,
+vLLM/llm.c stacks, RoBERTa) use a **create-chain** framing (one new module per rung) because
+their measured numbers stack techniques rather than replace them.
 
 ## 2. Capability-maintenance mix — DROPPED (2026-07)
 
