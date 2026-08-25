@@ -39,6 +39,17 @@ export FS_VLLM_PENALTY_FASTPATH="${FS_VLLM_PENALTY_FASTPATH:-1}"
 export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
 ulimit -s 8192 2>/dev/null || true
 
+# ---- reward env: ALE-Bench judge backend (inert unless ALE rows are in the mix) --
+# host = no-docker bwrap sandbox (default: dockerd outages zeroed ALE rewards on
+# 2026-08-23; bwrap + exported image rootfs = same g++ 12.2.0 toolchain, no
+# dockerd). Implementation scripts/gpublaze/pysite/ale_host_backend.py,
+# auto-installed by that dir's sitecustomize.py in every python that has pysite
+# on PYTHONPATH (verl trainer + reward workers inherit this env). Rootfs:
+# scripts/gpublaze/prepare_ale_host_rootfs.sh (already run). Acceptance:
+# scripts/gpublaze/ale_host_selftest.py. Set =docker to fall back.
+export ALE_BENCH_CONTAINER_BACKEND="${ALE_BENCH_CONTAINER_BACKEND:-host}"
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$SCRIPT_DIR/pysite"
+
 # ---- reward env: synth (bwrap sandbox, local corpus) --------------------------
 export FRONTIERSMITH_SYNTH_ROOT="${FRONTIERSMITH_SYNTH_ROOT:-/srv/home/bohanlyu/innovation_proior/frontiersmith_synth}"
 export FRONTIERSMITH_SYNTH_FAIL_SOFT="${FRONTIERSMITH_SYNTH_FAIL_SOFT:-1}"

@@ -16,8 +16,9 @@
 # (local judge for non-research sources). Differences, all forced by the machine:
 #   - judge node API runs on host node (no Apptainer) via
 #     start_frontiercs_judge_local.sh; sandbox = real go-judge (userns OK) or shim
-#   - ALE-Bench containers run under rootless docker
-#     (ALE_BENCH_CONTAINER_BACKEND=docker -- the harness's NATIVE backend)
+#   - ALE-Bench judging runs on the NO-DOCKER host backend by default
+#     (ALE_BENCH_CONTAINER_BACKEND=host: bwrap + exported image rootfs; set to
+#     "docker" for the harness's native rootless-docker backend)
 #   - judge_node_meta.json has no slurm fields; node class here is gpublaze
 #     (Xeon/H100 host). Per EVAL_ROBUSTNESS_zh.md 铁律1, scores judged on this
 #     box are NOT same-table comparable with the ailab/pli history.
@@ -102,10 +103,20 @@ PY
   echo "[client-local] judge ready (node $PORT / go-judge $GJ_PORT)"
 fi
 
-# ---- ALE-Bench on rootless docker ---------------------------------------------
-export ALE_BENCH_CONTAINER_BACKEND="${ALE_BENCH_CONTAINER_BACKEND:-docker}"
+# ---- ALE-Bench judge backend: host (no dockerd) by default --------------------
+# host = bwrap sandboxes on the exported image rootfs (same g++ 12.2.0/boost/
+# ac-library as the container; 1-core taskset + RLIMIT_AS + no network), no
+# dockerd in the scoring path -- rootless dockerd died twice under client
+# container bursts (2026-08-23) turning every ALE score into AleInfraError.
+# Backend implementation: scripts/gpublaze/pysite/ale_host_backend.py
+# (auto-installed by pysite/sitecustomize.py). One-time rootfs export:
+# scripts/gpublaze/prepare_ale_host_rootfs.sh. Acceptance suite:
+# scripts/gpublaze/ale_host_selftest.py. Set ALE_BENCH_CONTAINER_BACKEND=docker
+# to fall back to rootless docker.
+export ALE_BENCH_CONTAINER_BACKEND="${ALE_BENCH_CONTAINER_BACKEND:-host}"
 # Rootless-docker uid remap: run judge containers as container-root (== host
-# user) via the sitecustomize patch in scripts/gpublaze/pysite/.
+# user) via the sitecustomize patch in scripts/gpublaze/pysite/. Dormant under
+# the host backend; only used if the docker backend is re-selected.
 export ALE_BENCH_DOCKER_ROOT_USER=1
 export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$SCRIPT_DIR/pysite"
 # The historical driver preflight requires this path to EXIST even on docker:
@@ -115,7 +126,7 @@ mkdir -p "$ALE_BENCH_APPTAINER_DIR"
 # ---- eval configuration (protocol identical to cc_eval_cpu_client.sh) ---------
 export EVAL_DECOUPLE=1 RESUME="${RESUME:-1}"
 export CONCURRENCY="${CONCURRENCY:-96}"
-export EVAL_SCORE_CONCURRENCY="${EVAL_SCORE_CONCURRENCY:-4}"   # dockerd fd ceiling: 12-way container bursts killed rootless docker twice (AleInfraError storms); 4-way verified stable. Generation concurrency untouched.
+export EVAL_SCORE_CONCURRENCY="${EVAL_SCORE_CONCURRENCY:-4}"   # dockerd fd ceiling: 12-way container bursts killed rootless docker twice (AleInfraError storms); 4-way verified stable. Host backend has no dockerd (bwrap only) but 4 remains a sane CPU-affinity default. Generation concurrency untouched.
 export MAX_TOKENS="${MAX_TOKENS:-32768}"
 export TEMPERATURE="${TEMPERATURE:-1.0}"
 export TOP_P="${TOP_P:-0.95}"
