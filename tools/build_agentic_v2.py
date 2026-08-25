@@ -438,7 +438,32 @@ def numbered(code):
     return '\n'.join('%6d: %s' % (i + 1, ln) for i, ln in enumerate(code.splitlines()))
 
 
-def initial_prompt(context_md, filename, code, n_actions, n_tests, baseline=None):
+# Cumulative-stack ladders: the ladder accumulates technologies (each rung's
+# measured number inherits the previous rungs' components — airbench additive
+# speedups, nanoGPT record chain, vLLM/llm.c stacks, RoBERTa recipe). For those,
+# a rewrite/str_replace op sequence CONTRADICTS the metrics (it would erase the
+# previous technique while the next number claims to build on it). Their episodes
+# instead emit one edit(op='create') per rung, one new module file per technique
+# — the workspace only grows, matching the stacking semantics. The module path
+# is derived from the trajectory's own workspace filename + the rung slug.
+CUMULATIVE_TASKS = {
+    'cv-cifar10-speedrun', 'dl-resnet-imagenet-speedup', 'lm-hlb-gpt-speedrun',
+    'lm-nanochat-pipeline', 'lm-nanogpt-speedrun', 'sys-gptfast-inference-speedrun',
+    'sys-llm-serving-throughput', 'sys-llmc-gpt2-speedrun', 'roberta-pretraining-recipe',
+}
+
+
+def module_path(filename, slug):
+    """workspace/custom_speedrun.py + patch-whitening -> workspace/patch_whitening.py
+    legacy/airbench96.py -> legacy/patch_whitening.py"""
+    parts = filename.rsplit('/', 1)
+    base = parts[0] if len(parts) > 1 else ''
+    ext = os.path.splitext(parts[-1])[1] or '.py'
+    return (base + '/' if base else '') + slug.replace('-', '_') + ext
+
+
+def initial_prompt(context_md, filename, code, n_actions, n_tests, baseline=None,
+                   cumulative=False):
     parts = [context_md.rstrip()]
     if code:
         parts.append('\n## %s  [EDITABLE — entire file only]\n```%s\n%s\n```'
@@ -450,6 +475,11 @@ def initial_prompt(context_md, filename, code, n_actions, n_tests, baseline=None
         slug, fb = baseline
         parts.append('\n## Baseline results (the code above, already measured — '
                      'reference `%s`)\n\n%s' % (slug, fb))
+    if cumulative:
+        parts.append('\nThe workspace grows module by module: implement each new technique '
+                     'as a NEW file with edit(op=\'create\', ...) next to the code shown '
+                     'above. Do not rewrite or delete the existing files — the measured '
+                     'reference stack builds on them.')
     budget = [
         '- **Action budget**: %d total tool calls '
         '(every edit / test / undo / web_search / web_extract counts; submit does not)' % n_actions,
@@ -523,13 +553,19 @@ def build_task(task_dir, task):
     filename, fname_src = resolve_filename(task_dir, task)
 
     # ---- plan all rung transitions first (fail before writing anything)
+    cumulative = task in CUMULATIVE_TASKS
     rung_ops = []
     prev = scaffold if use_scaffold else None
     for ri, state in enumerate(states):
-        try:
-            rung_ops.append(plan_ops(prev, state))
-        except ValueError as e:
-            raise ValueError('rung %d: %s' % (ri + 1, e))
+        if cumulative:
+            rung_ops.append([{'op': 'create',
+                              'filename': module_path(filename, steps[ri].get('slug', 'rung%d' % (ri + 1))),
+                              'content': state}])
+        else:
+            try:
+                rung_ops.append(plan_ops(prev, state))
+            except ValueError as e:
+                raise ValueError('rung %d: %s' % (ri + 1, e))
         prev = state
 
     n_edits = sum(len(o) for o in rung_ops)
@@ -539,7 +575,8 @@ def build_task(task_dir, task):
     msgs = [{'role': 'user',
              'content': initial_prompt(context_md, filename,
                                        scaffold if use_scaffold else '',
-                                       n_actions, n_tests, baseline=baseline_block)}]
+                                       n_actions, n_tests, baseline=baseline_block,
+                                       cumulative=cumulative)}]
     seq = 0  # unique per assistant turn -> fills files key on the full sentinel
 
     def next_seq():
@@ -556,11 +593,13 @@ def build_task(task_dir, task):
             slot = '[[THINK kind=%s rung=%d slug=%s seq=%d]]' % (kind, ri + 1, slug, n)
             say = '[[SAY rung=%d slug=%s seq=%d]]' % (ri + 1, slug, n) if oi == 0 else ''
             if op['op'] == 'create':
+                fname = op.get('filename', filename)
                 msgs.append(asst(slot, say, 'edit',
-                                 {'op': 'create', 'filename': filename,
+                                 {'op': 'create', 'filename': fname,
                                   'content': op['content']}))
-                replay = op['content']
-                result = 'Created: %s' % filename
+                result = 'Created: %s' % fname
+                if not cumulative:      # cumulative stacks grow files; replace mode
+                    replay = op['content']  # replaces the single-file state
             elif op['op'] == 'rewrite':
                 old_n = len(replay.splitlines())
                 new_n = len(op['content'].splitlines())
@@ -579,9 +618,9 @@ def build_task(task_dir, task):
                 replay = replay.replace(op['old_str'], op['new_str'], 1)
                 result = ('OK: Replaced 1 occurrence in %s (lines %d..%d). '
                           'Editable range: entire file.' % (filename, a, b))
-            echo = file_echo(filename, replay)
+            echo = file_echo(filename, replay) if not cumulative else ''
             msgs.append(tool(result + ('\n\n' + echo if echo else '')))
-        if replay != states[ri]:
+        if not cumulative and replay != states[ri]:
             raise ValueError('rung %d: replay diverged from target state' % (ri + 1))
         msgs.append(asst('[[THINK kind=pre_test rung=%d slug=%s seq=%d]]'
                          % (ri + 1, slug, next_seq()), '', 'test', {}))
@@ -608,6 +647,7 @@ def build_task(task_dir, task):
         'filename_source': fname_src,
         'year': None,  # filled from trajectories.json at SFT build time, as before
         'scaffold_from_context': use_scaffold,
+        'cumulative_stack': cumulative,
         'baseline_in_prompt': baseline_block[0] if baseline_block else None,
         'n_rungs': n_tests,
         'n_edit_ops': n_edits,

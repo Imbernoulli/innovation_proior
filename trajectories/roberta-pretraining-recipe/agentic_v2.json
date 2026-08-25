@@ -6,6 +6,7 @@
  "filename_source": "synthesized",
  "year": null,
  "scaffold_from_context": false,
+ "cumulative_stack": true,
  "baseline_in_prompt": null,
  "n_rungs": 8,
  "n_edit_ops": 8,
@@ -130,7 +131,7 @@
  "messages": [
   {
    "role": "user",
-   "content": "## Research question\n\nSelf-training language model pretraining (ELMo, GPT, BERT, XLM) has produced large downstream gains,\nbut it is hard to tell which parts of a given recipe are doing the work: pretraining is expensive,\ngroups train on private data of different sizes, and hyperparameter choices turn out to matter a lot,\nso published comparisons across papers routinely conflate several changes at once. This project holds\nthe model architecture fixed (the standard Transformer encoder BERT introduced) and treats the\n**pretraining procedure itself** as the object of study: masking strategy, input/segment format and\nthe auxiliary NSP loss, batch size, subword vocabulary, and pretraining data size/duration. The goal\nis to reproduce BERT's numbers under a controlled reimplementation, then test each procedural choice\none at a time against measured downstream performance, to find out whether BERT's published numbers\nrepresent the ceiling of the masked-language-modeling objective or whether the objective was simply\nundertrained.\n\n## Prior art / Background / Baselines\n\n- **BERT (Devlin et al. 2018).** Two pretraining objectives on a Transformer encoder: masked language\n  modeling (MLM) — uniformly select 15% of input tokens, replace 80% with `[MASK]`, 10% with a random\n  token, leave 10% unchanged, cross-entropy loss on recovering the originals — and Next Sentence\n  Prediction (NSP), a binary classifier over whether two input segments are contiguous in the source\n  text, positive/negative pairs sampled with equal probability. Input format: two concatenated\n  segments `[CLS] x_1...x_N [SEP] y_1...y_M [EOS]`, each segment possibly spanning multiple sentences,\n  combined length under 512 tokens. Masking is computed once during data preprocessing (a *static*\n  mask); to vary the mask seen across the 40 training epochs, the training data is duplicated 10x so\n  each sequence is masked 10 different ways (so any one masking of a sequence is still seen 4 times).\n  Optimizer: Adam (β1=0.9, β2=0.999, ε=1e-6), weight decay 0.01, learning rate warmed up over the\n  first 10,000 steps to a peak of 1e-4 then linearly decayed, dropout 0.1 on all layers and attention\n  weights, GELU activations. Pretrained for S=1,000,000 steps, batch size B=256 sequences, max\n  sequence length T=512. Trained on BookCorpus + English Wikipedia, 16GB of uncompressed text.\n  BERT-base: L=12 layers, H=768 hidden, A=12 attention heads, 110M params. BERT-large: L=24, H=1024,\n  A=16, 355M params. NSP was hypothesized by the original authors to matter: they report that removing\n  it hurts performance, with significant degradation on QNLI, MNLI and SQuAD 1.1.\n  Published BERT-base dev numbers (the reference this study targets): SQuAD 1.1/2.0 F1 88.5/76.3,\n  MNLI-m accuracy 84.3, SST-2 accuracy 92.8, RACE accuracy 64.3. Published BERT-large: SQuAD 1.1/2.0\n  F1 90.9/81.8, MNLI-m 86.6, SST-2 93.7.\n- **Text encoding.** The original BERT implementation uses a character-level Byte-Pair Encoding (BPE)\n  vocabulary of 30K subword units, learned after heuristic input tokenization. A more recent GPT-2-style\n  BPE variant instead operates over raw *bytes* rather than unicode characters, letting a modest\n  vocabulary (50K units) encode arbitrary input text with no \"unknown token\" fallback, at the cost of\n  roughly 15-20M extra embedding parameters depending on model size.\n  - **Recent challenges to NSP.** Several concurrent efforts (cross-lingual pretraining, autoregressive\n  permutation-based pretraining, span-based pretraining) have questioned whether the NSP loss is\n  actually necessary, in tension with the original BERT ablation.\n- **Large-batch optimization.** Prior work in neural machine translation has shown that training with\n  very large mini-batches, with an appropriately increased learning rate, can improve both optimization\n  speed and end-task performance. Concurrent work has shown BERT itself is amenable to large-batch\n  training, up to 32K sequences.\n- **More data, more compute.** A recently proposed alternative pretraining architecture (permutation\n  language modeling) is trained on nearly 10x more data than original BERT, with a batch size 8x\n  larger for half as many optimization steps — roughly 4x as many sequences seen in total — making it\n  unclear how much of its reported improvement over BERT is architecture/objective versus scale.\n\n## Fixed substrate\n\n- **Model architecture** is not touched at any point in this study: a standard Transformer encoder,\n  either the BERT-base shape (L=12, H=768, A=12, 110M params) or, from the point the recipe is\n  assembled and scaled, the BERT-large shape (L=24, H=1024, A=16, 355M params). Both match BERT's\n  published architectures exactly, so any downstream difference is attributable to the pretraining\n  procedure, not the model.\n- **Reimplementation framework:** fairseq. The original BERT optimization hyperparameters (Adam\n  betas/epsilon, weight decay, dropout, activation) are followed by default; only peak learning rate\n  and warmup steps are tuned per setting, plus, where noted, the Adam ε term and β2 (found to matter\n  for training stability, β2=0.98 helps stability at large batch sizes).\n  Sequences are packed to a fixed maximum length T=512 tokens throughout — no short-sequence warm-up\n  and no reduced-length prefix of training, unlike the original BERT schedule; only full-length\n  sequences are used.\n- **Hardware:** mixed-precision training on DGX-1 machines, 8x32GB V100 GPUs per machine,\n  Infiniband-interconnected.\n- **Downstream evaluation protocol is fixed across every rung:**\n  - **GLUE** (9 tasks: CoLA, SST, MRPC, STS-B, QQP, MNLI, QNLI, RTE, WNLI). For the design-choice\n    study, models are finetuned single-task (no multi-task training, no ensembling) on each task's\n    training data, following BERT's own finetuning procedure, and evaluated on the task's development\n    set. Reported numbers below are, where the source specifies it, medians over five random\n    initializations (seeds); accuracy is the metric for MNLI-m and SST-2.\n  - **SQuAD** v1.1 and v2.0. Span-extraction QA: v1.1 always has an answer in context; v2.0 adds\n    unanswerable questions, requiring an additional binary answerability classifier trained jointly\n    with the span predictor (loss terms summed). Metric: F1 on the development set, reported as\n    v1.1/v2.0.\n  - **RACE.** Reading comprehension from English exams (middle/high school), 4-way multiple choice per\n    question; each candidate answer is concatenated with the question and passage, encoded, and the\n    four `[CLS]` representations are scored by a shared fully-connected layer. Metric: accuracy.\n  - **Held-out perplexity (ppl).** For pretraining-only comparisons (e.g. batch size), perplexity on\n    held-out training data measures the masked-language-modeling objective directly, alongside\n    downstream accuracy.\n\n## What is under test (the free variable across rungs)\n\nEverything about the *pretraining procedure* is open to revision, one decision at a time, each\njustified by the previous rung's measured numbers: the masking strategy (static vs. dynamic), the\ninput segmentation and whether to keep the NSP loss, the training batch size (holding total compute /\nsequences-seen fixed via gradient accumulation), the subword vocabulary (character-level vs.\nbyte-level BPE), and, once a combined recipe is settled, the scale of pretraining itself — how much\ntext to pretrain over and for how many steps.\n\n## workspace/custom_roberta_pretraining_recipe.py\n(The file does not exist yet — your first edit must be edit(op='create', filename='workspace/custom_roberta_pretraining_recipe.py', content=...).)\n\n## Your Budget\n- **Action budget**: 16 total tool calls (every edit / test / undo / web_search / web_extract counts; submit does not)\n- **Test invocations**: at most 8 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
+   "content": "## Research question\n\nSelf-training language model pretraining (ELMo, GPT, BERT, XLM) has produced large downstream gains,\nbut it is hard to tell which parts of a given recipe are doing the work: pretraining is expensive,\ngroups train on private data of different sizes, and hyperparameter choices turn out to matter a lot,\nso published comparisons across papers routinely conflate several changes at once. This project holds\nthe model architecture fixed (the standard Transformer encoder BERT introduced) and treats the\n**pretraining procedure itself** as the object of study: masking strategy, input/segment format and\nthe auxiliary NSP loss, batch size, subword vocabulary, and pretraining data size/duration. The goal\nis to reproduce BERT's numbers under a controlled reimplementation, then test each procedural choice\none at a time against measured downstream performance, to find out whether BERT's published numbers\nrepresent the ceiling of the masked-language-modeling objective or whether the objective was simply\nundertrained.\n\n## Prior art / Background / Baselines\n\n- **BERT (Devlin et al. 2018).** Two pretraining objectives on a Transformer encoder: masked language\n  modeling (MLM) — uniformly select 15% of input tokens, replace 80% with `[MASK]`, 10% with a random\n  token, leave 10% unchanged, cross-entropy loss on recovering the originals — and Next Sentence\n  Prediction (NSP), a binary classifier over whether two input segments are contiguous in the source\n  text, positive/negative pairs sampled with equal probability. Input format: two concatenated\n  segments `[CLS] x_1...x_N [SEP] y_1...y_M [EOS]`, each segment possibly spanning multiple sentences,\n  combined length under 512 tokens. Masking is computed once during data preprocessing (a *static*\n  mask); to vary the mask seen across the 40 training epochs, the training data is duplicated 10x so\n  each sequence is masked 10 different ways (so any one masking of a sequence is still seen 4 times).\n  Optimizer: Adam (β1=0.9, β2=0.999, ε=1e-6), weight decay 0.01, learning rate warmed up over the\n  first 10,000 steps to a peak of 1e-4 then linearly decayed, dropout 0.1 on all layers and attention\n  weights, GELU activations. Pretrained for S=1,000,000 steps, batch size B=256 sequences, max\n  sequence length T=512. Trained on BookCorpus + English Wikipedia, 16GB of uncompressed text.\n  BERT-base: L=12 layers, H=768 hidden, A=12 attention heads, 110M params. BERT-large: L=24, H=1024,\n  A=16, 355M params. NSP was hypothesized by the original authors to matter: they report that removing\n  it hurts performance, with significant degradation on QNLI, MNLI and SQuAD 1.1.\n  Published BERT-base dev numbers (the reference this study targets): SQuAD 1.1/2.0 F1 88.5/76.3,\n  MNLI-m accuracy 84.3, SST-2 accuracy 92.8, RACE accuracy 64.3. Published BERT-large: SQuAD 1.1/2.0\n  F1 90.9/81.8, MNLI-m 86.6, SST-2 93.7.\n- **Text encoding.** The original BERT implementation uses a character-level Byte-Pair Encoding (BPE)\n  vocabulary of 30K subword units, learned after heuristic input tokenization. A more recent GPT-2-style\n  BPE variant instead operates over raw *bytes* rather than unicode characters, letting a modest\n  vocabulary (50K units) encode arbitrary input text with no \"unknown token\" fallback, at the cost of\n  roughly 15-20M extra embedding parameters depending on model size.\n  - **Recent challenges to NSP.** Several concurrent efforts (cross-lingual pretraining, autoregressive\n  permutation-based pretraining, span-based pretraining) have questioned whether the NSP loss is\n  actually necessary, in tension with the original BERT ablation.\n- **Large-batch optimization.** Prior work in neural machine translation has shown that training with\n  very large mini-batches, with an appropriately increased learning rate, can improve both optimization\n  speed and end-task performance. Concurrent work has shown BERT itself is amenable to large-batch\n  training, up to 32K sequences.\n- **More data, more compute.** A recently proposed alternative pretraining architecture (permutation\n  language modeling) is trained on nearly 10x more data than original BERT, with a batch size 8x\n  larger for half as many optimization steps — roughly 4x as many sequences seen in total — making it\n  unclear how much of its reported improvement over BERT is architecture/objective versus scale.\n\n## Fixed substrate\n\n- **Model architecture** is not touched at any point in this study: a standard Transformer encoder,\n  either the BERT-base shape (L=12, H=768, A=12, 110M params) or, from the point the recipe is\n  assembled and scaled, the BERT-large shape (L=24, H=1024, A=16, 355M params). Both match BERT's\n  published architectures exactly, so any downstream difference is attributable to the pretraining\n  procedure, not the model.\n- **Reimplementation framework:** fairseq. The original BERT optimization hyperparameters (Adam\n  betas/epsilon, weight decay, dropout, activation) are followed by default; only peak learning rate\n  and warmup steps are tuned per setting, plus, where noted, the Adam ε term and β2 (found to matter\n  for training stability, β2=0.98 helps stability at large batch sizes).\n  Sequences are packed to a fixed maximum length T=512 tokens throughout — no short-sequence warm-up\n  and no reduced-length prefix of training, unlike the original BERT schedule; only full-length\n  sequences are used.\n- **Hardware:** mixed-precision training on DGX-1 machines, 8x32GB V100 GPUs per machine,\n  Infiniband-interconnected.\n- **Downstream evaluation protocol is fixed across every rung:**\n  - **GLUE** (9 tasks: CoLA, SST, MRPC, STS-B, QQP, MNLI, QNLI, RTE, WNLI). For the design-choice\n    study, models are finetuned single-task (no multi-task training, no ensembling) on each task's\n    training data, following BERT's own finetuning procedure, and evaluated on the task's development\n    set. Reported numbers below are, where the source specifies it, medians over five random\n    initializations (seeds); accuracy is the metric for MNLI-m and SST-2.\n  - **SQuAD** v1.1 and v2.0. Span-extraction QA: v1.1 always has an answer in context; v2.0 adds\n    unanswerable questions, requiring an additional binary answerability classifier trained jointly\n    with the span predictor (loss terms summed). Metric: F1 on the development set, reported as\n    v1.1/v2.0.\n  - **RACE.** Reading comprehension from English exams (middle/high school), 4-way multiple choice per\n    question; each candidate answer is concatenated with the question and passage, encoded, and the\n    four `[CLS]` representations are scored by a shared fully-connected layer. Metric: accuracy.\n  - **Held-out perplexity (ppl).** For pretraining-only comparisons (e.g. batch size), perplexity on\n    held-out training data measures the masked-language-modeling objective directly, alongside\n    downstream accuracy.\n\n## What is under test (the free variable across rungs)\n\nEverything about the *pretraining procedure* is open to revision, one decision at a time, each\njustified by the previous rung's measured numbers: the masking strategy (static vs. dynamic), the\ninput segmentation and whether to keep the NSP loss, the training batch size (holding total compute /\nsequences-seen fixed via gradient accumulation), the subword vocabulary (character-level vs.\nbyte-level BPE), and, once a combined recipe is settled, the scale of pretraining itself — how much\ntext to pretrain over and for how many steps.\n\n## workspace/custom_roberta_pretraining_recipe.py\n(The file does not exist yet — your first edit must be edit(op='create', filename='workspace/custom_roberta_pretraining_recipe.py', content=...).)\n\nThe workspace grows module by module: implement each new technique as a NEW file with edit(op='create', ...) next to the code shown above. Do not rewrite or delete the existing files — the measured reference stack builds on them.\n\n## Your Budget\n- **Action budget**: 16 total tool calls (every edit / test / undo / web_search / web_extract counts; submit does not)\n- **Test invocations**: at most 8 (each test() call also consumes one action from the budget above)\n- You **must** iterate at least once (edit → test → review → edit → test) before submitting."
   },
   {
    "role": "assistant",
@@ -143,7 +144,7 @@
       "name": "edit",
       "arguments": {
        "op": "create",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "filename": "workspace/bert_base_reimpl.py",
        "content": "architecture:      BERT-base (L=12, H=768, A=12, ~110M params)\nobjective:         MLM (15% select; 80% [MASK] / 10% unchanged / 10% random) + NSP\nmasking:           static (fixed at preprocessing, 10x data duplication over 40 epochs)\ninput format:      segment-pair + NSP\noptimizer:         Adam, beta1=0.9, beta2=0.999, eps=1e-6, weight_decay=0.01\nlr schedule:       linear warmup (10,000 steps, per-original) to peak, then linear decay\n                    [peak LR / warmup steps tuned per-implementation if needed]\ndropout:           0.1 (all layers + attention)\nactivation:        GELU\nbatch size:        256 sequences\nmax seq length:    512 tokens\nsteps:             1,000,000\ndata:              BookCorpus + English Wikipedia, 16GB\n"
       }
      }
@@ -152,7 +153,7 @@
   },
   {
    "role": "tool",
-   "content": "Created: workspace/custom_roberta_pretraining_recipe.py\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–13 | total: 13 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: architecture:      BERT-base (L=12, H=768, A=12, ~110M params)\n     2: objective:         MLM (15% select; 80% [MASK] / 10% unchanged / 10% random) + NSP\n     3: masking:           static (fixed at preprocessing, 10x data duplication over 40 epochs)\n     4: input format:      segment-pair + NSP\n     5: optimizer:         Adam, beta1=0.9, beta2=0.999, eps=1e-6, weight_decay=0.01\n     6: lr schedule:       linear warmup (10,000 steps, per-original) to peak, then linear decay\n     7:                     [peak LR / warmup steps tuned per-implementation if needed]\n     8: dropout:           0.1 (all layers + attention)\n     9: activation:        GELU\n    10: batch size:        256 sequences\n    11: max seq length:    512 tokens\n    12: steps:             1,000,000\n    13: data:              BookCorpus + English Wikipedia, 16GB"
+   "content": "Created: workspace/bert_base_reimpl.py"
   },
   {
    "role": "assistant",
@@ -182,8 +183,8 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "rewrite",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
+       "op": "create",
+       "filename": "workspace/dynamic_masking.py",
        "content": "masking:      dynamic (regenerated per exposure at data-loading time; 15% select,\n              80% [MASK] / 10% unchanged / 10% random, same split as static)\n              — no tenfold data duplication needed\n[unchanged]:  segment-pair + NSP input format, batch 256, 1M steps,\n              BookCorpus+Wikipedia 16GB, BERT-base architecture\n"
       }
      }
@@ -192,7 +193,7 @@
   },
   {
    "role": "tool",
-   "content": "OK: Rewrote the editable region of workspace/custom_roberta_pretraining_recipe.py — replaced lines 1..13 (13 lines) with 5 line(s). Editable range: entire file.\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–5 | total: 5 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: masking:      dynamic (regenerated per exposure at data-loading time; 15% select,\n     2:               80% [MASK] / 10% unchanged / 10% random, same split as static)\n     3:               — no tenfold data duplication needed\n     4: [unchanged]:  segment-pair + NSP input format, batch 256, 1M steps,\n     5:               BookCorpus+Wikipedia 16GB, BERT-base architecture"
+   "content": "Created: workspace/dynamic_masking.py"
   },
   {
    "role": "assistant",
@@ -222,10 +223,9 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
-       "old_str": "masking:      dynamic (regenerated per exposure at data-loading time; 15% select,\n              80% [MASK] / 10% unchanged / 10% random, same split as static)\n              — no tenfold data duplication needed\n[unchanged]:  segment-pair + NSP input format, batch 256, 1M steps,\n              BookCorpus+Wikipedia 16GB, BERT-base architecture\n",
-       "new_str": "input format:  4-way comparison — segment-pair+NSP / sentence-pair+NSP /\n               full-sentences(no NSP) / doc-sentences(no NSP)\n               batch size matched for total tokens per format\n[unchanged]:   dynamic masking, BERT-base architecture, ~1M-step-equivalent\n               training budget, BookCorpus+Wikipedia 16GB\n[commit]:      full-sentences carried forward as the format for subsequent rungs\n               regardless of the doc-sentences comparison, for batch-size-ablation\n               cleanliness\n"
+       "op": "create",
+       "filename": "workspace/full_sentences_no_nsp.py",
+       "content": "input format:  4-way comparison — segment-pair+NSP / sentence-pair+NSP /\n               full-sentences(no NSP) / doc-sentences(no NSP)\n               batch size matched for total tokens per format\n[unchanged]:   dynamic masking, BERT-base architecture, ~1M-step-equivalent\n               training budget, BookCorpus+Wikipedia 16GB\n[commit]:      full-sentences carried forward as the format for subsequent rungs\n               regardless of the doc-sentences comparison, for batch-size-ablation\n               cleanliness\n"
       }
      }
     }
@@ -233,7 +233,7 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..5). Editable range: entire file.\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–8 | total: 8 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: input format:  4-way comparison — segment-pair+NSP / sentence-pair+NSP /\n     2:                full-sentences(no NSP) / doc-sentences(no NSP)\n     3:                batch size matched for total tokens per format\n     4: [unchanged]:   dynamic masking, BERT-base architecture, ~1M-step-equivalent\n     5:                training budget, BookCorpus+Wikipedia 16GB\n     6: [commit]:      full-sentences carried forward as the format for subsequent rungs\n     7:                regardless of the doc-sentences comparison, for batch-size-ablation\n     8:                cleanliness"
+   "content": "Created: workspace/full_sentences_no_nsp.py"
   },
   {
    "role": "assistant",
@@ -263,10 +263,9 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
-       "old_str": "input format:  4-way comparison — segment-pair+NSP / sentence-pair+NSP /\n               full-sentences(no NSP) / doc-sentences(no NSP)\n               batch size matched for total tokens per format\n[unchanged]:   dynamic masking, BERT-base architecture, ~1M-step-equivalent\n               training budget, BookCorpus+Wikipedia 16GB\n[commit]:      full-sentences carried forward as the format for subsequent rungs\n               regardless of the doc-sentences comparison, for batch-size-ablation\n               cleanliness\n",
-       "new_str": "batch size:    sweep {256, 2048, 8192} sequences, learning rate tuned per setting\nsteps:         {1,000,000, ~125,000, ~31,000} respectively — compute-matched\n               (same total sequences observed across all three)\n[unchanged]:   dynamic masking, full-sentences (no NSP), BERT-base architecture,\n               BookCorpus+Wikipedia 16GB\n"
+       "op": "create",
+       "filename": "workspace/large_batches.py",
+       "content": "batch size:    sweep {256, 2048, 8192} sequences, learning rate tuned per setting\nsteps:         {1,000,000, ~125,000, ~31,000} respectively — compute-matched\n               (same total sequences observed across all three)\n[unchanged]:   dynamic masking, full-sentences (no NSP), BERT-base architecture,\n               BookCorpus+Wikipedia 16GB\n"
       }
      }
     }
@@ -274,7 +273,7 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..8). Editable range: entire file.\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–5 | total: 5 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: batch size:    sweep {256, 2048, 8192} sequences, learning rate tuned per setting\n     2: steps:         {1,000,000, ~125,000, ~31,000} respectively — compute-matched\n     3:                (same total sequences observed across all three)\n     4: [unchanged]:   dynamic masking, full-sentences (no NSP), BERT-base architecture,\n     5:                BookCorpus+Wikipedia 16GB"
+   "content": "Created: workspace/large_batches.py"
   },
   {
    "role": "assistant",
@@ -304,10 +303,9 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
-       "old_str": "batch size:    sweep {256, 2048, 8192} sequences, learning rate tuned per setting\nsteps:         {1,000,000, ~125,000, ~31,000} respectively — compute-matched\n               (same total sequences observed across all three)\n[unchanged]:   dynamic masking, full-sentences (no NSP), BERT-base architecture,\n               BookCorpus+Wikipedia 16GB\n",
-       "new_str": "architecture:   BERT-large (L=24, H=1024, A=16, ~355M params)\nmasking:        dynamic\ninput format:   full-sentences, no NSP\nbatch size:     8K sequences, learning rate retuned (peak LR 4e-4, warmup 30K steps)\nvocabulary:     byte-level BPE, 50K subword units\nsteps:          100,000\ndata:           BookCorpus + English Wikipedia, 16GB (same as original BERT-large)\n"
+       "op": "create",
+       "filename": "workspace/combined_recipe_bert_large.py",
+       "content": "architecture:   BERT-large (L=24, H=1024, A=16, ~355M params)\nmasking:        dynamic\ninput format:   full-sentences, no NSP\nbatch size:     8K sequences, learning rate retuned (peak LR 4e-4, warmup 30K steps)\nvocabulary:     byte-level BPE, 50K subword units\nsteps:          100,000\ndata:           BookCorpus + English Wikipedia, 16GB (same as original BERT-large)\n"
       }
      }
     }
@@ -315,7 +313,7 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..5). Editable range: entire file.\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–7 | total: 7 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: architecture:   BERT-large (L=24, H=1024, A=16, ~355M params)\n     2: masking:        dynamic\n     3: input format:   full-sentences, no NSP\n     4: batch size:     8K sequences, learning rate retuned (peak LR 4e-4, warmup 30K steps)\n     5: vocabulary:     byte-level BPE, 50K subword units\n     6: steps:          100,000\n     7: data:           BookCorpus + English Wikipedia, 16GB (same as original BERT-large)"
+   "content": "Created: workspace/combined_recipe_bert_large.py"
   },
   {
    "role": "assistant",
@@ -345,10 +343,9 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
-       "old_str": "architecture:   BERT-large (L=24, H=1024, A=16, ~355M params)\nmasking:        dynamic\ninput format:   full-sentences, no NSP\nbatch size:     8K sequences, learning rate retuned (peak LR 4e-4, warmup 30K steps)\nvocabulary:     byte-level BPE, 50K subword units\nsteps:          100,000\ndata:           BookCorpus + English Wikipedia, 16GB (same as original BERT-large)\n",
-       "new_str": "data:          BookCorpus + English Wikipedia (16GB) + news-crawl corpus (~76GB\n               after filtering) + open web-text recreation (~38GB) +\n               narrative-style crawl (~31GB) -- ~160GB total\n[unchanged]:   combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n               byte-level BPE), BERT-large architecture, 100,000 steps\n"
+       "op": "create",
+       "filename": "workspace/more_data.py",
+       "content": "data:          BookCorpus + English Wikipedia (16GB) + news-crawl corpus (~76GB\n               after filtering) + open web-text recreation (~38GB) +\n               narrative-style crawl (~31GB) -- ~160GB total\n[unchanged]:   combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n               byte-level BPE), BERT-large architecture, 100,000 steps\n"
       }
      }
     }
@@ -356,7 +353,7 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..7). Editable range: entire file.\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–5 | total: 5 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: data:          BookCorpus + English Wikipedia (16GB) + news-crawl corpus (~76GB\n     2:                after filtering) + open web-text recreation (~38GB) +\n     3:                narrative-style crawl (~31GB) -- ~160GB total\n     4: [unchanged]:   combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n     5:                byte-level BPE), BERT-large architecture, 100,000 steps"
+   "content": "Created: workspace/more_data.py"
   },
   {
    "role": "assistant",
@@ -386,10 +383,9 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
-       "old_str": "data:          BookCorpus + English Wikipedia (16GB) + news-crawl corpus (~76GB\n               after filtering) + open web-text recreation (~38GB) +\n               narrative-style crawl (~31GB) -- ~160GB total\n[unchanged]:   combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n               byte-level BPE), BERT-large architecture, 100,000 steps\n",
-       "new_str": "steps:          300,000 (up from 100,000)\n[unchanged]:    combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n                byte-level BPE), BERT-large architecture, 160GB combined data\n"
+       "op": "create",
+       "filename": "workspace/pretrain_300k.py",
+       "content": "steps:          300,000 (up from 100,000)\n[unchanged]:    combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n                byte-level BPE), BERT-large architecture, 160GB combined data\n"
       }
      }
     }
@@ -397,7 +393,7 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..5). Editable range: entire file.\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–3 | total: 3 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: steps:          300,000 (up from 100,000)\n     2: [unchanged]:    combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n     3:                 byte-level BPE), BERT-large architecture, 160GB combined data"
+   "content": "Created: workspace/pretrain_300k.py"
   },
   {
    "role": "assistant",
@@ -427,10 +423,9 @@
      "function": {
       "name": "edit",
       "arguments": {
-       "op": "str_replace",
-       "filename": "workspace/custom_roberta_pretraining_recipe.py",
-       "old_str": "steps:          300,000 (up from 100,000)\n",
-       "new_str": "steps:          500,000 (up from 300,000)\n"
+       "op": "create",
+       "filename": "workspace/pretrain_500k.py",
+       "content": "steps:          500,000 (up from 300,000)\n[unchanged]:    combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n                byte-level BPE), BERT-large architecture, 160GB combined data\n"
       }
      }
     }
@@ -438,7 +433,7 @@
   },
   {
    "role": "tool",
-   "content": "OK: Replaced 1 occurrence in workspace/custom_roberta_pretraining_recipe.py (lines 1..1). Editable range: entire file.\n\n[Current contents of workspace/custom_roberta_pretraining_recipe.py | editable: 1–3 | total: 3 lines]\nThis is the file as it is NOW — use it, not the copy in the first message, when choosing old_str. The 'NNNNNN: ' prefixes are display only; never put them in old_str.\n     1: steps:          500,000 (up from 300,000)\n     2: [unchanged]:    combined recipe (dynamic masking, full-sentences/no-NSP, 8K batch,\n     3:                 byte-level BPE), BERT-large architecture, 160GB combined data"
+   "content": "Created: workspace/pretrain_500k.py"
   },
   {
    "role": "assistant",
