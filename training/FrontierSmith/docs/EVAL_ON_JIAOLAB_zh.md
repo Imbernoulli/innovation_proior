@@ -287,6 +287,54 @@ for i in 0 1; do
 done
 ```
 
+### 5.1 judge 超时残留与 RESUME 收敛（**必读，不是 bug**）
+
+跑到中途会看到：
+
+```
+ERROR frontiercs 148 sample=1: RuntimeError('FrontierCS judge infrastructure
+failure for problem 148 (status=timeout): Evaluation timed out after 1000s')
+```
+
+- 这 1000s 是**官方 runner 写死的常量**
+  （`.cache/Frontier-CS-official/src/frontier_cs/runner/base.py:50`
+  `DEFAULT_TIMEOUT: int = 1000`），**没有 env 开关**，不要去改它 —— 改了就和
+  gpublaze 不同口径。
+- **gpublaze 上同样会中招**：历史日志里 143/148/149/153/156/163/169/170 都出现过
+  `status=timeout`，其中 148、153 与 jiaolab 命中的是同一批。也就是说这是 FCS
+  少数超重题的固有性质，不是 jiaolab 的回归。
+- jiaolab 单核只有 gpublaze 的 ~54%（§0 标定），所以**残留率会更高一些**。
+  只要每个臂都用同一套收敛流程，锚点内部仍然可比。
+
+**这条链是 fail-loud 的，不会把假零烧进结论**：
+1. error 样本在 `samples.jsonl` 里带 `error` 字段（占位 reward 0）；
+2. driver 最后按 `--max-errors=0` 判定，**以 rc=2 退出** ——
+   `launch_pool_eval.sh` 末尾报"失败"是**预期**的，含义是"需要再跑一遍 resume"；
+3. `_record_compatible()` 把带 `error` 的记录视为**未完成**，所以同 TAG 用
+   `RESUME=1`（默认）重跑 client 时，**只会重生成 / 重打分这些样本**，不会重跑
+   已成功的。
+
+**收敛流程**：反复执行 §5 的「client 挂了怎么续」那段命令，直到 client 打印
+`DONE rc=0`。gpublaze 的实证：用当前这套参数（`REQUEST_TIMEOUT=7200` /
+`CONCURRENCY=64` / 钉死的 2 引擎池）跑的 `q35_4b_soup_withag_a20`
+最终收敛到 **0 / 1 个 error**（那 1 个正是 problem 149 的 1000s 超时）；而更早用
+旧参数跑的 `q35_4b_base` 最终态还剩 **330 个 error**（多为
+`APITimeoutError`）——所以**出数前一定要核最终态 error 数**：
+
+```bash
+python3 - <<'EOF'
+import json
+for sh in (0,1):
+    rec={}
+    for l in open(f"outputs/cc_eval_<TAG>_thinking_32k_both_vllm/shard_{sh}/samples.jsonl"):
+        r=json.loads(l); rec[(r["data_source"], str(r["ground_truth"]), str(r["sample_idx"]))]=r
+    err=[k for k,v in rec.items() if v.get("error")]
+    print(f"shard{sh}: keys={len(rec)} errors={len(err)}")
+EOF
+```
+（`samples.jsonl` 是**追加**的，行数会超过 570；必须按 key 取最后一条算最终态，
+直接 `grep -c error` 会严重高估。）
+
 **jiaolab 上任何臂 / soup 的数字，只能和这个锚点比。**
 
 ## 6. 文件清单（本次新增，全部不改历史、也不改 gpublaze）
