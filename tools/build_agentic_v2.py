@@ -128,10 +128,13 @@ Available tools:
 Constraints:
 - Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].
   Only edit files and line ranges marked EDITABLE. Do not touch READ-ONLY files.
+- When a file has multiple editable regions, editing one region may shift line numbers \
+in subsequent regions. Edit from the last (bottom-most) region first, or check the \
+updated editable ranges shown after each edit.
 - You MUST call test() at least once before you can call submit().
 - When you are done, call submit(n=N) to submit your best test result.
-- If your algorithm requires new hyperparameters that are not in the existing config,
-  hardcode their values directly in your code (e.g., in __init__).
+- If your algorithm requires new hyperparameters (e.g., cql_alpha, expectile_tau) that are not
+  in the existing config, hardcode their values directly in your code (e.g., in __init__).
   You cannot modify the training loop or config to pass them via command line.
 """
 

@@ -1,0 +1,192 @@
+{
+ "cv-diffusion-conditioning": [
+  {
+   "slot": "THINK kind=followup rung=3 slug=cross-attn seq=7",
+   "pct": 3.8,
+   "spans": [
+    "tells the blocks how noisy attention tells them what"
+   ]
+  }
+ ],
+ "dl-normalization": [
+  {
+   "slot": "THINK kind=design rung=2 slug=group_norm seq=3",
+   "pct": 2.1,
+   "spans": [
+    "the premise was that letting some channels slide toward instance would",
+    "trace it because the trace is the design",
+    "the only genuinely grouped stage in the resnets",
+    "full spatial map 1024 values at the 16 channel stage 256 at the 32 and"
+   ]
+  },
+  {
+   "slot": "THINK kind=design rung=3 slug=switchable_norm seq=5",
+   "pct": 7.2,
+   "spans": [
+    "the weaker method on the resnets is the better method",
+    "reach the batch statistic even though the batch here is a comfortable 128 in both",
+    "is heavy machinery and it stays inside the batch free family so it can slide between instance and layer",
+    "corner the fashionmnist miss says i need going per channel",
+    "a signal the optimizer under used at c",
+    "running buffer batch corner re imports the momentum and train eval",
+    "what actually targets the diagnosis is to compute all three corner statistics and let each layer learn a weighting over them end to end from the classification loss",
+    "because as one corner of a convex mix it is nearly free"
+   ]
+  }
+ ],
+ "llm-pretrain-residual": [
+  {
+   "slot": "THINK kind=design rung=4 slug=full_attnres seq=7",
+   "pct": 3.6,
+   "spans": [
+    "0 0027 the second scalar refinement bought about half of what the first did",
+    "that does not survive a fixed 2 gpu micro batch 32",
+    "to at most 7 the embedding plus 6 block outputs",
+    "and inside each block of 4 i am right back to the",
+    "sets its input to the mean of the embedding and all preceding block outputs not to the running stream",
+    "can swing which block the next block reads and",
+    "they are not weight matrices and decay would"
+   ]
+  }
+ ],
+ "ml-anomaly-detection": [
+  {
+   "slot": "THINK kind=followup rung=2 slug=ocsvm seq=4",
+   "pct": 6.0,
+   "spans": [
+    "gamma auto is 1 n_features a fixed bandwidth that only"
+   ]
+  },
+  {
+   "slot": "THINK kind=design rung=3 slug=copod seq=6",
+   "pct": 2.5,
+   "spans": [
+    "a swing of 0 122 across three splits of the same data",
+    "on the other two a near halving of the thresholded decision from one split to the next so even",
+    "clean support estimate and the others did not that",
+    "a d dimensional distance or region at all",
+    "by the sign of the feature s skewness"
+   ]
+  },
+  {
+   "slot": "THINK kind=design rung=4 slug=ecod seq=8",
+   "pct": 3.7,
+   "spans": [
+    "is almost exactly cardio s true 9 6 rate so the thresholded decision",
+    "tail structure i am testing for with true rates spanning 2 5 to 32 across these four",
+    "carry no rate in the model at all and let",
+    "the max inside the sum can only raise each term",
+    "the stored training rows with the rows being scored",
+    "is ranked against the established training distribution rather than against"
+   ]
+  },
+  {
+   "slot": "THINK kind=design rung=5 slug=isolation_forest seq=10",
+   "pct": 2.7,
+   "spans": [
+    "is a controlled experiment i could not have designed better between",
+    "so the gap is not that the aggregation was too timid",
+    "joint structure are the ones i have already watched fail",
+    "would in principle see the hole but density estimation in 36 dimensions is the",
+    "density or a distance and that unusual combination is what forces",
+    "because which cuts can isolate a point depends on which points"
+   ]
+  }
+ ],
+ "ml-subgroup-calibration-shift": [
+  {
+   "slot": "THINK kind=design rung=4 slug=beta_calibration seq=10",
+   "pct": 2.4,
+   "spans": [
+    "along the fault line i expected and the split is",
+    "ordered examples into flat blocks on a dataset",
+    "between a map that can bend including in",
+    "the per class scores are equal variance gaussians",
+    "so the assumed density is incoherent outside the only region the score can occupy",
+    "because the intercept is not the freedom adult required isotonic",
+    "recover part of the adult gain and stall",
+    "log odds is linear in its features so the whole three parameter"
+   ]
+  }
+ ],
+ "optimization-hyperparameter-search": [
+  {
+   "slot": "THINK kind=design rung=2 slug=optuna_cma seq=3",
+   "pct": 3.4,
+   "spans": [
+    "the two benchmarks where the good config has to be",
+    "fit a probabilistic regressor of the loss and maximize",
+    "next to a single train and score so compute is not the reason to",
+    "metric across the categorical so it is the",
+    "a log learning rate and a log capacity trade",
+    "an axis aligned box a full covariance is the only thing that",
+    "and the only way to learn that is to run the version that"
+   ]
+  },
+  {
+   "slot": "THINK kind=design rung=3 slug=dehb seq=5",
+   "pct": 4.4,
+   "spans": [
+    "the more sophisticated method lost final scores held the",
+    "the fix is not a better continuous model it is to stop paying full price for every look",
+    "costs a third of a unit and i get three of them for the price of one",
+    "and do de selection against the target it was mutated from"
+   ]
+  }
+ ],
+ "optimization-variance-reduction": [
+  {
+   "slot": "THINK kind=design rung=2 slug=storm seq=3",
+   "pct": 2.6,
+   "spans": [
+    "pointing at where the snapshot used to be a good",
+    "the next snapshot sits further out with a larger gradient and",
+    "no matter how long the run or how fast the iterate",
+    "each inner loop with a fresh full gradient",
+    "in the new gradient with exponential weight both are",
+    "i am allowed one full gradient per epoch"
+   ]
+  }
+ ],
+ "rl-reward-learning": [
+  {
+   "slot": "THINK kind=design rung=3 slug=bc seq=5",
+   "pct": 2.6,
+   "spans": [
+    "a body that survives a little longer than",
+    "a competent walk so the honest read is",
+    "reward by an adversarial objective which means the reward is non stationary by construction the",
+    "and the value function it fits are both chasing",
+    "and the one good hopper seed proves the",
+    "budget learning a reward so that ppo can then learn a policy two coupled non stationary optimizations stacked on",
+    "and the learner rarely has to extrapolate far",
+    "minimize the negative log probability of the expert s"
+   ]
+  }
+ ],
+ "roberta-pretraining-recipe": [
+  {
+   "slot": "THINK kind=design rung=4 slug=large_batches seq=7",
+   "pct": 5.0,
+   "spans": [
+    "full sentences at 90 4 79 1 84 7 92 5 64 8 and doc sentences at 90 6 79 7 84 7 92 7 65 6"
+   ]
+  }
+ ],
+ "synth-flip-flop": [
+  {
+   "slot": "THINK kind=design rung=2 slug=lstm seq=3",
+   "pct": 2.6,
+   "spans": [
+    "no untrained table to corrupt the far half",
+    "has no sign left to report what i want is a",
+    "the gated cell with an explicit additive cell state",
+    "does not care how many times it is applied",
+    "f_t so the read to write gradient rides a product",
+    "to fit a policy that is a handful of saturated gate decisions",
+    "nn lstm 128 128 batch_first true and a bias free",
+    "consumes the sequence left to right so no mask"
+   ]
+  }
+ ]
+}
