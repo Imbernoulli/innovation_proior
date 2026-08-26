@@ -40,6 +40,8 @@
 
 先前流传的那张表(以及"只有 hardmaint 超过 base"的说法)是 `max`/`last` 混合的产物:7 个 arm 取 `max`,而 `hardmaint_soup`(.0721→.0591)和 `noag`(.1377→.1148)这两个重跑变差的 arm 取了 `last`。base9b 取 `max`,而它恰好是少数跑了两轮的模型 —— 等于让 base 白拿 best-of-2,单轮的 arm 没有这个待遇。
 
+**而"为什么会有这么多轮重跑"本身是个 bug,见 §6.1。** 每个 arm 的 20 项均值里只有 12–13 项来自首轮,其余 7–8 项首轮直接是 `missing=0`。也就是说上表三种规则合并的**全都是 best-of-≤4 次尝试**;换成只用首轮,base9b 从 .1312 掉到 **.0546**,`wd01_withag_soup` 从 .1232 掉到 **.0418**。修好 `MLSBENCH_PY` 之后单轮即可拿满 20/20 的 `pure_noag_soup` 是 **.0647** —— 唯一一个不含 best-of-N 加成的数字,而它在单轮口径下**高于 base**。
+
 ### 1.2 底层原因:harness 噪声大到无法分辨
 
 - **14 组"同模型 / 同任务 / 独立重跑"里,8 组分数不一致。** 例:`base9b / mlsys-moe-load-balance` 0.000 → 0.375;`noag / mlsys-moe-load-balance` 0.375 → 0.000;`base9b / optimization-hyperparameter-search` 0.3027 → 0.3954。
@@ -364,11 +366,51 @@ bl3615(`dataset_dir: /scratch/gpfs/CHIJ/bohan/fs/LF-innov/data`):
 
 **规则:任何评测器只要会往 `/scratch/gpfs/CHIJ/bohan/` 下写东西,就必须先指向我们自己的可写副本。**
 
-### 6.1 另一个环境缺陷:`sklearn` 缺失
+### 6.1 第四次:`MLSBENCH_PY` 回落到缺依赖的 python —— 并因此污染了整个 MLS 列
 
-我们 9 个 arm 的 **round 0 在 6 个任务上以完全相同的方式失败**:host 侧 `load_mid_edit_ops`(`mlsroot/src/mlsbench/agent/tools.py:5124`)抛 `ModuleNotFoundError: No module named 'sklearn'`。traceback 见 `outputs/cc_mlsbench_cpu_base9b/task_logs/ml-clustering-algorithm.log`。
+> **本节于 2026-08-26 重写。** 初版写的是"另一个环境缺陷:`sklearn` 缺失",并称"每个 arm 只有 14/22 被评分,而他的每个 arm 都是 21/22"。**那句话是错的**,它拿我们的**单轮**数字去比他的**合并**总数;实测我们补跑合并后同样是 21/22。真实后果比覆盖率严重得多,见下。
 
-后果:**每个 arm 只有 14/22 被评分,而他的每个 arm 都是 21/22。** 这是 arm 无关的,所以**只增加方差、不会偏向 base 或 SFT**,但它显著削弱了我们这批 MLS 数据的统计功效。
+**症状.** 我们 9 个 arm 的 **round 0 在 6 个任务上以完全相同的方式失败**:host 侧 `load_mid_edit_ops`(`mlsroot/src/mlsbench/agent/tools.py:5124`)抛 `ModuleNotFoundError: No module named 'sklearn'`。traceback 见 `outputs/cc_mlsbench_cpu_base9b/task_logs/ml-clustering-algorithm.log`。
+
+**根因(不是"环境缺陷",是又一个继承来的默认值).** `slurm/cc_eval_mlsbench_cpu_ailab.sh:232`:
+
+```bash
+MLSBENCH_PY="${MLSBENCH_PY:-/home/bl3615/miniconda3/bin/python}"
+[ -x "$MLSBENCH_PY" ] || MLSBENCH_PY="$(command -v python3)"     # 第 233 行
+```
+
+我们访问不到 bl3615 的 home,于是第 233 行**静默回落到 base conda**,而 base conda 没有 `deap` / `sklearn` / `pydot` / `pgmpy` / `causallearn` —— 只有 `$D/envs/client` 有。传 `MLSBENCH_PY=$D/envs/client/bin/python` 即可根治。
+
+**真实代价:不是最终覆盖率,是它把 MLS 变成了一个 best-of-N 量.** 补跑 fix/fix2/fix3/fix5 之后每个 arm 都能凑到 21/22,和他持平 —— 但凑齐的方式是**跨轮取 max**。实测每个 arm 的"20 项均值"里只有 **12–13 项来自首轮**,其余 7–8 项首轮是 `missing=0`、由补跑填入:
+
+| model | 20 项中来自 round 0 | 合并后(表中所用) | **只用 round 0** |
+|---|---|---|---|
+| base9b | 13 | 0.1312 | **0.0546** |
+| hardmaint | 13 | 0.1501 | 0.1048 |
+| noag | 13 | 0.1377(max)/0.1148(last) | 0.0742 |
+| hardmaint_soup | 13 | 0.0721(max)/0.0591(last) | 0.0695 |
+| noag_soup | 12 | 0.1284 | 0.0705 |
+| wd01_withag | 13 | 0.1190 | 0.0806 |
+| wd01_withag_soup | 12 | 0.1232 | **0.0418** |
+| wd03_withag | 13 | 0.1309 | 0.0739 |
+| wd03_withag_soup | 13 | 0.1029 | 0.0573 |
+| **pure_noag_soup**(修好 `MLSBENCH_PY` 后) | **20** | **0.0647** | **0.0647** |
+
+**因此结论表里的 MLS 一列不是同口径比较:** 其余 arm 是 **best-of-≤4 次尝试**,`pure_noag_soup` 是**单次尝试**。按单轮口径看,base9b 只有 0.0546,反而低于 `pure_noag_soup` 的 0.0647 —— 排名整个翻过来。这正是 §9 里 "max vs last 换掉冠军" 那个合并规则伪影的来源,也是把 MLS 从 checkpoint 判据里剔除的第三条独立理由。
+
+**验证.** 只传 `MLSBENCH_PY=$D/envs/client/bin/python`,**单轮**即达 **22/22 完成、21/22 评分**(唯一未评分的是 §6.2 里两批次都死的 `llm-scaling-law-discovery`),而此前每个 arm 单轮只有 13–14/22。job 12998231,`outputs/cc_mlsbench_cpu_pure_noag_soup/summary.json`。
+
+**一般性教训.** 这个脚本里**每一个 bl3615 路径默认值都以不同方式咬了我们一口**:
+
+| 变量 | 默认值 | 症状 | 是否报错 |
+|---|---|---|---|
+| `VLLM_VENV` | `$PROJECT_ROOT/.venv-vllm023`(软链到无 vllm CLI 的 env) | `exec: vllm: not found` | **是**(秒退) |
+| `MLSBENCH_ROOT` | `/scratch/gpfs/CHIJ/bohan/MLS-Bench-dev` | `PermissionError: [Errno 13]`,22 个任务 1.3 s 内全灭 | **否** —— 表现为整片 `agent_failed` |
+| `MLSBENCH_PY` | `/home/bl3615/miniconda3/bin/python` | `ModuleNotFoundError`,6 个任务静默丢分 | **否** —— 表现为整片 `agent_failed` |
+
+**三个里有两个是静默失败**,伪装成"模型不行"而不是"环境不对"。这与本轮 RL 挂掉是同一类问题:`cc_rl_multisource.sh:256-259` 按 8 卡写死了 offload=False / `GPU_MEMORY_UTILIZATION=0.65`,而我们跑 4 卡 —— 继承下来的默认值是按**另一套配置**调的。
+
+**规则(与 §6 开头那条并列):任何继承脚本里形如 `${VAR:-/home/bl3615/…}` 或 `${VAR:-…/CHIJ/bohan/…}` 的默认值,以及任何写死硬件规模的默认值,都必须在提交前逐个显式覆盖并核对,不能依赖它自己报错。**
 
 ### 6.2 `llm-scaling-law-discovery` 在两个批次都是死的
 
