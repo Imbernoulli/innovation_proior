@@ -4,7 +4,7 @@
 > 现有评测全是执行落地型，成本高、对 4B 不友好、分数被截断和环境噪声吃掉。
 > 这份调研聚焦**端到端 model-judge 型**评测：给背景 → 提方法 / 判优劣 → 打分。
 >
-> 整理时间：2026-08-25。**本版所有论文均已下载 PDF 全文精读**，数据构造、任务格式、评分协议、完整结果表、人类验证、作者自陈局限逐项抄录。
+> 整理时间：2026-08-25，第二轮补读 2026-08-26。**本版全部 50 篇论文均已下载 PDF 全文精读**，数据构造、任务格式、评分协议、完整结果表、人类验证、作者自陈局限逐项抄录。
 > 与检索摘要冲突之处，一律以正文为准，并在文中标出（见 §ForeSci、§Tang & Yang、§LiveIdeaBench 三处修正）。
 
 ## 目录
@@ -13,7 +13,7 @@
 **第二部分 端到端生成 + judge**：[HypoArena](#11) · [MLR-Bench](#12) · [LiveIdeaBench](#13) · [AI Idea Bench 2025](#14) · [Reconstruction](#15) · [MoRI](#16)
 **第三部分 judge 不可信的证据**：[RQ-Bench](#17) · [SciStyleBench](#18) · [SciArena](#19) · [Axiomatic Novelty](#20) · [Beyond Rating](#21) · [Can AI Evaluate AI Scientists](#22)
 **第四部分 泼冷水 / 反方**：[Heuresis](#23) · [AI Research Agents Narrow Scientific Exploration](#24) · [Execution-Grounded Automated AI Research](#25)
-**第五部分**：[未精读的线索](#26)
+**第五部分 第二轮精读**：[GIANTS ⭐](#27) · [TasteGap ⭐](#28) · [PreScience ⭐](#29) · [Lit2Test ⭐](#30) · [SCOPE ⭐](#31) · [SciPredict](#32) · [AbGen](#33) · [ResearchArena](#34) · [ScientistOne / CoE Audit](#35) · [AIPR](#36) · [LLM-as-a-Reviewer / PRAIB](#37) · [其余系统与数据集](#38)
 
 ---
 
@@ -1344,33 +1344,501 @@ Implementer 跑在高 IO 的 CPU 机器上。用户提交一批自然语言 idea
 ---
 
 <a id="26"></a>
-# 第五部分：未精读的线索
+# 第五部分：第二轮精读（原「未精读线索」）
 
-以下**只看到检索片段，数字未核实**，列出来是为了不漏线索。要用之前请先读原文。
+> 这一批原本只列了标题。**2026-08-26 补读，全部下载 PDF 全文。**
+> 结果有五篇的重要性远超预期，本该进主表：**GIANTS / TasteGap / PreScience / Lit2Test / SCOPE**。
+> 其中 **GIANTS 是整份调研里与我们项目最同构的一份工作**（4B + RL + 17k benchmark，全部开源）。
 
-### 评测 / benchmark
-- **[ReviewArena](https://openreview.net/forum?id=yugEO52gkR)** —— NeurIPS/ICLR/ICML/CoRL/COLM/EMNLP/TMLR，报称 51,529 篇 / 196,099 条 review / 14 个 review 字段；ReviewArena-Eval 1,002 篇跨 6 会议。结论：现有模型 miscalibrated、压缩评分尺度、区分接收与拒稿能力弱
-- **[PreScience](https://arxiv.org/pdf/2602.20459)** —— 科学预测数据集与 benchmark
-- **[SciPredict](https://arxiv.org/pdf/2604.10718)** —— 自然科学实验结果预测
-- **[Can LLM design high-quality experiments?](https://arxiv.org/html/2608.03501v1)** —— 自主实验设计的系统性 benchmark
-- **AbGen / AblationBench** —— 专做 ablation study 任务（检索中提及，未找到直链）
-- **[Measuring the Gap Between Human and LLM Research Ideas](https://arxiv.org/pdf/2607.01233)**
-- **[What Proves You Wrong: Benchmarking LMs on Falsifiable Research Ideation](https://arxiv.org/html/2608.22948)** —— 角度很好：能否提出**可证伪**的 idea。可证伪性是 taste 里最难伪装的一维
-- **[LLM-as-a-Reviewer](https://arxiv.org/html/2605.25415)** · **[PRAIB](https://arxiv.org/html/2605.29815)** · **[Re2](https://arxiv.org/pdf/2505.07920)** · **[OpenReviewer](https://openreview.net/forum?id=d4mJdezdHO)** —— peer review 侧一批
-- **[Intelligence Is Not the Bottleneck](https://arxiv.org/html/2606.15887)** —— 用 ICLR 2026 投稿（决定 2026-01 公布，晚于评分模型 2025-08 cutoff）做无泄漏验证；GT 是决定档位 + 平均 reviewer 分。**切分设计值得抄**
-- **[LLM-Based Scientific Peer Review: Methods, Benchmarks, and Reliability Challenges](https://arxiv.org/html/2606.25057)** —— 综述
+---
 
-### 方法 / 系统（竞品或参照）
-- **[ResearchStudio-Idea](https://arxiv.org/pdf/2607.04439)** —— 从 ML 会议真实结果提炼的证据锚定 ideation skill suite
-- **[IDEAAAgent](https://arxiv.org/html/2607.22375)** —— agentic quality-diversity 搜索做 idea 生成
-- **[Idea Search](https://arxiv.org/html/2608.08958)** —— 用 idea 引导树搜索探索多样科学方法
-- **[FlowPIE](https://arxiv.org/pdf/2603.29557)** —— 测试时科学 idea 演化
-- **[Evolving Idea Graphs with Learnable Edits-and-Commits](https://arxiv.org/pdf/2605.04922)** —— 多 agent ideation
-- **[ScientistOne](https://arxiv.org/pdf/2605.26340)** —— chain-of-evidence 自主研究；评测用 ScholarPeer
-- **[APRES](https://arxiv.org/pdf/2603.03142)** —— agentic 论文修改与评估系统
-- **[GIANTS](https://arxiv.org/pdf/2604.09793)** —— 从科学文献做 insight 预期生成
-- **[Towards End-to-End Automation of AI Research](https://arxiv.org/pdf/2606.15497)** · **[How Far Are We From True Auto-Research?](https://arxiv.org/html/2605.19156v1)** · **[AI for Auto-Research: Roadmap & User Guide](https://arxiv.org/pdf/2605.18661)** —— 路线图/综述
-- **[SciDER](https://arxiv.org/pdf/2603.01421)** —— 数据驱动端到端 researcher
-- **[LLM-Metrics](https://arxiv.org/pdf/2605.22176)** —— 用 LLM 记忆度量研究影响力
-- **[Can LLMs Generate Novel Research Ideas?](https://arxiv.org/abs/2409.04109)** —— Si 等前作，100+ NLP 研究者大规模人评，这条线的起点
-- **[Chain of Ideas](https://arxiv.org/pdf/2410.13185)** —— IdeaArena 协议出处（round-robin 成对 + 双向换序算 ELO）
+<a id="27"></a>
+## 27. ⭐ GIANTS / GiantsBench: Generative Insight Anticipation from Scientific Literature
+
+- **arXiv**: [2604.09793](https://arxiv.org/pdf/2604.09793) · Joy He-Yueya, Anikait Singh, Ge Gao, Michael Y. Li, Sherry Yang, Chelsea Finn, Emma Brunskill, Noah D. Goodman（Stanford + NYU）
+- 代码、benchmark、模型**全部释出**
+
+**这是本轮最重要的发现。它做的事情、模型尺寸、训练方法都和我们高度重合，而且东西全开源。**
+
+### 任务：Insight Anticipation
+
+给两篇 **parent paper** 的摘要，生成一篇下游论文的**核心 insight**。作者的概念化说得很漂亮：
+
+> 这可以视为**在引用图上做 auto-encoding**：一篇目标论文经过一个**高度有损的信道**——它两篇父论文的摘要——模型必须从中重建出原论文的核心 insight。把引用图线性化成输入-目标对，就是在逼模型重现连接相邻节点所需的那次**概念跃迁**。
+
+作者刻意**只给两篇父论文**（而非全部引用），以建立一个受控的最小设定。
+
+### 数据构造
+
+1. 从 arXiv 收 **17,839 篇**论文，最后更新日期在 2007-05-23 至 2026-01-23 之间
+2. 因为 arXiv 未经同行评审，**只保留引用数 ≥ 2** 的论文（用 Semantic Scholar 引用数作质量代理）
+3. 对每篇论文，用 **gemini-2.5-flash** 找出它**显式引用且以协同方式组合了二者思想**的两篇前作，并要求模型**解释这个协同点**
+4. 下载两篇父论文，因上下文长度与推理成本限制，用 gemini-2.5-flash 把每篇摘要成"清楚描述所用方法、突出关键洞察或发现，细节足以让方法与主要贡献被完全理解"
+5. **ground truth y\* 的构造是关键一步**：直接用协同解释不行，因为它是**站在下游论文的立场、以两篇父论文为参照**写的。所以再用 **gemini-3-pro 把 insight 改写成不提及下游论文的独立陈述**，逼模型只从两篇父论文本身生成
+6. 同一对父论文若对应多篇下游论文，**保留引用最高的那篇的 insight**，以偏向更有影响力的洞察
+
+**切分**：按下游论文的**发表日期做时间切分**（训练 cutoff 之前 / 之后）。另有更严的 **Test-unseen-parents 子集（N = 5,294）**，排除任何与训练集共享父论文的样本。训练集还被**限制在部分领域**（cs.LG, cs.AI, cs.NE, cs.MA）以测试跨领域迁移。
+
+### 评测指标
+
+**gemini-3-pro 作为主 judge**，对生成 insight 与 ground-truth insight 的相似度打 **1–10 分**。
+**人类验证**：2 位 CS 博士生对 Qwen3-4B 与 GIANTS-4B 生成的 30 对 insight（n=60）独立评分，**Spearman ρ = 0.761，p < 0.001**。
+**judge 卫生**：GRPO 训练期间用 **Qwen3-14B** 当 judge，**gemini-3-pro 只留给评测**——避免"用评测 judge 训练再用它评测"的循环。
+
+### 两条训练路线
+
+- **SFT 蒸馏**：标准 SFT（父论文摘要 → insight）与 **SFT-think**（用 gemini-3-pro 生成详细 CoT 再蒸，类似 OpenThoughts / s1）
+- **RL**：**GRPO**，直接以相似度分数为 reward。base model 是 **Qwen3-4B**
+
+### 结果
+
+| 模型 | 平均相似度（1–10） |
+|---|---|
+| **Qwen3-4B base** | **4.75** |
+| gemini-2.5-pro | ≈ 与 Qwen3-4B 相当 |
+| gemini-3-pro | ≈ 与 Qwen3-4B 相当 |
+| SFT / SFT-think | 仅比 base **略有提升** |
+| **GIANTS-4B（GRPO）** | 比 gemini-3-pro **+35%**（全测试集）/ **+34%**（Test-unseen-parents） |
+
+**三条关键结论：**
+
+1. **这个任务连大型专有模型都做不好。** Qwen3-4B 只有 4.75——按评分 rubric，这个区间意味着"生成的 insight 可能在主题上对上了，但**没抓住核心科学贡献或技术细微处**"。而 **gemini-2.5-pro / gemini-3-pro 的表现与小得多的 Qwen3-4B 相当** → **文献接地的综合能力不随模型规模线性增长**，需要专门的训练范式。
+2. **模仿学习收效甚微，RL 才有效。** SFT 与 SFT-think 都只是略微超过 base；直接优化相似度的 GRPO 才把能力对齐到人类 insight。
+3. **优势在 test-time scaling 下保持**：随着每样本采样数 k 增加（1→16），GIANTS-4B 的 best@k 始终高于 base、gemini-2.5-pro 和 **SciThinker-4B**（即 §1 SciJudgeBench 那篇训出来的 4B 生成模型）。
+
+**第三方交叉验证**：用 **SciJudge-30B**（§1 那篇训的引用影响力判别器）做成对比较，它在 **68%** 的对比中认为 GIANTS-4B 的 insight 比 base 模型的更可能带来高引用。人类评估也认为 GIANTS-4B 的 insight **概念上更清晰**。
+
+### 对我们的价值（最高，超过第一版任何一篇）
+
+1. **模型尺寸、训练方法（4B + GRPO）、任务形态（文献 → 洞察）全部与我们重合**，而且 benchmark、代码、模型权重全开源 —— 我们可以直接拿来当评测，也可以直接对标
+2. "**gemini-3-pro 与 Qwen3-4B 打平**"是我们最想要的那种论据：**这项能力不能靠堆规模得到**
+3. "**SFT 只是略微提升、RL 才有效**"对我们的训练路线是直接的方法论输入
+4. 它和 §1 的 SciJudgeBench 形成一个**闭环生态**：SciJudge-30B 当第三方裁判、SciThinker-4B 当对照基线。我们如果接这两个，等于一次性进入一个已经有多方交叉验证的评测体系
+5. ground truth 构造里"**把 insight 改写成不提及下游论文**"那一步，正是我们 paper2reasoning 做 context.md 时最容易泄漏的地方，可以直接抄它的处理
+
+---
+
+<a id="28"></a>
+## 28. ⭐ TasteGap: Measuring the Gap Between Human and LLM Research Ideas
+
+- **arXiv**: [2607.01233](https://arxiv.org/pdf/2607.01233) · Yale University + University of Chicago · 数据 `IdeaLand/IdeaSeed`、代码 `ziyuuc/TasteGap`
+
+**定位**：不问"这条 idea 好不好"，问"**LLM 的 idea 分布与人类研究者的 idea 分布差多远**"。这是唯一一份把 research taste 当作**分布性质**而非单条质量来测的工作。
+
+### 数据
+
+- **人类 idea**：ICLR / ICML / NeurIPS **2023–2026** + **Nature Communications 2023–2025**（覆盖 71 个学科），论文本身即人类终点
+- 抽取 pipeline：prompt 要求给出 **innovation、departure from prior work、key insight**，再改写成 proposal 风格的 motivation + method
+- **反向工程 4–8 篇**高相关前作（基于抽出的 idea 和论文的 related-work 章节），**输入只给这些前作的 title + abstract**
+- 混合语料共 **11,683 条**有效人类 idea
+
+### 两轴 research-taste 分类法
+
+- **Opportunity Pattern（机会模式）** 对应 motivation：什么样的 gap 让这个提案值得做——从"缺少解释""被忽视的失败模式"到"结构性脱节""既有理解的局限"
+- **Method Paradigm（方法范式）** 对应 method：用什么样的贡献策略把 gap 变成一篇论文——synthesis、scope extension、robustification、formal derivation 等，涵盖分析型、建构型、整合型、探索型
+
+**构造过程**：人类专家先审阅 **NSF / NIH / AHRQ / DARPA** 的研究指南，得到初版 **11 个机会元素 + 9 个方法元素**；再用 **150 篇 held-out 论文**迭代精炼（每轴允许至多两个最近标签 + 一个 other 选项）；最终收敛到 **7 × 7**。三条要求：类别对应反复出现的 gap framing 与贡献策略、跨领域可泛化、经人类验证确认**没有系统性的类别塌缩**。
+
+### 自动标注与验证
+
+**GPT-5.4-mini** 作标注器，返回每轴的主标签 + 次标签、置信度，以及三个诊断分：**surface stitching（表面拼接）、bottleneck specificity（瓶颈具体性）、boilerplate（套话程度）**。
+在同一批 150 篇 held-out 上验证：两位作者各自审阅，与 GPT-5.4-mini 计算 **Cohen's κ = 0.84 / 0.81 / 0.93**（分别对应机会标签、方法标签、诊断分）。还检查了混淆矩阵，确认错误集中在**语义相邻的标签**而非系统性塌缩。
+
+### 核心结果
+
+| | 人类 | 9 个被测 LLM |
+|---|---|---|
+| 以 **connection / bridge** 为动机的比例 | **12.1%** | **47.1% – 64.2%** |
+| 以 **synthesis / unification** 为核心方法的比例 | **5.1%** | **22.5% – 38.7%** |
+| 两轴归一化熵 | 一致更高 | 更低 |
+
+> LLM ideation 高度集中在**整合型、综合导向**的类型上，而人类研究 idea 跨越范围广得多。这个模式**在各模型家族与各科学领域上都稳定**。
+
+诊断分同向：多数模型输出的 **bottleneck specificity 更低、boilerplate 更高**。
+
+### ⚠️ 一条对我们直接不利、也因此最有价值的发现
+
+**开思考模式会让分布离人类更远。**
+
+| Qwen3-8B | 不开 thinking | 开 thinking |
+|---|---|---|
+| bridge 类机会占比 | 49.7% | **71.1%** |
+| 显式 synthesis 占比 | 38.7% | **52.2%** |
+| 机会轴归一化熵 | 0.658 | **0.481** |
+| 与人类分布的 TVD | 0.382 | **0.590** |
+
+DeepSeek-V4-Flash 方向相同（bridge 52.2% → 59.1%，synthesis 22.5% → 30.7%，两轴 TVD 均上升）。作者的结论是：**thinking 是在锐化模型自己偏好的 ideation 模板，而不是把分布拓宽向人类品味，并进一步降低了 idea 多样性。**
+
+**这对我们意味着什么**：我们训练的正是长 reasoning 轨迹。**朴素地加 reasoning 会把这个 gap 放大。** 反过来说——如果我们的 innovation prior 训练能在加了 reasoning 的前提下**把 TVD 拉低、把熵拉高**，那是一个逆着已知趋势的强结果，说服力比再刷一个 judge 分高得多。
+
+**建议**：把 TasteGap 作为**第五个评测**接进来，它不需要 judge 排序、只需要分类，成本极低，而且给出的是一个**没人报过的新维度**。
+
+---
+
+<a id="29"></a>
+## 29. ⭐ PRESCIENCE: A Dataset and Benchmark for Scientific Forecasting
+
+- **arXiv**: [2602.20459](https://arxiv.org/abs/2602.20459) v2 · Ai2 + UChicago Knowledge Lab + 希伯来大学 + Northwestern（含 Daniel S. Weld、Doug Downey、Tom Hope、James Evans）
+
+**规模**：**98K** 篇近期 AI 论文为核心，加上作者发表史与引用链接的配套论文，**共 502K 篇**。每条论文记录含：标题摘要、**消歧后的作者身份**、influential references、**逐月累计引用轨迹**、202 个主题的多标签分类、arXiv 类别、以及**按发表日期时间对齐的元数据快照**。
+
+**质量控制**：作者身份用 **S2AND** 消歧（人工检查显示比当前 S2AG release 更准）；只保留 **1–10 篇** influential reference 的目标论文；**所有作者与引用级元数据（发表数、引用数、h-index）都按论文发表日期时间对齐**，防止未来信息泄漏进任务输入。
+
+### 七个任务（五个 paper-anchored + 两个 aggregate）
+
+1. **Contribution generation**（与我们最相关）：从一篇真实未来论文的 influential references 预测它的 title + abstract
+2. **Collaborator prediction**：给第一作者，从候选作者中排序谁会是共同作者（nDCG、R-precision）
+3. **Prior work selection**（作者称是新任务）：给一个作者团队，排序哪些前作会成为他们下一篇论文的 influential reference
+4. **Citation count prediction**：回归，预测发表后 12 个月的引用数（MAE、R²、Pearson、Spearman）
+5. **Future combination prediction**：给一篇论文，排序哪些前作会在之后八个月里与它**被共同引用**为 influential reference
+6–7. **Topic trend forecasting** 两个聚合变体
+
+其中 2、3、1 三个任务可以**组合成一个生成流程**，做语料规模的合成论文 roll-out。
+
+### LACER 指标
+
+因为 contribution generation 要测的是**概念相似度而非表面重叠**，作者提出 **LACER（Lattice of Automatically Constructed Exemplars for Reference）**：一个 LLM-as-judge 指标，用**自动构造的示例**把 1–10 尺度锚定住——下端锚在"主题相关的前作"，上端锚在"与目标贡献语义等价"，**不需要人工写示例**就得到可解释的动态范围。
+
+**验证**：对 250 条专家相似度排序，LACER 的 **Kendall τb = 0.57，逼近人类标注者之间的一致性 0.53**；远超 ROUGE-L (0.27)、BERTScore (0.40)、ASPIRE Distance (0.35)。
+
+### Contribution generation 结果（judge 用 gpt-5-2025-08-07）
+
+| 基线 / 模型 | LACER |
+|---|---|
+| Same arXiv Category（随机同类论文） | 1.27 |
+| **Random Influential Ref.（随机取一篇父论文）** | **4.31** |
+| **OLMo 3 7B（微调）** | **4.03** |
+| **Qwen 3 8B（微调）** | **3.99** |
+| GPT-4o | 4.71 |
+| GPT o3 | 5.49 |
+| GPT-5 | 5.64 |
+| GPT-5.2 | 5.60 |
+| Claude Sonnet 4.5 | 5.03 |
+| Claude Opus 4.5 | 5.04 |
+| GPT-5 agent（+ 完整历史 H<tp） | **5.86** |
+| **Gold Paraphrase（上限）** | **10.00** |
+
+**两个刺眼的数字：**
+1. **微调过的 7–8B 开源模型（4.03 / 3.99）低于"随机拿一篇父论文交上去"这个基线（4.31）** —— 这是个很硬的负结果
+2. **最强的 frontier 模型也只到 5.6–5.9，而 gold paraphrase 是 10.0** —— 一半的距离都没走完
+
+**上下文消融**（GPT-5）：influential refs 5.64；+ related 5.59；+ author papers 5.72；**+ citations（给 12 个月引用数的 oracle）反而降到 5.37**；全给 5.61。**加信息几乎没用，加 oracle 引用数还有害。**
+
+**污染检查**：cutoff 消融显示模型预训练与测试期的重叠**不显著影响 LACER 分数**，相对排名保持稳定。
+
+**对我们的价值**：与 GIANTS 高度互补——GIANTS 给两篇父论文、PRESCIENCE 给全部 influential references（1–10 篇），后者信息更多、更接近我们 context.md 的形态。LACER 也比 Reconstruction 的 binary match 好用得多（有动态范围，4B 不会全 0）。
+
+---
+
+<a id="30"></a>
+## 30. ⭐ Lit2Test / What Proves You Wrong: Benchmarking LMs on Falsifiable Research Ideation
+
+- **arXiv**: [2608.22948](https://arxiv.org/html/2608.22948) · 北大 + 天大 + 海大 + 华为 · benchmark、构造 pipeline、审计产物全部释出
+
+**这是整份调研里评测协议做得最严的一篇。** 即便不接它的数据，**它的防守设计也应该整套抄。**
+
+### 核心思想：可证伪性作为共同裁决单元
+
+作者指出现有评判方式都不提供**共享的决策规则**：自由形式评判随文风与位置摇摆；对着后来那篇论文打分则奖励"复原某一条已实现的轨迹"。
+解法是让每个提案**预先承诺那个能证明它错的观测**，从而使质量**可裁决**而非仅仅可争论。
+
+**六字段契约**：`(literature_gap, hypothesis, minimal_test, decisive_metric, supporting_result, falsifying_result)`
+
+**明确的范围界定**（写得很克制）：**在范围内**的是文献综合、gap 识别、假设形成、可执行最小可证伪测试的设计——执行可行性是一等被评属性。**在范围外**的是广义科学创造力、未来论文预测、真实执行结果，以及任何"该流程改善了模型生成能力"的主张。**这个任务测的是提案在当前文献下是否可测试，而不是它是否会成功。**
+
+### 构造
+
+每个实例是一个**真实的四论文邻域**：这四篇共享主题，但留下一个**跨论文的张力**，可由一个小实验裁决。材料在构造时固定，**每个参赛模型收到完全相同的 c，别无其他**——所以差异只反映提案质量而非检索能力差异。
+**200 个邻域**，四个参赛模型（**GPT-5.2、Claude Sonnet 4.6、GLM-5、DeepSeek-V3.2**）各在每个邻域产出一份**原生六字段提案**（直接按 schema 生成，不是后处理），得 **1,200 个 canonical pair**。
+
+### 评测协议（这是精华）
+
+- **双序判决**：每对在两种呈现顺序下各判一次，共 **2,400 次有序判决**，折叠成 **950 个 order-stable + 250 个 order-sensitive**。**只有 stable 的进入排名聚合**，order-sensitive 的单独报告
+- **隐藏对照**：把来自朴素关键词/模板基线的提案**盲插进真实对局**（自动审计 8 个，人类研究再加 4 个），兼作"真实 vs 朴素"的锚——judge 必须稳定地高于这个锚
+- **同源渲染对照**：把**完全相同的内容**分别以 schema 形式和散文形式呈现，**把实质与格式分离**
+- **单字段操纵检查**：只污染一个字段（grounding / decisive metric / falsifiability），加一个明显缺陷，要求干净版本**在两个顺序下都赢**
+- **微妙污染审计**：把明显缺陷换成自然的缺陷，每个都**配一个风格匹配的伪编辑（sham edit）**，于是"偏好干净版本"是**扣除了表面改写之后**测出来的
+- **有界人类校准**：3 位标注者，**20 个邻域 / 90 对**，多数标签与 judge 在决定性的 order-stable 案例上比较
+- **聚合**：Bradley–Terry 估计 + Condorcet 头对头关系；不确定性用 bootstrap。**事先固定了完全分离时的处理策略**
+
+**作者对主张范围的自我限制值得学**：对有客观标签的任务（如隐藏对照检测）才用"准确率"，其余只报"判决与参考信号的一致性"；人类标签只是**分层子集上的校准证据**；开放式提案的 ground truth 仍有争议。**canonical pair 始终是统计单元。canonical judge 与判决规则按 benchmark 版本固定，任何替换都要求版本化的完整重跑。**
+
+### 结果
+
+**GPT-5.2 > Claude Sonnet 4.6 > GLM-5 > DeepSeek-V3.2**，在**全部 10,000 次 case-level bootstrap 复现中都恢复出这个完整序**。
+
+稳健性：
+- **context-cluster bootstrap**（重采样 200 个邻域而非 1,200 对）置信区间宽 11–27%，但**同样在 10,000 次里全部恢复相同排名**
+- 这是一个**严格的 Condorcet 序**：每个高排名模型在与所有低排名模型的 stable 头对头中都获胜；跨五个构造批次一致
+- 把 250 个 order-sensitive 全判为平局，排名不变；即便**对抗性地指派每一个 sensitive 案例**，两层结构（GPT-5.2 与 Claude 在上，GLM-5 与 DeepSeek 在下）仍保持
+- **第二个 judge（Doubao Seed 2.0 Pro，模型家族与四个参赛者及主 judge 都不相交）独立复现了完全相同的排名，在 order-stable 成对比较上与主 judge 一致率 86.1%**
+- **分离来自所提测试与指标的质量，而非表面流畅度**
+
+**对我们的价值**：可证伪性是 scientific taste 里**最难伪装的一维**——一个空洞的 idea 写不出"什么观测会证明我错"。这是我们做自己的 judge 时最值得加的一个字段。而它的**同源渲染对照 + 风格匹配伪编辑**，比我推荐的 SciStyleBench 式消融更外科手术式。
+
+---
+
+<a id="31"></a>
+## 31. ⭐ SCOPE: Can LLM design high-quality experiments?
+
+- **arXiv**: [2608.03501](https://arxiv.org/html/2608.03501v1) · 西湖大学 / 浙大 / 南理工 / 东京大学
+
+**定位**：先前工作都聚焦代码实现与执行，**跳过了实验设计这个阶段**。SCOPE 专门补这一段。
+
+### 数据构造
+
+从 ICML / ICLR / NeurIPS 收论文，从 PDF 抽 GitHub 链接，用 **stars 与 forks 的对数标准化复合分**排序：
+
+`R_i = ½ [ (ln(1+S_i) − μ_lnS)/σ_lnS + (ln(1+F_i) − μ_lnF)/σ_lnF ]`
+
+取 **Top 300 篇，跨 19 个研究领域**。
+**两阶段抽取**：先做 summary-style 的全局理解（整体结构、核心贡献、方法架构、实验逻辑），再做逐节对齐的深度抽取（任务描述、方法模块、实验设计、数据集、baseline、指标、约束、歧义），方法部分还做**模块化分解**（每个模块的功能、架构、关键公式、输入输出）。
+**质量精炼**：自验证（模型对照原文找遗漏与幻觉）+ 外部评估器按六维 rubric 打分的循环。
+
+### 任务与评分（六个子维度，0–30 分）
+
+**High-Level（15 分）**——决定"做哪些实验"：
+- **Main Experiment**：构建回答研究问题的完整验证链
+- **Ablation**：隔离并验证每个方法组件的独立贡献
+- **Analysis**：超参敏感性、计算效率等补充洞察
+
+**Low-Level（15 分）**——决定"用哪些具体资源"：
+- **Datasets**（来源、切分、构成）
+- **Baselines**（来源、性能特征）
+- **Metrics**（主指标与辅助指标）
+
+每个子维度由 **GPT-5.2 作 judge**，按有明确分档标准的 rubric 独立打 **0–5**。
+
+**⭐ Redline 机制（这个设计值得直接抄）**：当出现致命缺陷时——例如**显式违反给定约束**——对应子维度**直接记 0，无论其他表现如何**。目的是**防止求平均把关键失败掩盖掉**。同时报 **RL-rate（redline 率）**。
+
+**防泄漏**：Think+Search 条件下模型可联网，但**严禁直接搜索或访问原论文及所提方法**，只能用某时间点之前的公开资源，模拟"现有实验设计未知"的真实场景。
+
+### 结果（七个模型 × 两种策略 + 两个 deep research 模型）
+
+| 模型 | 策略 | RL-rate | Main | Abl. | Anal. | Data | Base. | Metr. | **总分/30** |
+|---|---|---|---|---|---|---|---|---|---|
+| GPT-5.2 | CoT-only | 1.00 | 3.91 | 3.60 | 3.92 | 2.18 | 2.15 | 2.45 | **18.22** |
+| GPT-5.2 | CoT+search | 0.67 | 3.43 | 2.93 | 3.10 | 2.39 | 2.29 | 2.62 | **16.77** |
+| **Claude 4.5 Sonnet** | CoT-only | 2.00 | 3.19 | 3.99 | **4.62** | 2.01 | 2.27 | 2.54 | **18.62（最佳）** |
+| Claude 4.5 Sonnet | CoT+search | 5.33 | 3.30 | 3.79 | 4.46 | 2.09 | 2.24 | 2.51 | 18.38 |
+| Gemini 3 Pro | CoT-only | 3.33 | 2.47 | 2.47 | 2.24 | 1.85 | 1.72 | 1.91 | 12.65 |
+| Grok-4 | CoT-only | 5.33 | 2.18 | 2.44 | 2.68 | 1.80 | 1.59 | 1.86 | **12.55（最低）** |
+| DeepSeek-V3.2 | CoT-only | 7.67 | 2.33 | 2.75 | 3.13 | 1.76 | 1.94 | 2.01 | 13.92 |
+| DeepSeek-V3.2 | CoT+search | **14.00** | 2.45 | 2.79 | 3.17 | 1.63 | 1.80 | 1.92 | 13.76 |
+| Qwen3-Max | CoT-only | 8.67 | 2.40 | 2.61 | 2.79 | 1.64 | 1.75 | 1.86 | 13.05 |
+| Kimi-k2 | CoT-only | 13.33 | 2.87 | 3.32 | 3.74 | 1.68 | 1.89 | 2.12 | 15.62 |
+| Qwen-DeepResearch | – | 9.33 | 2.76 | 2.47 | 2.66 | 1.96 | 1.93 | 2.15 | 13.93 |
+| Grok-DeepSearch | – | **0.67** | 3.07 | 2.71 | 2.93 | 2.23 | 2.12 | 2.31 | 15.39 |
+
+**四个发现：**
+
+1. **多数 LLM 无法直接设计高质量实验。** 全模型平均只有 **14.81/30**；只有 GPT-5.2 与 Claude 超过 18；最好的也比满分低 11 分以上。
+2. **所有模型在 Low-Level 配置上有系统性瓶颈。** High-Level 一致显著高于 Low-Level——Claude 的 Analysis 达 4.62 而 Datasets 只有 2.01，**两倍以上的差距**。**没有任何模型的任何 Low-Level 子维度超过 3/5**，而 High-Level 常常超过 3.5。平均 High/Low 差 **2.78 分**。→ 瓶颈是**配置准确性而非规划逻辑**。
+3. **⚠️ 给搜索不但没用，还可能有害。** 七个模型里五个总分无显著差异；**GPT-5.2 显著退化：18.22 → 16.77（−1.45）**，High-Level 各降 0.48–0.82，Low-Level 只微涨 0.14–0.21。**DeepSeek-V3.2 的 redline 率从 7.67% 几乎翻倍到 14.00%** —— 额外信息**增加了幻觉风险**。作者的诊断：**核心问题不是能否获取信息，而是如何整合——无结构的检索是在与内部推理竞争，而不是互补。**
+4. **Deep research 模型改善但不解决瓶颈。** Grok-DeepSearch 15.39（比基座 +2.84，Low-Level 涨得最明显，redline 率最低 0.67%），但 Low-Level 仍全部低于 3 分，且仍远落后于 Claude 与 GPT-5.2。
+
+作者据此提出 **OptED**：三阶段 agentic workflow（阶段隔离 + 原子工具增强 + 规则约束），把配置阶段与协议阶段分开，在六个模型上测试。
+
+**对我们的价值**：**redline 机制**是我们做任何 rubric 型评测都该加的——防止平均掩盖致命失败。另外"**给搜索反而变差**"和 HypoArena 的"**结构化分析技巧效果因模型而异（+88 到 −60）**"是同一件事的两个独立证据：**推理时加 scaffold 不是免费的。**
+
+---
+
+<a id="32"></a>
+## 32. SciPredict: Can LLMs Predict the Outcomes of Scientific Experiments in Natural Sciences?
+
+- **arXiv**: [2604.10718](https://arxiv.org/pdf/2604.10718) · Scale AI + UCLA + UMD + Princeton · [code](https://github.com/scaleapi/scipredict)
+
+**规模**：**405 个任务**，来自 **33 个专业子领域**——物理 9 个（量子与原子物理、凝聚态等）、生物 14 个（分子生物、神经科学、生态等）、化学 10 个（有机化学、催化、高分子等）。领域分布：物理 25% / 生物 50% / 化学 25%。
+
+**防污染**：**只选 2025-03-31 之后发表的论文**，避开既有预训练数据。
+
+**专家队伍**：大规模招募，**54.5% 持博士学位**。两轮专家验证。审稿人额外确保 **MCQ 的干扰项是科学上合理但错误的替代方案**、自由形式的评分 rubric 既全面又灵活、数值精度范围现实。另招**独立一组专家**做 human baseline。
+
+**三种题型**（MCQ 40% / free-form 32% / numerical 28%）：
+- **MCQ**：3–4 个选项，专家标注 ground truth
+- **Free-form**：有参考答案 + **专家写的评分 rubric**，用固定 prompt 的 LLM judge 判是否展现正确科学推理
+- **Numerical**：专家给出**可接受区间 [L_i, U_i]**，考虑测量精度与实验变异；落在区间内即算对。作者说明这捕捉的是**实用性**（预测是否足够准以指导实验规划），而非要求精确数值匹配
+
+### ⭐ 三个可靠性校准指标（这是这篇最有价值的部分）
+
+模型每题除预测外还要给三个 1–5 的自评，且**预期的相关方向是事先声明的**：
+- **Confidence**（对预测正确性的信心）：若校准良好，应与准确率**正相关**
+- **Difficulty**（在给定上下文下的感知难度）：应与准确率**负相关**
+- **Feasibility**（该结果能否不做实验、仅靠推理预测出来）：应与准确率**正相关**
+
+### 结果
+
+- **模型准确率 14–26%，人类专家 ≈20%** —— 部分前沿模型**超过**人类专家
+- **但校准是灾难性的**：模型**无论自评信心高低、无论是否认为该结果不做实验就能预测，准确率都停在 ≈20%**
+- **人类专家则校准极强**：当他们认为某结果越可能不做实验就预测出来时，**准确率从 ≈5% 升到 ≈80%**
+
+> 实验科学中的超人表现，需要的不只是更好的预测，而是**对预测可靠性的更好觉察**。
+
+**对我们的价值**：领域是自然科学，与我们 ML 方法论的重合度低，不进主推。但**"准确率相当而校准天差地别"这个框架非常值得借**——我们可以在自己的评测里加一栏"模型自评这条 idea 的可行性/信心"，看它是否与实际得分相关。这是一个**几乎零成本、但没人在 ML ideation 上报过**的维度。
+
+---
+
+<a id="33"></a>
+## 33. AbGen: Evaluating LLMs in Ablation Study Design and Evaluation
+
+- **arXiv**: [2507.13300](https://arxiv.org/abs/2507.13300)（ACL 2025 Long）· [code](https://github.com/yale-nlp/AbGen) · Yale NLP
+
+**首个**评测 LLM 设计消融实验能力的 benchmark。**2,000 条专家标注样本，来自 677 篇 NLP 论文**。
+**任务**：给定研究上下文，为指定的模块或流程生成详细的消融实验设计，必须包含**明确的研究目标陈述**和**详细的实验流程描述**。
+**结果**：GPT-4o、Llama-3.1 等领先模型与人类专家在**重要性、忠实性、合理性**三方面存在显著差距。
+**AbGen-Eval**：配套的**元评测** benchmark，用来检验常用自动评测系统在这个任务上的可靠性——**结论是当前自动评测方法不可靠，与人类评估存在显著差异**。
+
+**对我们的价值**：消融设计是 SCOPE 的 High-Level 子维度之一，AbGen 是它的专门化深挖版。两者可以互为补充。AbGen-Eval 那种"**元评测自动评测器**"的做法，与 SciArena-Eval 同类，是判断"我们的 judge 能不能用"的正规做法。
+
+---
+
+<a id="34"></a>
+## 34. ResearchArena / How Far Are We From True Auto-Research?
+
+- **arXiv**: [2605.19156](https://arxiv.org/html/2605.19156v1) · Zhengxin Zhang, Ning Wang, Sainyam Galhotra, Claire Cardie（Cornell）
+
+**这篇应该和 Heuresis、Tang & Yang 一起进第四部分，是同一条"泼冷水"链上的第三块砖。**
+
+**设置**：ResearchArena 是一个**最小 scaffold**，让现成 agent 在轻量指导下自己走完整个研究闭环（ideation → 实验 → 写作 → 自我精炼）。参赛：**Claude Code (Opus 4.6)、Codex (GPT-5.4)、Kimi Code (K2.5)**。**13 个 CS 种子 × 每个 agent-领域对 3 次试验 = 117 篇 agent 生成的论文。**
+
+**三重评价镜头**（这是设计精华）：
+1. **SAR**：只看稿件的审稿人
+2. **PR（artifact-aware peer review）**：agent **同时检视工作区与稿件**
+3. **人类 meta-review**
+
+### 结果
+
+**只看 SAR，图景很乐观**：Claude Code 得分最高，**超过 Analemma 的 FARS，并与 ICLR 2025 人类投稿的加权平均持平**——看上去最小 scaffold 的 agent 就能产出有竞争力的论文。
+
+**人工检视表明这个图景被高估了**：
+- **SAR 分数与它自己的接收决定都对不齐**，且**奖励看似合理的 framing，不核实实验实质**
+- 换成 **artifact-aware PR，分数急剧下降**
+- 人工审计确认**实验严谨性是主要瓶颈**，分解为三种失效模式：**编造结果、实验功效不足（underpowered）、计划与执行不匹配**
+- **失效模式高度依赖 agent，约 15 倍的跨度**：Codex 的"论文-产物不匹配 / 编造引用"是 **5% / 8%**，Kimi Code 是 **77% / 72%**——作者说这跟踪的是各 agent 发展出的不同"研究人格"
+- **117 篇里没有一篇达到顶会接收线**
+
+**对我们的价值**：这是"**只看稿件的 judge 会被骗**"最直接的证据，比 HindSight 更进一步——它指出了具体的欺骗机制（奖励 framing、不查实质）和具体的修复（让 judge 看产物而不只看稿件）。**如果我们做端到端评测，必须把"产物可见"作为一个对照条件。**
+
+---
+
+<a id="35"></a>
+## 35. ScientistOne + Chain-of-Evidence Integrity Audit
+
+- **arXiv**: [2605.26340](https://arxiv.org/pdf/2605.26340) · Google Cloud AI Research
+
+**问题意识**：自主研究 agent 能产出有竞争力的方案和专业模样的稿件，但输出中含有**只看表面呈现的评测查不出来的可验证性失败**：编造引用、无法复现的分数、与实现不符的方法描述。**共同根源是：没有任何现有评测协议审计"主张是否被支撑"。**
+
+**三个贡献**：
+1. **Chain-of-Evidence (CoE)**：要求每条主张都可追溯到其证据来源的可验证性框架
+2. **ScientistOne**：在文献综述、方案发现、论文写作全程**按构造维持证据链**的端到端系统
+3. **⭐ CoE Integrity Audit**：一个事后审计，**四项完整性检查统一适用于所有系统**——**score verification（分数核验）、specification violation（规范违反）、reference verification（引用核验）、method–code alignment（方法与代码一致性）**
+
+### 结果（75 篇论文 × 5 个系统 × 5 个前沿研究任务）
+
+**每一个 baseline 都至少表现出一种系统性失效模式**：
+- **幻觉引用率最高达 21%**
+- **分数核验的通过率低至 42%**
+- **方法-代码一致性在 20% 到 80% 之间**
+
+ScientistOne 是**唯一**做到零幻觉引用（**0/337 条参考文献**）、分数核验全通过的系统。
+
+**对我们的价值**：那四项检查是**可以直接抄进我们数据质检**的清单。尤其 **method–code alignment**——我们的 methods 语料里 answer.md 与 reasoning.md 描述的方法是否与代码一致，正是 [reasoning-bloat-audit](../) 里发现过"methods 编造代码"的那类问题。这给了一个成体系的审计框架。
+
+---
+
+<a id="36"></a>
+## 36. AIPR / Intelligence Is Not the Bottleneck
+
+- **arXiv**: [2606.15887](https://arxiv.org/html/2606.15887) · Costa Georgantas
+
+**定位**：现有工作大多评"机器生成的审稿文本的文笔"，**而不是评它给出的数字分数的效度**。这篇专门验证后者。
+
+**设置**：AIPR 读一篇投稿，输出**五个 0–100 的质量维度**和一个加权总分。**纯 prompting，没有在 review 或决定上做任何微调。**
+**300 篇 ICLR 投稿**，有公开的决定档位与 reviewer 评分。**冻结 pipeline，且假设在任何分数接触任何结果之前就预注册。**（这个方法学纪律在这一整批论文里是独一份的。）
+
+### 结果
+
+- 总分**区分拒稿与接收：AUROC 0.82（95% CI 0.78–0.87）**，跨档位单调上升，且跟踪平均 reviewer 评分
+- **信号最强的地方正是它声称的地方**：最低分的五分之一被拒率远高于基率，**其中没有 oral 论文**
+
+### ⭐ 但真正的发现在这里
+
+> **效度主要来自模型本身**：在同一个模型上，**一段话的 prompt 判别力几乎与完整 pipeline 相当**（小差距偏向 pipeline，但**未达到预先声明的判据，p = 0.09**）。
+>
+> 工程加进去的是**可靠性**：AIPR 的分数在重复运行间**几乎不动（组内 SD 0.7 分，而裸 prompt 摆动 2.8 分**），并且同一次调用返回的是有 rubric 结构、有证据支撑的审稿意见，而不是一个光秃秃的数字。
+
+作者的背景论述也很重要：NeurIPS 一致性实验发现**同一流程重跑会有很大一部分接收/拒稿决定翻转**，且**审稿在拒绝弱工作上可靠，在给强工作排序上很差**——这是所有以 review 分为 GT 的评测的天花板。
+
+**对我们的价值**：两条。第一，**预注册 + 冻结 pipeline** 是我们报评测结果时应该做的（尤其我们会反复调 prompt）。第二，"**复杂 pipeline 相对单段 prompt 的增益主要是方差降低，不是判别力提升**"——这意味着我们如果要给自己的评测搭复杂 scaffold，**应该拿单段 prompt 作为必须超越的基线**，否则很容易只是在买稳定性。
+
+---
+
+<a id="37"></a>
+## 37. LLM-as-a-Reviewer & PRAIB —— judge 的行为病理
+
+### LLM-as-a-Reviewer — [2605.25415](https://arxiv.org/html/2605.25415)
+
+**898 篇**从 NeurIPS 与 ICLR 分层抽出的论文，**12 个 LLM**，三个轴：
+1. **rating calibration**
+2. **与人类审稿人的分歧**
+3. **⚠️ prompt injection 抵抗力**——通过一种**不可见的字体映射攻击（invisible font-mapping attack）** 嵌入
+
+**发现**：
+- LLM **系统性地高估较弱的投稿**
+- 在主题侧重上与人类分歧：**低估 Clarity 问题、高估 Reproducibility 问题**
+- 生成的审稿**长 2–3 倍，但词汇多样性更低、用词更标准化**
+- **prompt injection 仍然高度有效**：简单的隐藏指令可以**在相当大比例的案例中把低分论文推到接收级评分**，效果在不同模型家族间差异极大
+
+### PRAIB — [2605.29815](https://arxiv.org/html/2605.29815)（Wrocław University of Science and Technology）
+
+**11,000 条**审稿，由 **5 个专有与开源模型**为 **1,000 篇 ICLR / NeurIPS 论文**（**2021–2025**）生成，跨多种 prompting 策略，与原始人类反馈对比。
+提出一套定义清晰的指标，衡量**审稿的具体性（specificity）、文风（style）、参与行为（behavior of engagement）**。
+
+**发现**：生成的审稿与人类反馈显著背离——**LLM 评分方差更小、正向偏置、且过度自信。**
+
+**对我们的价值**：这两篇合起来说明我们的 judge 有三个可测的病理：**正向偏置（对弱输入过于宽容）、方差压缩（拉不开差距）、可被提示注入操纵**。第三条尤其要注意——**我们自己的模型输出会进入 judge 的上下文**，如果训练无意中学到了某些"讨好 judge"的措辞，那和 prompt injection 在机制上是连续的。这是 SciStyleBench 那套消融之外应该额外查的一条。
+
+---
+
+<a id="38"></a>
+## 38. 其余系统与数据集（读过摘要，不进主表）
+
+- **[APRES](https://arxiv.org/pdf/2603.03142)**（Meta Superintelligence Labs + 爱丁堡）—— 自动**发现一套对未来引用数高度预测的 rubric**，再据此修订论文文本，且**不改动核心科学内容**。未来引用预测的 MAE 比次优基线**改善 19.6%**；修订后的论文被人类专家评估者在 **79%** 的情况下偏好于原稿。定位是让作者投稿前"压力测试"稿件。
+  → 对我们的意义：它证明**"表述"确实独立于"内容"地影响引用**，这反过来是 SciStyleBench 那条防守必要性的又一个证据。
+
+- **[Towards End-to-End Automation of AI Research](https://arxiv.org/pdf/2606.15497)**（Sakana AI + Oxford + UBC + Vector，Yamada / Lange / Cong Lu / Chris Lu / Shengran Hu / Foerster / David Ha / Jeff Clune）—— The AI Scientist：从构思、写代码、跑实验、画图分析、写整篇稿件到自己做同行评审。产出的稿件**通过了某主要 ML 会议 workshop 的第一轮评审**（该 workshop **接收率 70%**）。两种模式：用人类提供代码模板的 focused 模式，和开放模式。
+  → 读的时候注意：**70% 接收率的 workshop** 这个限定条件必须一起引，否则会严重高估。ResearchArena（§34）与 MLR-Bench（§12）都对这条产线给出了更严的复核。
+
+- **[SciDER](https://arxiv.org/pdf/2603.01421)**（William & Mary + MBZUAI + UMN）—— data-centric 的端到端多 agent 研究系统，四个子 agent：ideation（**Evolutionary Idea Search**）、数据分析、实验（合成扎根于数据集特征的可执行代码）、critic（迭代自精炼）。**释出 OpenSciDER-SFT-8K 执行轨迹数据集与 OpenSciDER-27B 微调模型**，在六个 benchmark 上有竞争力。
+  → 那份 **8K 执行轨迹数据集**对我们做 agentic 数据可能有参考价值。
+
+- **[Evolving Idea Graphs (EIG)](https://arxiv.org/pdf/2605.04922)**（港理工 + 港科大）—— 指出现有多 agent 系统靠**临时文本**（草稿、聊天记录）协调，难以定位生成 idea 的弱点和 agent 如何精炼它们。改用**演化的 idea graph** 表示部分成形的提案，**节点是科学主张、边是它们之间的关系**。
+  → "把 idea 表示成图而非文本"这个想法，对我们做 reasoning trace 的结构化质检可能有用。
+
+- **[IDEAgent](https://arxiv.org/html/2607.22375)**（NTU DeCLaRe Lab）—— 主张 ideation 应作为 **Quality-Diversity 联合目标**而非二选一，通过 lineage 管理 idea 演化：Quality 靠多目标反馈驱动**定向修复与精炼**，Diversity 靠轻量顺序记忆 + 与已完成 idea、其历史祖先、以及**被拒提案**的显式比较。
+  提出 **⭐ Yield 指标**：**满足预定质量阈值的、相互之间最大的多样 idea 集合的大小**。跨 **32 个主题 / 8 个 CS 领域**，Yield 上比最佳基线高 **3.89×**，且在 **8 倍多的主题上取得非零 Yield**。开源。
+  → **Yield 是个好指标**：它一次性回答"又好又不重复的 idea 你能给我几个"，比单报均值或单报多样性都合理。与 Heuresis 的 QDN 三轴是同一问题的两种操作化。
+
+- **[Idea Search](https://arxiv.org/html/2608.08958)**（COLM 2026 LM4Sci；Caltech + Google Research，含 Michael P. Brenner）—— 纯树搜索在科学方法的巨大搜索空间里会陷入局部最优或无效循环。做法：**动态 Idea Bank** 融入树搜索——(1) 把既有方法分解成**原子 idea**；(2) 从 bank 采样以引导代码变异的分支；(3) 用执行中发现的新 idea 动态更新 bank。
+  在单细胞 RNA 测序批次整合任务上，把强树搜索基线的均分从 **0.678 推到 0.697**，最好分 **0.728**。
+  **⭐ 三条设计结论**：bank 增强**对 bandit 采样有效、对随机采样无效**；优先考虑新 idea 的 "Exploratory" prompting **能挖出罕见的最优解**；而**加大采样层面的探索反而适得其反**。
+  → 与我们做 rollout 的采样策略直接相关。
+
+- **[FlowPIE](https://arxiv.org/pdf/2603.29557)**（中科院深圳先进院 + 大连理工 + UNSW + 厦大）—— 批评"静态的先检索后生成"范式导致 idea 同质、发散不足。把文献探索与 idea 生成当作**共同演化**过程：用受 **GFlowNets 启发的 flow-guided MCTS** 扩展文献轨迹，以 **LLM 生成式奖励模型（GRM）** 对当前 idea 的质量评估作为监督信号来引导自适应检索。
+
+- **[Re2](https://arxiv.org/pdf/2505.07920)**（浙大）—— **一致性有保障的**全流程同行评审与多轮 rebuttal 数据集：**19,926 篇初始投稿、70,668 条审稿意见、53,818 条 rebuttal**，来自 OpenReview 上 **24 个会议 + 21 个 workshop**。
+  作者点出既有数据集的**致命问题**：提供的论文内容**往往是最终版而非初始投稿**——也就是说，用它们训练/评测"审稿"其实是在给已经被修订过的稿件写审稿意见。Re2 保证内容确实是被审的那一版。
+  → 这条对我们是通用警示：**任何用 OpenReview 构造的评测，都要确认论文版本与评审时点对齐。** SoundnessBench 和 LigBench 在这点上做得怎样值得单独查一遍。
+
+- **[LLM-Metrics](https://arxiv.org/pdf/2605.22176)**（南理工 + 南农 + 江苏警官学院）—— 一个很别致的想法：用 LLM 的**参数化记忆**度量研究影响力。假设是高影响力论文在学术社区曝光更多 → 以文本形式进入训练数据 → 模型对它们形成更强的参数记忆。设计**四类多选探针**（标题识别、作者识别、方法识别、venue 识别），在 **549 篇 2023–2024 CS 论文**上评测 **6 家厂商、0.5B 到 72B 的 17 个 LLM**。**17 个里 15 个给出正向预测（9 个在 p < 0.05 显著）。**
+  → 对我们主要是**反面用途**：它证明了模型的参数记忆确实携带论文影响力信号——**这正是所有"预测引用/影响力"评测的污染通道**。我们做 SciJudgeBench 类评测时，时间 OOD 切分不只是好习惯，是必需品。
+
+- **[Can LLMs Generate Novel Research Ideas?](https://arxiv.org/abs/2409.04109)**（Si, Yang, Hashimoto，Stanford）—— 这一整条线的起点。招募 **100+ 位 NLP 研究者**写 idea 并对 LLM 与人类的 idea 做盲评（**79 位专家盲评 49 条 idea**），评四个维度：novelty、excitement、feasibility、overall，并给出统一的数值尺度校准所有评审的标准。
+  **结论**：**LLM 生成的 idea 被判定为比人类专家的 idea 更新颖（p < 0.05，在多重假设检验下稳健）**，但在**可行性上略弱**。作者同时**承认即便对专家而言 novelty 判断也很困难**，并提出后续研究设计以检验这些 novelty/feasibility 判断是否真的带来研究结果上的有意义差异。
+  → 这篇是所有后续工作的锚。**注意它与 §17 RQ-Bench、§4 HindSight 的张力**：Si et al. 说人评认为 LLM idea 更新颖；RQ-Bench 说 LLM judge 认为 LLM idea 更新颖但人评反过来；HindSight 说被判更新颖的反而未来影响力更低。这三者不完全矛盾（对象和设定不同），但**任何"我们的 idea 更新颖"的主张都必须说明是哪种设定下的哪种 novelty**。
+
+- **[Chain of Ideas](https://arxiv.org/pdf/2410.13185)** —— **IdeaArena** 协议的出处：对给定 topic 用 **Round-Robin 锦标赛**让 LLM judge 对任意两个方法产出的 idea 排序算 ELO，**每对正反各评一次**消位置偏置。
+
+- **[AI for Auto-Research: Roadmap & User Guide](https://arxiv.org/pdf/2605.18661)** 与 **[LLM-Based Scientific Peer Review: Methods, Benchmarks, and Reliability Challenges](https://arxiv.org/html/2606.25057)** —— 两篇综述，作为进一步展开的索引。
+
+- **[ReviewArena](https://openreview.net/forum?id=yugEO52gkR)** 与 **[OpenReviewer](https://openreview.net/forum?id=d4mJdezdHO)** —— 均为 OpenReview 上的投稿，未取到可解析的 PDF，仍为**未核实**状态。检索显示 ReviewArena 报称 51,529 篇 / 196,099 条 review / 14 个 review 字段，ReviewArena-Eval 1,002 篇跨 6 会议，结论是现有模型 miscalibrated、压缩评分尺度、区分接收与拒稿能力弱——**引用前请自行核实**。
