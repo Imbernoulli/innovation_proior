@@ -53,17 +53,17 @@ DROP_TRAJ = set(_rules.get('drop_traj_slugs', []))
 TYPE1_FINALE = set(_rules.get('type1_finale_traj', []))
 
 # ---------------------------------------------------------------------------
-# Harness contract literals — the LIVE three-way protocol (eval == RL == SFT).
-# Source of truth: .cache/mlsbench-eval (local commit 2861229a4) DEFAULT state:
-# MLSBENCH_STRICT_STR_REPLACE unset, MLSBENCH_VIEW_TOOL=1, MLSBENCH_REWRITE_OP=1
-# — i.e. the Cline-style op split (rewrite = the normal way, str_replace = 1-10
-# line surgical fixes, create) + view, tolerant matcher, and the post-edit echo
-# of the file's current editable region. The RL episode worker instantiates the
-# same InteractiveAgent, so these strings are what BOTH training-time rollouts
-# and eval-time episodes actually see. System prompt = SYSTEM_PROMPT_SCI with
-# the rewrite-branch replace_block (interactive.py); tool schemas verbatim from
-# tools.py (EDIT_REWRITE_SCHEMA / VIEW_SCHEMA / TOOL_SCHEMAS); result strings
-# and the echo format verbatim from tools.py edit()/_file_snapshot().
+# Harness contract literals — the Princeton protocol (eval == RL == SFT).
+# Source of truth: .cache/mlsbench-eval (local commit 2861229a4) run with
+# MLSBENCH_REWRITE_OP=0: tolerant str_replace + create + view, i.e. exactly the
+# contract of the MLS-Bench-dev checkout used for the team's shared evals
+# (2026-08-26 user ruling: NO op='rewrite' — it is a FrontierSmith-only
+# experimental arm that the shared harness does not have). System prompt =
+# SYSTEM_PROMPT_SCI with the non-rewrite replace_block (interactive.py `else:`
+# branch + its view() paragraph); tool schemas verbatim from tools.py
+# (EDIT_REPLACE_SCHEMA / VIEW_SCHEMA / TOOL_SCHEMAS); result strings and the
+# post-edit echo verbatim from tools.py edit()/_file_snapshot() (the echo is
+# appended for every successful edit regardless of the rewrite flag).
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """\
 You are an ML scientist. Your goal is to propose and implement a novel algorithmic \
@@ -93,29 +93,16 @@ IMPORTANT workflow:
 You have a limited number of test() calls, so make each one count by editing first.
 
 Available tools:
-- edit(op, filename, ...): Modify files in the workspace. Choose op by how
-  much you are changing:
-  - op='rewrite': replace the WHOLE editable region with `content`. This is
-    the normal way to write your solution. It needs no line numbers and no
-    copy of the old code, so it cannot fail with 'not found' or 'outside the
-    editable range'. Prefer it whenever you are (re)implementing the stub.
-  - op='str_replace': replace the single, unique occurrence of old_str with
-    new_str — for SMALL surgical fixes only. Keep old_str to 1–10 lines. Never
-    paste a whole function, class or docstring as old_str; that is what
-    op='rewrite' is for, and long anchors almost always fail to match.
+- edit(op, filename, ...): Modify files in the workspace by exact string match.
+  - op='str_replace': replace the single, unique occurrence of old_str with new_str
+    (old_str must reproduce the file's text and be unique; an empty new_str
+    deletes it). Keep old_str SHORT — a few distinctive lines is enough, and
+    short anchors are far more reliable than pasting a whole class or docstring.
   - op='create': create a new file (only if allow_create=true)
-- view(filename, start_line=None, end_line=None): Read the file back. Call
-  it before str_replace whenever you are unsure of the exact text, and
-  always after an undo().
-
-  Reading the file correctly matters more than anything else here:
-  * Every successful edit echoes back the file's CURRENT editable region.
-    That echo is the truth. The listing in this first message is only true
-    until your first edit — after that, do not copy old_str out of it.
-  * The 'NNNNNN: ' line numbers in every listing are a display prefix. Never
-    include them in old_str or in content.
-  * If an edit is rejected, read the error: it quotes the nearest real text
-    in the file. Anchor on that, or switch to op='rewrite'.
+- view(filename, start_line=None, end_line=None): Read the file back. The line
+  numbers shown in the prompt and in view() output are a display prefix
+  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace
+  whenever you are unsure of the exact text, and always after an undo().
 - test(): Run a new experiment. Executes training and evaluation. Each run is
   numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.
   You have a limited budget of test() calls, so make each one count by editing first.
@@ -142,49 +129,28 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "edit",
         "description": (
-            "Edit files in the workspace. Pick the operation by HOW MUCH you are changing:\n"
-            "\n"
-            "  rewrite: Replace the WHOLE editable region of the file with `content`.\n"
-            "    Use this to implement or re-implement the stub you were given — it is the\n"
-            "    normal way to write your solution. It needs NO line numbers and NO copy of\n"
-            "    the old code, so it cannot fail with 'not found' or 'outside the editable\n"
-            "    range'. `content` is your complete new code for that region.\n"
-            "\n"
+            "Edit files in the workspace by exact string replacement. Two operations:\n"
+            "  create: Create a new file with the given `content`. Only available if allow_create=true.\n"
             "  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n"
-            "    Use this only for a SMALL, surgical change (fix one line, tweak a constant).\n"
-            "    `old_str` must reproduce text that is in the file right now and must be\n"
-            "    unique. Keep it SHORT — 1 to 10 lines. Do NOT paste a whole function or\n"
-            "    docstring as `old_str`; if the change is that big, use op='rewrite'.\n"
-            "    An empty `new_str` deletes `old_str`.\n"
-            "\n"
-            "  create: Create a NEW file with `content`. Only available if allow_create=true.\n"
-            "\n"
-            "After every successful edit this tool echoes the file's current editable region\n"
-            "back to you. That echo — not the copy in the first message — is the truth about\n"
-            "what the file now contains. Anchor the next str_replace on it, or call view().\n"
+            "    `old_str` must match the file exactly (including whitespace and indentation) and must\n"
+            "    be unique — include enough surrounding context to pin it down. Pass an empty `new_str`\n"
+            "    to delete `old_str`.\n"
             "File paths are relative to the package root (e.g. 'LLaMA-Factory/src/...').\n"
-            "Lines outside the editable region are protected and must NOT be modified."),
+            "Lines within protected ranges must NOT be modified."),
         "parameters": {"type": "object", "properties": {
-            "op": {"type": "string", "enum": ["rewrite", "str_replace", "create"],
-                   "description": (
-                       "The edit operation, with its REQUIRED companion arguments:\n"
-                       "  'rewrite'     -> requires content   (replaces the whole editable region)\n"
-                       "  'str_replace' -> requires old_str AND new_str (small surgical change)\n"
-                       "  'create'      -> requires content   (new file)")},
+            "op": {"type": "string", "enum": ["create", "str_replace"],
+                   "description": "The edit operation to perform."},
             "filename": {"type": "string",
                          "description": "Package-relative path to the file (e.g. 'pytorch-vision/custom_loss.py')."},
-            "content": {"type": "string",
-                        "description": (
-                            "Your complete new code. Required for op='rewrite' (becomes the entire "
-                            "editable region) and for op='create'.")},
             "old_str": {"type": "string",
                         "description": (
-                            "Text to replace (required for op='str_replace'). Must appear in the file's "
-                            "CURRENT contents and occur exactly once. Keep it to 1-10 lines; use "
-                            "op='rewrite' for anything larger. Never include the 'NNNNNN: ' line-number "
-                            "prefixes that appear in the displayed code.")},
+                            "Exact text to replace (required for op='str_replace'). Must match the file "
+                            "byte-for-byte, including whitespace/indentation, and occur exactly once.")},
             "new_str": {"type": "string",
-                        "description": "Replacement text (required for op='str_replace'). An empty string deletes `old_str`."}},
+                        "description": (
+                            "Replacement text (for op='str_replace'). An empty string deletes `old_str`.")},
+            "content": {"type": "string",
+                        "description": "Content to write (required for op='create')."}},
             "required": ["op", "filename"]}}},
     {"type": "function", "function": {
         "name": "view",
@@ -301,33 +267,63 @@ def decompose(old, new):
     return final_ops
 
 
-# Live-contract op policy. The system prompt is explicit: rewrite is "the normal
-# way to write your solution", str_replace is for SMALL fixes with a 1-10 line
-# anchor. A rung transition therefore becomes str_replace ops ONLY when every
-# changed block is small AND every unique anchor fits in 10 lines; otherwise it
-# is ONE op='rewrite' carrying the full new editable region (= the whole file
-# here). This also retires the anti-prompt giant-old_str ops of the first cut.
+# Op policy under the Princeton (no-rewrite) contract. A rung transition becomes
+# a chain of small str_replace ops when every changed block is small AND every
+# unique anchor fits in 10 lines; otherwise it is ONE str_replace whose old_str
+# is the minimal contiguous span covering every changed line (widened only as
+# far as uniqueness requires). Big spans are what the shared harness's models
+# actually do for large changes (no rewrite op exists there); the anchor here
+# is exact by construction, so the trained turn is always an accepted edit.
 STR_REPLACE_MAX_ANCHOR_LINES = 10
 STR_REPLACE_MAX_NEW_LINES = 12
 STR_REPLACE_MAX_OPS = 6
 
 
+def span_op(prev, new):
+    """One str_replace covering the minimal changed span of prev -> new."""
+    old, nw = prev.splitlines(True), new.splitlines(True)
+    sm = difflib.SequenceMatcher(None, old, nw, autojunk=False)
+    ch = [(i1, i2, j1, j2) for tag, i1, i2, j1, j2 in sm.get_opcodes() if tag != 'equal']
+    if not ch:
+        raise ValueError('no-op transition (identical states)')
+    i1, i2 = min(c[0] for c in ch), max(c[1] for c in ch)
+    j1, j2 = min(c[2] for c in ch), max(c[3] for c in ch)
+    # pure insertion: borrow one equal neighbour line so old_str is non-empty
+    # (the equal opcode next to the span maps old[i2] <-> nw[j2], old[i1-1] <-> nw[j1-1])
+    if i1 == i2:
+        if i2 < len(old):
+            i2 += 1; j2 += 1
+        else:
+            i1 -= 1; j1 -= 1
+    while prev.count(''.join(old[i1:i2])) != 1:
+        if i1 > 0:
+            i1 -= 1; j1 -= 1
+        elif i2 < len(old):
+            i2 += 1; j2 += 1
+        else:
+            raise ValueError('span anchor cannot be made unique')
+    old_str, new_str = ''.join(old[i1:i2]), ''.join(nw[j1:j2])
+    if prev.replace(old_str, new_str, 1) != new:
+        raise ValueError('span replay mismatch')
+    return [{'op': 'str_replace', 'old_str': old_str, 'new_str': new_str}]
+
+
 def plan_ops(prev, new):
-    """Return the rung's edit ops as dicts: str_replace chain or a single rewrite."""
+    """Return the rung's edit ops as dicts: small str_replace chain or one spanning str_replace."""
     if prev is None:
         return [{'op': 'create', 'content': new}]
     try:
         pairs = decompose(prev, new)
     except ValueError:
-        return [{'op': 'rewrite', 'content': new}]
+        return span_op(prev, new)
     if not pairs:
         raise ValueError('no-op transition (identical states)')
     if len(pairs) > STR_REPLACE_MAX_OPS:
-        return [{'op': 'rewrite', 'content': new}]
+        return span_op(prev, new)
     for old_str, new_str in pairs:
         if (old_str.rstrip('\n').count('\n') + 1 > STR_REPLACE_MAX_ANCHOR_LINES
                 or new_str.rstrip('\n').count('\n') + 1 > STR_REPLACE_MAX_NEW_LINES):
-            return [{'op': 'rewrite', 'content': new}]
+            return span_op(prev, new)
     return [{'op': 'str_replace', 'old_str': o, 'new_str': n} for o, n in pairs]
 
 
@@ -603,16 +599,6 @@ def build_task(task_dir, task):
                 result = 'Created: %s' % fname
                 if not cumulative:      # cumulative stacks grow files; replace mode
                     replay = op['content']  # replaces the single-file state
-            elif op['op'] == 'rewrite':
-                old_n = len(replay.splitlines())
-                new_n = len(op['content'].splitlines())
-                msgs.append(asst(slot, say, 'edit',
-                                 {'op': 'rewrite', 'filename': filename,
-                                  'content': op['content']}))
-                replay = op['content']
-                result = ('OK: Rewrote the editable region of %s — replaced lines '
-                          '1..%d (%d lines) with %d line(s). '
-                          'Editable range: entire file.' % (filename, old_n, old_n, new_n))
             else:
                 a, b = line_span(replay, op['old_str'])
                 msgs.append(asst(slot, say, 'edit',
@@ -645,7 +631,7 @@ def build_task(task_dir, task):
     out = {
         'task': task,
         'schema': 'agentic_v2',
-        'harness': 'mlsbench-devfix-rewrite-2026-08-24',
+        'harness': 'mlsbench-princeton-strreplace-2026-08-26',
         'file': filename,
         'filename_source': fname_src,
         'year': None,  # filled from trajectories.json at SFT build time, as before
@@ -700,7 +686,9 @@ def lint(paths):
             fn = m['tool_calls'][0]['function']
             if fn['name'] == 'edit':
                 args = fn['arguments']
-                if args['op'] in ('create', 'rewrite'):
+                if args['op'] == 'rewrite':
+                    print('%s: msg %d uses op=rewrite (retired contract)' % (p, i)); bad += 1
+                elif args['op'] == 'create':
                     replay = args['content']
                 else:
                     if replay is None or _count(replay, args['old_str']) != 1:

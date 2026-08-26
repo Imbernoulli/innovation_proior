@@ -3,7 +3,7 @@
 
 Deterministic checks, each printing per-task findings and a summary line:
   A. structure   : replay integrity, sentinels, empty/oversized thinks (lint)
-  B. plan-vs-edit: rewrite/create turns whose SAY/design text narrates piecewise edits
+  B. plan-vs-edit: create / spanning-str_replace turns whose SAY/design text narrates piecewise edits
   C. numbers     : (i) FUTURE LEAK — a metric-looking number that first appears in a LATER
                    tool result is quoted earlier; (ii) UNGROUNDED — a >=4-significant-digit
                    number never visible anywhere in the transcript
@@ -72,8 +72,10 @@ def audit(task):
             if (task, i, n) in ALLOW_CI: continue
             if known(n, later): F['Ci'].append((i, n))
             elif not known(n, all_visible): F['Cii'].append((i, n))
-        # --- B
-        if op in ('rewrite', 'create'):
+        # --- B  (whole-block turns: create, or the single spanning str_replace of a rung;
+        #         a >10-line anchor is by construction the span op, never a chain hunk)
+        big = op == 'str_replace' and args.get('old_str', '').rstrip('\n').count('\n') + 1 > 10
+        if op in ('rewrite', 'create') or big:
             for field, txt in (('think', rc), ('say', say)):
                 hits = sorted(set(h[0] for h in TELL.findall(txt)))
                 if hits: F['B'].append((i, field, hits[:3]))
@@ -120,21 +122,23 @@ def contract_check():
     sys.path.insert(0, root)
     for k in ('MLSBENCH_STRICT_STR_REPLACE',): os.environ.pop(k, None)
     from mlsbench.agent import interactive as I
-    from mlsbench.agent.tools import TOOL_SCHEMAS, EDIT_REWRITE_SCHEMA, VIEW_SCHEMA
+    from mlsbench.agent.tools import TOOL_SCHEMAS, EDIT_REPLACE_SCHEMA, VIEW_SCHEMA
     src = open(f'{root}/mlsbench/agent/interactive.py').read()
-    # reproduce __init__ (use_replace, rewrite on, view on): pull the literal blocks from source
-    def lit(start_marker, end_marker):
-        i = src.index(start_marker); j = src.index(end_marker, i)
+    # reproduce __init__ under MLSBENCH_REWRITE_OP=0 (use_replace, tolerant, view on, NO rewrite):
+    # pull the literal blocks of the `else:` branch from source
+    def lit(start_marker, end_marker, after=0):
+        i = src.index(start_marker, after); j = src.index(end_marker, i)
         block = src[i:j]
-        return ''.join(re.findall(r'"((?:[^"\\]|\\.)*)"', block)).replace('\\n', '\n').replace("\\'", "'")
-    edit_block = lit('edit_block = (', ')\n')
-    rb = lit('elif _rewrite_enabled:', 'if _view_enabled:')
-    rb += lit('if _view_enabled:\n                    replace_block += (', ')\n                replace_block += (')
-    rb += lit('replace_block += (\n                    "\\n"', ')\n            else:')
+        return ''.join(re.findall(r'"((?:[^"\\]|\\.)*)"', block)).replace('\\n', '\n').replace("\\'", "'"), j
+    edit_block, _ = lit('edit_block = (', ')\n')
+    else_at = src.index('            else:\n                replace_block = (')
+    rb, k = lit('replace_block = (', 'if _view_enabled:', after=else_at)
+    rb2, _ = lit('replace_block += (', 'if edit_block in self.system_prompt', after=k)
+    rb += rb2
     sp = I.SYSTEM_PROMPT_SCI.replace(edit_block, rb, 1)
     problems = []
     if sp != B.SYSTEM_PROMPT: problems.append('SYSTEM_PROMPT differs from checkout composition')
-    want = {'edit': EDIT_REWRITE_SCHEMA, 'view': VIEW_SCHEMA}
+    want = {'edit': EDIT_REPLACE_SCHEMA, 'view': VIEW_SCHEMA}
     for s in TOOL_SCHEMAS:
         if s['name'] != 'edit': want[s['name']] = s
     for t in B.TOOLS:

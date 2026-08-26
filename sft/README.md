@@ -106,7 +106,7 @@ qwen3_5 XML). Literal structural tokens in content are neutralized to `⟨think�
 Opus prose fills via `tools/apply_agentic_fills.py`, per-task `agentic_v2.json` /
 `agentic_v2_fills.json` / `agentic_v2_filled.json`). v2 = **164 tasks** (127 originals kept +
 37 new; 8 decontam tasks excluded), speaking the **live three-way harness contract** (SFT =
-RL = eval): `edit(op='rewrite'|'str_replace'|'create')` + `view` + `test()`/`submit(n)`, the
+RL = eval, Princeton protocol — no `rewrite` op): `edit(op='str_replace'|'create')` + `view` + `test()`/`submit(n)`, the
 post-edit current-file echo, real harness result strings, budgets, and line-numbered file
 dumps. Framing is **deduped folded-only**: one example per round c=0..n-1 (test result = user
 boundary) plus a trailing submit round — every action enters the loss **exactly once** across

@@ -23,7 +23,7 @@ all-turns or last-turn-only). Train with mask_history=False (default); the loss 
   (a) methods   : single-turn Q&A (full reasoning).
   (b) trajectory: Mode 1 (feedback = observation) + Mode 2 (prior rungs folded, feedback = user
                   boundary, current rung full).
-  (c) agentic   : v2 (agentic_v2_filled.json, live rewrite harness contract) — DEDUPED
+  (c) agentic   : v2 (agentic_v2_filled.json, Princeton str_replace/create+view contract) — DEDUPED
                   folded-only: one example per round c=0..n-1 (test() result = user
                   boundary, edit result = observation; every action trained EXACTLY once
                   across the set; trailing submit turn = its own final round). The legacy
