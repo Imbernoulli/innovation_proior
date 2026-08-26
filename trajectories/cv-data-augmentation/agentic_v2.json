@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_augment.py",
-       "old_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- default fill\ndef build_train_transform(config):\n    \"\"\"Build training data transform pipeline.\n\n    Must return a complete transforms.Compose pipeline including\n    ToTensor() and Normalize(config['mean'], config['std']).\n    config: {img_size:int, mean:tuple, std:tuple, dataset:str}\n    \"\"\"\n    return transforms.Compose([\n",
-       "new_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 1: RandAugment\ndef build_train_transform(config):\n    \"\"\"RandAugment augmentation: automated policy before geometric transforms.\n\n    Pipeline: RandAugment(2, 9) + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.RandAugment(num_ops=2, magnitude=9),\n"
+       "old_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- default fill\ndef build_train_transform(config):\n    \"\"\"Build training data transform pipeline.\n\n    Must return a complete transforms.Compose pipeline including\n    ToTensor() and Normalize(config['mean'], config['std']).\n    config: {img_size:int, mean:tuple, std:tuple, dataset:str}\n    \"\"\"\n    return transforms.Compose([",
+       "new_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 1: RandAugment\ndef build_train_transform(config):\n    \"\"\"RandAugment augmentation: automated policy before geometric transforms.\n\n    Pipeline: RandAugment(2, 9) + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.RandAugment(num_ops=2, magnitude=9),"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_augment.py",
-       "old_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 1: RandAugment\ndef build_train_transform(config):\n    \"\"\"RandAugment augmentation: automated policy before geometric transforms.\n\n    Pipeline: RandAugment(2, 9) + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.RandAugment(num_ops=2, magnitude=9),\n",
-       "new_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 2: TrivialAugment\ndef build_train_transform(config):\n    \"\"\"TrivialAugmentWide: single random op with random magnitude.\n\n    Pipeline: TrivialAugmentWide() + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.TrivialAugmentWide(),\n"
+       "old_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 1: RandAugment\ndef build_train_transform(config):\n    \"\"\"RandAugment augmentation: automated policy before geometric transforms.\n\n    Pipeline: RandAugment(2, 9) + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.RandAugment(num_ops=2, magnitude=9),",
+       "new_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 2: TrivialAugment\ndef build_train_transform(config):\n    \"\"\"TrivialAugmentWide: single random op with random magnitude.\n\n    Pipeline: TrivialAugmentWide() + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.TrivialAugmentWide(),"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_augment.py",
-       "old_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 2: TrivialAugment\ndef build_train_transform(config):\n    \"\"\"TrivialAugmentWide: single random op with random magnitude.\n\n    Pipeline: TrivialAugmentWide() + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.TrivialAugmentWide(),\n        transforms.RandomCrop(config['img_size'], padding=4),\n        transforms.RandomHorizontalFlip(),\n        transforms.ToTensor(),\n",
-       "new_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 3: Cutout\ndef build_train_transform(config):\n    \"\"\"Cutout augmentation: random square mask after ToTensor.\n\n    Pipeline: RandomCrop + HFlip + ToTensor + Cutout(1, 16) + Normalize.\n    \"\"\"\n    class Cutout:\n        def __init__(self, n_holes=1, length=16):\n            self.n_holes = n_holes\n            self.length = length\n\n        def __call__(self, img):\n            h, w = img.size(1), img.size(2)\n            mask = torch.ones_like(img)\n            for _ in range(self.n_holes):\n                y = torch.randint(0, h, (1,)).item()\n                x = torch.randint(0, w, (1,)).item()\n                y1, y2 = max(0, y - self.length // 2), min(h, y + self.length // 2)\n                x1, x2 = max(0, x - self.length // 2), min(w, x + self.length // 2)\n                mask[:, y1:y2, x1:x2] = 0\n            return img * mask\n\n    return transforms.Compose([\n        transforms.RandomCrop(config['img_size'], padding=4),\n        transforms.RandomHorizontalFlip(),\n        transforms.ToTensor(),\n        Cutout(n_holes=1, length=16),\n"
+       "old_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 2: TrivialAugment\ndef build_train_transform(config):\n    \"\"\"TrivialAugmentWide: single random op with random magnitude.\n\n    Pipeline: TrivialAugmentWide() + RandomCrop + HFlip + ToTensor + Normalize.\n    \"\"\"\n    return transforms.Compose([\n        transforms.TrivialAugmentWide(),\n        transforms.RandomCrop(config['img_size'], padding=4),\n        transforms.RandomHorizontalFlip(),\n        transforms.ToTensor(),",
+       "new_str": "# EDITABLE region of custom_augment.py (lines 246-275) -- step 3: Cutout\ndef build_train_transform(config):\n    \"\"\"Cutout augmentation: random square mask after ToTensor.\n\n    Pipeline: RandomCrop + HFlip + ToTensor + Cutout(1, 16) + Normalize.\n    \"\"\"\n    class Cutout:\n        def __init__(self, n_holes=1, length=16):\n            self.n_holes = n_holes\n            self.length = length\n\n        def __call__(self, img):\n            h, w = img.size(1), img.size(2)\n            mask = torch.ones_like(img)\n            for _ in range(self.n_holes):\n                y = torch.randint(0, h, (1,)).item()\n                x = torch.randint(0, w, (1,)).item()\n                y1, y2 = max(0, y - self.length // 2), min(h, y + self.length // 2)\n                x1, x2 = max(0, x - self.length // 2), min(w, x + self.length // 2)\n                mask[:, y1:y2, x1:x2] = 0\n            return img * mask\n\n    return transforms.Compose([\n        transforms.RandomCrop(config['img_size'], padding=4),\n        transforms.RandomHorizontalFlip(),\n        transforms.ToTensor(),\n        Cutout(n_holes=1, length=16),"
       }
      }
     }

@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_robust_loss.py",
-       "old_str": "# EDITABLE region of custom_robust_loss.py -- default fill (standard cross entropy / ERM)\nimport torch\nimport torch.nn.functional as F\n\n\nclass RobustLoss:\n    \"\"\"Default cross-entropy objective on the (possibly poisoned) labels.\"\"\"\n\n    def __init__(self):\n        pass\n\n    def compute_loss(self, logits, labels, epoch):\n        return F.cross_entropy(logits, labels)\n",
-       "new_str": "class RobustLoss:\n    \"\"\"Interpolate labels with model predictions.\"\"\"\n\n    def __init__(self):\n        self.beta = 0.8\n\n    def compute_loss(self, logits, labels, epoch):\n        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()\n        soft = torch.softmax(logits.detach(), dim=1)\n        target = self.beta * hard + (1.0 - self.beta) * soft\n        log_probs = F.log_softmax(logits, dim=1)\n        return -(target * log_probs).sum(dim=1).mean()\n"
+       "old_str": "# EDITABLE region of custom_robust_loss.py -- default fill (standard cross entropy / ERM)\nimport torch\nimport torch.nn.functional as F\n\n\nclass RobustLoss:\n    \"\"\"Default cross-entropy objective on the (possibly poisoned) labels.\"\"\"\n\n    def __init__(self):\n        pass\n\n    def compute_loss(self, logits, labels, epoch):\n        return F.cross_entropy(logits, labels)",
+       "new_str": "class RobustLoss:\n    \"\"\"Interpolate labels with model predictions.\"\"\"\n\n    def __init__(self):\n        self.beta = 0.8\n\n    def compute_loss(self, logits, labels, epoch):\n        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()\n        soft = torch.softmax(logits.detach(), dim=1)\n        target = self.beta * hard + (1.0 - self.beta) * soft\n        log_probs = F.log_softmax(logits, dim=1)\n        return -(target * log_probs).sum(dim=1).mean()"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_robust_loss.py",
-       "old_str": "    \"\"\"Interpolate labels with model predictions.\"\"\"\n\n    def __init__(self):\n        self.beta = 0.8\n\n    def compute_loss(self, logits, labels, epoch):\n        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()\n        soft = torch.softmax(logits.detach(), dim=1)\n        target = self.beta * hard + (1.0 - self.beta) * soft\n        log_probs = F.log_softmax(logits, dim=1)\n        return -(target * log_probs).sum(dim=1).mean()\n",
-       "new_str": "    \"\"\"Cross-entropy plus reverse-CE penalty.\"\"\"\n\n    def __init__(self):\n        self.alpha = 1.0\n        self.beta = 0.5\n\n    def compute_loss(self, logits, labels, epoch):\n        ce = F.cross_entropy(logits, labels)\n        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)\n        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)\n        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()\n        return self.alpha * ce + self.beta * rce\n"
+       "old_str": "    \"\"\"Interpolate labels with model predictions.\"\"\"\n\n    def __init__(self):\n        self.beta = 0.8\n\n    def compute_loss(self, logits, labels, epoch):\n        hard = F.one_hot(labels, num_classes=logits.shape[1]).float()\n        soft = torch.softmax(logits.detach(), dim=1)\n        target = self.beta * hard + (1.0 - self.beta) * soft\n        log_probs = F.log_softmax(logits, dim=1)\n        return -(target * log_probs).sum(dim=1).mean()",
+       "new_str": "    \"\"\"Cross-entropy plus reverse-CE penalty.\"\"\"\n\n    def __init__(self):\n        self.alpha = 1.0\n        self.beta = 0.5\n\n    def compute_loss(self, logits, labels, epoch):\n        ce = F.cross_entropy(logits, labels)\n        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)\n        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)\n        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()\n        return self.alpha * ce + self.beta * rce"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_robust_loss.py",
-       "old_str": "    \"\"\"Cross-entropy plus reverse-CE penalty.\"\"\"\n\n    def __init__(self):\n        self.alpha = 1.0\n        self.beta = 0.5\n\n    def compute_loss(self, logits, labels, epoch):\n        ce = F.cross_entropy(logits, labels)\n        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)\n        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)\n        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()\n        return self.alpha * ce + self.beta * rce\n",
-       "new_str": "    \"\"\"Generalized cross-entropy for noisy labels.\"\"\"\n\n    def __init__(self):\n        self.q = 0.7\n\n    def compute_loss(self, logits, labels, epoch):\n        probs = torch.softmax(logits, dim=1)\n        p = probs.gather(1, labels[:, None]).clamp_min(1e-8)\n        return ((1.0 - p.pow(self.q)) / self.q).mean()\n"
+       "old_str": "    \"\"\"Cross-entropy plus reverse-CE penalty.\"\"\"\n\n    def __init__(self):\n        self.alpha = 1.0\n        self.beta = 0.5\n\n    def compute_loss(self, logits, labels, epoch):\n        ce = F.cross_entropy(logits, labels)\n        probs = torch.softmax(logits, dim=1).clamp_min(1e-8)\n        one_hot = F.one_hot(labels, num_classes=logits.shape[1]).float().clamp_min(1e-4)\n        rce = -(probs * torch.log(one_hot)).sum(dim=1).mean()\n        return self.alpha * ce + self.beta * rce",
+       "new_str": "    \"\"\"Generalized cross-entropy for noisy labels.\"\"\"\n\n    def __init__(self):\n        self.q = 0.7\n\n    def compute_loss(self, logits, labels, epoch):\n        probs = torch.softmax(logits, dim=1)\n        p = probs.gather(1, labels[:, None]).clamp_min(1e-8)\n        return ((1.0 - p.pow(self.q)) / self.q).mean()"
       }
      }
     }

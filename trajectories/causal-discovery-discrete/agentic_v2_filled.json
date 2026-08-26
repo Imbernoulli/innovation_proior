@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -123,6 +96,33 @@
        "description": "Number of edit actions to undo (default: 1)."
       }
      }
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
     }
    }
   }
@@ -184,8 +184,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algorithm.py",
-       "old_str": "    from causallearn.score.LocalScoreFunctionClass import LocalScoreClass\n    from causallearn.score.LocalScoreFunction import local_score_BDeu\n    from causallearn.utils.DAG2CPDAG import dag2cpdag\n\n    N = X.shape[1]\n    # Pass parameters=None so local_score_BDeu auto-computes r_i_map from data\n    score_func = LocalScoreClass(\n        data=X, local_score_fun=local_score_BDeu, parameters=None\n    )\n\n    nodes = [GraphNode(f\"X{i + 1}\") for i in range(N)]\n    adj = np.zeros((N, N), dtype=int)\n\n    # Cache local scores (one per node)\n    local_scores = np.zeros(N)\n    for j in range(N):\n        local_scores[j] = score_func.score(j, [])\n\n    def _has_path(src, tgt):\n        \"\"\"DFS check: is there a directed path from src to tgt in adj?\"\"\"\n        visited = set()\n        stack = [src]\n        while stack:\n            node = stack.pop()\n            if node == tgt:\n                return True\n            if node in visited:\n                continue\n            visited.add(node)\n            for c in np.where(adj[node] == 1)[0]:\n                if int(c) not in visited:\n                    stack.append(int(c))\n        return False\n\n    # Greedy hill-climbing: add / delete / reverse\n    improved = True\n    while improved:\n        improved = False\n        best_delta = 0.0\n        best_op = None\n\n        for i in range(N):\n            for j in range(N):\n                if i == j:\n                    continue\n\n                if adj[i, j] == 0 and adj[j, i] == 0:\n                    # --- Try ADD i -> j (only if no cycle) ---\n                    if not _has_path(j, i):\n                        pj_new = sorted(\n                            np.where(adj[:, j] == 1)[0].tolist() + [i]\n                        )\n                        new_sj = score_func.score(j, pj_new)\n                        delta = new_sj - local_scores[j]\n                        if delta < best_delta - 1e-6:\n                            best_delta = delta\n                            best_op = (\"add\", i, j)\n\n                elif adj[i, j] == 1:\n                    # --- Try DELETE i -> j ---\n                    pj_new = [\n                        p for p in np.where(adj[:, j] == 1)[0] if p != i\n                    ]\n                    new_sj = score_func.score(j, sorted(pj_new))\n                    delta = new_sj - local_scores[j]\n                    if delta < best_delta - 1e-6:\n                        best_delta = delta\n                        best_op = (\"delete\", i, j)\n\n                    # --- Try REVERSE i -> j  to  j -> i ---\n                    adj[i, j] = 0  # temporarily remove\n                    if not _has_path(i, j):\n                        pj_del = sorted(\n                            np.where(adj[:, j] == 1)[0].tolist()\n                        )\n                        new_sj = score_func.score(j, pj_del)\n                        pi_new = sorted(\n                            np.where(adj[:, i] == 1)[0].tolist() + [j]\n                        )\n                        new_si = score_func.score(i, pi_new)\n                        delta = (\n                            (new_sj - local_scores[j])\n                            + (new_si - local_scores[i])\n                        )\n                        if delta < best_delta - 1e-6:\n                            best_delta = delta\n                            best_op = (\"reverse\", i, j)\n                    adj[i, j] = 1  # restore\n\n        if best_op is not None:\n            op_type, i, j = best_op\n            if op_type == \"add\":\n                adj[i, j] = 1\n            elif op_type == \"delete\":\n                adj[i, j] = 0\n            elif op_type == \"reverse\":\n                adj[i, j] = 0\n                adj[j, i] = 1\n            # Recompute affected local scores\n            local_scores[j] = score_func.score(\n                j, sorted(np.where(adj[:, j] == 1)[0].tolist())\n            )\n            if op_type == \"reverse\":\n                local_scores[i] = score_func.score(\n                    i, sorted(np.where(adj[:, i] == 1)[0].tolist())\n                )\n            improved = True\n\n    # Build GeneralGraph from learned DAG\n    G = GeneralGraph(nodes)\n    for i in range(N):\n        for j in range(N):\n            if adj[i, j] == 1:\n                G.add_directed_edge(nodes[i], nodes[j])\n\n    G = dag2cpdag(G)\n",
-       "new_str": "    from causallearn.search.PermutationBased.GRaSP import grasp\n\n    G = grasp(\n        X,\n        score_func=\"local_score_BDeu\",\n        depth=3,\n        parameters={\"sample_prior\": 1.0, \"structure_prior\": 1.0},\n    )\n"
+       "old_str": "    from causallearn.score.LocalScoreFunctionClass import LocalScoreClass\n    from causallearn.score.LocalScoreFunction import local_score_BDeu\n    from causallearn.utils.DAG2CPDAG import dag2cpdag\n\n    N = X.shape[1]\n    # Pass parameters=None so local_score_BDeu auto-computes r_i_map from data\n    score_func = LocalScoreClass(\n        data=X, local_score_fun=local_score_BDeu, parameters=None\n    )\n\n    nodes = [GraphNode(f\"X{i + 1}\") for i in range(N)]\n    adj = np.zeros((N, N), dtype=int)\n\n    # Cache local scores (one per node)\n    local_scores = np.zeros(N)\n    for j in range(N):\n        local_scores[j] = score_func.score(j, [])\n\n    def _has_path(src, tgt):\n        \"\"\"DFS check: is there a directed path from src to tgt in adj?\"\"\"\n        visited = set()\n        stack = [src]\n        while stack:\n            node = stack.pop()\n            if node == tgt:\n                return True\n            if node in visited:\n                continue\n            visited.add(node)\n            for c in np.where(adj[node] == 1)[0]:\n                if int(c) not in visited:\n                    stack.append(int(c))\n        return False\n\n    # Greedy hill-climbing: add / delete / reverse\n    improved = True\n    while improved:\n        improved = False\n        best_delta = 0.0\n        best_op = None\n\n        for i in range(N):\n            for j in range(N):\n                if i == j:\n                    continue\n\n                if adj[i, j] == 0 and adj[j, i] == 0:\n                    # --- Try ADD i -> j (only if no cycle) ---\n                    if not _has_path(j, i):\n                        pj_new = sorted(\n                            np.where(adj[:, j] == 1)[0].tolist() + [i]\n                        )\n                        new_sj = score_func.score(j, pj_new)\n                        delta = new_sj - local_scores[j]\n                        if delta < best_delta - 1e-6:\n                            best_delta = delta\n                            best_op = (\"add\", i, j)\n\n                elif adj[i, j] == 1:\n                    # --- Try DELETE i -> j ---\n                    pj_new = [\n                        p for p in np.where(adj[:, j] == 1)[0] if p != i\n                    ]\n                    new_sj = score_func.score(j, sorted(pj_new))\n                    delta = new_sj - local_scores[j]\n                    if delta < best_delta - 1e-6:\n                        best_delta = delta\n                        best_op = (\"delete\", i, j)\n\n                    # --- Try REVERSE i -> j  to  j -> i ---\n                    adj[i, j] = 0  # temporarily remove\n                    if not _has_path(i, j):\n                        pj_del = sorted(\n                            np.where(adj[:, j] == 1)[0].tolist()\n                        )\n                        new_sj = score_func.score(j, pj_del)\n                        pi_new = sorted(\n                            np.where(adj[:, i] == 1)[0].tolist() + [j]\n                        )\n                        new_si = score_func.score(i, pi_new)\n                        delta = (\n                            (new_sj - local_scores[j])\n                            + (new_si - local_scores[i])\n                        )\n                        if delta < best_delta - 1e-6:\n                            best_delta = delta\n                            best_op = (\"reverse\", i, j)\n                    adj[i, j] = 1  # restore\n\n        if best_op is not None:\n            op_type, i, j = best_op\n            if op_type == \"add\":\n                adj[i, j] = 1\n            elif op_type == \"delete\":\n                adj[i, j] = 0\n            elif op_type == \"reverse\":\n                adj[i, j] = 0\n                adj[j, i] = 1\n            # Recompute affected local scores\n            local_scores[j] = score_func.score(\n                j, sorted(np.where(adj[:, j] == 1)[0].tolist())\n            )\n            if op_type == \"reverse\":\n                local_scores[i] = score_func.score(\n                    i, sorted(np.where(adj[:, i] == 1)[0].tolist())\n                )\n            improved = True\n\n    # Build GeneralGraph from learned DAG\n    G = GeneralGraph(nodes)\n    for i in range(N):\n        for j in range(N):\n            if adj[i, j] == 1:\n                G.add_directed_edge(nodes[i], nodes[j])\n\n    G = dag2cpdag(G)",
+       "new_str": "    from causallearn.search.PermutationBased.GRaSP import grasp\n\n    G = grasp(\n        X,\n        score_func=\"local_score_BDeu\",\n        depth=3,\n        parameters={\"sample_prior\": 1.0, \"structure_prior\": 1.0},\n    )"
       }
      }
     }
@@ -225,8 +225,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algorithm.py",
-       "old_str": "    from causallearn.search.PermutationBased.GRaSP import grasp\n\n    G = grasp(\n        X,\n        score_func=\"local_score_BDeu\",\n        depth=3,\n        parameters={\"sample_prior\": 1.0, \"structure_prior\": 1.0},\n    )\n    return G\n",
-       "new_str": "    from causallearn.utils.PCUtils import SkeletonDiscovery, Meek, UCSepset\n    from causallearn.utils.cit import CIT\n\n    alpha = 0.05\n    indep_test = CIT(X, \"chisq\")\n\n    # Step 1: skeleton discovery via chi-squared CI tests (stable PC)\n    cg_1 = SkeletonDiscovery.skeleton_discovery(\n        X, alpha, indep_test, stable=True,\n        background_knowledge=None, verbose=False,\n        show_progress=False, node_names=None,\n    )\n\n    # Step 2: orient unshielded colliders using UC-sepset rule (priority=2)\n    cg_2 = UCSepset.uc_sepset(cg_1, 2, background_knowledge=None)\n\n    # Step 3: complete orientation with Meek rules\n    cg = Meek.meek(cg_2, background_knowledge=None)\n\n    return cg.G\n"
+       "old_str": "    from causallearn.search.PermutationBased.GRaSP import grasp\n\n    G = grasp(\n        X,\n        score_func=\"local_score_BDeu\",\n        depth=3,\n        parameters={\"sample_prior\": 1.0, \"structure_prior\": 1.0},\n    )\n    return G",
+       "new_str": "    from causallearn.utils.PCUtils import SkeletonDiscovery, Meek, UCSepset\n    from causallearn.utils.cit import CIT\n\n    alpha = 0.05\n    indep_test = CIT(X, \"chisq\")\n\n    # Step 1: skeleton discovery via chi-squared CI tests (stable PC)\n    cg_1 = SkeletonDiscovery.skeleton_discovery(\n        X, alpha, indep_test, stable=True,\n        background_knowledge=None, verbose=False,\n        show_progress=False, node_names=None,\n    )\n\n    # Step 2: orient unshielded colliders using UC-sepset rule (priority=2)\n    cg_2 = UCSepset.uc_sepset(cg_1, 2, background_knowledge=None)\n\n    # Step 3: complete orientation with Meek rules\n    cg = Meek.meek(cg_2, background_knowledge=None)\n\n    return cg.G"
       }
      }
     }
@@ -266,8 +266,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algorithm.py",
-       "old_str": "    from causallearn.utils.PCUtils import SkeletonDiscovery, Meek, UCSepset\n    from causallearn.utils.cit import CIT\n\n    alpha = 0.05\n    indep_test = CIT(X, \"chisq\")\n\n    # Step 1: skeleton discovery via chi-squared CI tests (stable PC)\n    cg_1 = SkeletonDiscovery.skeleton_discovery(\n        X, alpha, indep_test, stable=True,\n        background_knowledge=None, verbose=False,\n        show_progress=False, node_names=None,\n    )\n\n    # Step 2: orient unshielded colliders using UC-sepset rule (priority=2)\n    cg_2 = UCSepset.uc_sepset(cg_1, 2, background_knowledge=None)\n\n    # Step 3: complete orientation with Meek rules\n    cg = Meek.meek(cg_2, background_knowledge=None)\n\n    return cg.G\n",
-       "new_str": "    from causallearn.search.PermutationBased.BOSS import boss\n\n    G = boss(\n        X,\n        score_func=\"local_score_BDeu\",\n        parameters={\"sample_prior\": 1.0, \"structure_prior\": 1.0},\n    )\n    return G\n"
+       "old_str": "    from causallearn.utils.PCUtils import SkeletonDiscovery, Meek, UCSepset\n    from causallearn.utils.cit import CIT\n\n    alpha = 0.05\n    indep_test = CIT(X, \"chisq\")\n\n    # Step 1: skeleton discovery via chi-squared CI tests (stable PC)\n    cg_1 = SkeletonDiscovery.skeleton_discovery(\n        X, alpha, indep_test, stable=True,\n        background_knowledge=None, verbose=False,\n        show_progress=False, node_names=None,\n    )\n\n    # Step 2: orient unshielded colliders using UC-sepset rule (priority=2)\n    cg_2 = UCSepset.uc_sepset(cg_1, 2, background_knowledge=None)\n\n    # Step 3: complete orientation with Meek rules\n    cg = Meek.meek(cg_2, background_knowledge=None)\n\n    return cg.G",
+       "new_str": "    from causallearn.search.PermutationBased.BOSS import boss\n\n    G = boss(\n        X,\n        score_func=\"local_score_BDeu\",\n        parameters={\"sample_prior\": 1.0, \"structure_prior\": 1.0},\n    )\n    return G"
       }
      }
     }
@@ -307,8 +307,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algorithm.py",
-       "old_str": "    return G\n",
-       "new_str": "    return result[\"G\"]\n"
+       "old_str": "    return G",
+       "new_str": "    return result[\"G\"]"
       }
      }
     }
@@ -330,8 +330,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algorithm.py",
-       "old_str": "    from causallearn.search.PermutationBased.BOSS import boss\n\n    G = boss(\n",
-       "new_str": "    from causallearn.search.ScoreBased.GES import ges\n\n    result = ges(\n"
+       "old_str": "    from causallearn.search.PermutationBased.BOSS import boss\n\n    G = boss(",
+       "new_str": "    from causallearn.search.ScoreBased.GES import ges\n\n    result = ges("
       }
      }
     }

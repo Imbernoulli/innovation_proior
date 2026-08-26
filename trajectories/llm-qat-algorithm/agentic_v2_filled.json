@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_qat.py",
-       "old_str": "        # PTQ-only: by eval the real QDQ has already replaced linear.weight,\n        # so just run a plain linear on the already-quantized weight.\n",
-       "new_str": "        # Pure FP forward during training (no fake quant).  At eval the real\n        # QDQ has already been applied to linear.weight, so this still\n        # produces the genuine INT-N output.\n"
+       "old_str": "        # PTQ-only: by eval the real QDQ has already replaced linear.weight,\n        # so just run a plain linear on the already-quantized weight.",
+       "new_str": "        # Pure FP forward during training (no fake quant).  At eval the real\n        # QDQ has already been applied to linear.weight, so this still\n        # produces the genuine INT-N output."
       }
      }
     }
@@ -167,8 +167,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_qat.py",
-       "old_str": "    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n    scale = w_max / qmax\n    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n    w_dq = w + (w_q - w).detach()\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)\n",
-       "new_str": "    # Identity: no fake quant in forward -- pure FP finetune.\n    return weight\n"
+       "old_str": "    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n    scale = w_max / qmax\n    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n    w_dq = w + (w_q - w).detach()\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)",
+       "new_str": "    # Identity: no fake quant in forward -- pure FP finetune.\n    return weight"
       }
      }
     }
@@ -190,8 +190,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_qat.py",
-       "old_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 1: no_qat (PTQ-only control)\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 0.0,\n    \"num_steps\": 0,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 1,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 0,\n",
-       "new_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 2: finetune_then_ptq (control)\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 2e-5,\n    \"num_steps\": 500,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 4,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 50,\n"
+       "old_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 1: no_qat (PTQ-only control)\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 0.0,\n    \"num_steps\": 0,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 1,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 0,",
+       "new_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 2: finetune_then_ptq (control)\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 2e-5,\n    \"num_steps\": 500,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 4,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 50,"
       }
      }
     }
@@ -231,8 +231,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_qat.py",
-       "old_str": "        # Pure FP forward during training (no fake quant).  At eval the real\n        # QDQ has already been applied to linear.weight, so this still\n        # produces the genuine INT-N output.\n        return F.linear(x, self.linear.weight, self.linear.bias)\n",
-       "new_str": "        x = fake_quantize_activation(x, self.num_bits)\n        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)\n        return F.linear(x, w_q, self.linear.bias)\n"
+       "old_str": "        # Pure FP forward during training (no fake quant).  At eval the real\n        # QDQ has already been applied to linear.weight, so this still\n        # produces the genuine INT-N output.\n        return F.linear(x, self.linear.weight, self.linear.bias)",
+       "new_str": "        x = fake_quantize_activation(x, self.num_bits)\n        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)\n        return F.linear(x, w_q, self.linear.bias)"
       }
      }
     }
@@ -254,8 +254,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_qat.py",
-       "old_str": "    # Identity: no fake quant in forward -- pure FP finetune.\n    return weight\n",
-       "new_str": "    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    # Recompute scale on-the-fly each forward (max-abs / qmax).\n    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n    scale = w_max / qmax\n    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n    # Straight-through: forward = quantized, backward = identity.\n    w_dq = w + (w_q - w).detach()\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)\n"
+       "old_str": "    # Identity: no fake quant in forward -- pure FP finetune.\n    return weight",
+       "new_str": "    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    # Recompute scale on-the-fly each forward (max-abs / qmax).\n    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n    scale = w_max / qmax\n    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n    # Straight-through: forward = quantized, backward = identity.\n    w_dq = w + (w_q - w).detach()\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)"
       }
      }
     }
@@ -277,8 +277,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_qat.py",
-       "old_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 2: finetune_then_ptq (control)\n",
-       "new_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 3: STE QAT\n"
+       "old_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 2: finetune_then_ptq (control)",
+       "new_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 3: STE QAT"
       }
      }
     }
@@ -318,8 +318,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_qat.py",
-       "old_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 3: STE QAT\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 2e-5,\n    \"num_steps\": 500,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 4,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 50,\n    \"weight_decay\": 0.0,\n}\n\n\ndef _qrange(num_bits):\n    qmax = (1 << (num_bits - 1)) - 1\n    qmin = -(1 << (num_bits - 1))\n    return qmin, qmax\n\n\ndef fake_quantize_weight(weight, num_bits, group_size):\n    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    # Recompute scale on-the-fly each forward (max-abs / qmax).\n    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n    scale = w_max / qmax\n    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n    # Straight-through: forward = quantized, backward = identity.\n    w_dq = w + (w_q - w).detach()\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)\n\n\ndef fake_quantize_activation(x, num_bits):\n    return x\n\n\ndef quantize_dequantize_weight(weight, num_bits, group_size):\n    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    with torch.no_grad():\n        w = weight.float().reshape(out_features, -1, group_size)\n        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n        scale = w_max / qmax\n        w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n        return w_q.reshape(out_features, in_features).to(weight.dtype)\n\n\nclass QATWrapper(nn.Module):\n    def __init__(self, linear, num_bits, group_size):\n        super().__init__()\n        self.linear = linear\n        self.num_bits = num_bits\n        self.group_size = group_size\n\n    @property\n    def weight(self):\n        return self.linear.weight\n\n    @property\n    def bias(self):\n        return self.linear.bias\n\n    def forward(self, x):\n        x = fake_quantize_activation(x, self.num_bits)\n        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)\n",
-       "new_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 4: LSQ (learned step size)\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 2e-5,\n    \"num_steps\": 500,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 4,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 50,\n    \"weight_decay\": 0.0,\n}\n\n\ndef _qrange(num_bits):\n    qmax = (1 << (num_bits - 1)) - 1\n    qmin = -(1 << (num_bits - 1))\n    return qmin, qmax\n\n\nclass _LSQQuant(torch.autograd.Function):\n    \"\"\"LSQ quantize-dequantize with the learned step-size gradient.\"\"\"\n\n    @staticmethod\n    def forward(ctx, w, scale, qmin, qmax, g_scale):\n        # w: (out, n_groups, group_size); scale: (out, n_groups, 1) broadcastable.\n        w_div = w / scale\n        w_clip = torch.clamp(w_div, qmin, qmax)\n        w_round = torch.round(w_clip)\n        ctx.save_for_backward(w_div, scale)\n        ctx.qmin = qmin\n        ctx.qmax = qmax\n        ctx.g_scale = g_scale\n        return w_round * scale\n\n    @staticmethod\n    def backward(ctx, grad_out):\n        w_div, scale = ctx.saved_tensors\n        qmin, qmax, g = ctx.qmin, ctx.qmax, ctx.g_scale\n        # Gradient w.r.t. w: pass-through inside the clip range.\n        in_range = (w_div > qmin) & (w_div < qmax)\n        grad_w = torch.where(in_range, grad_out, torch.zeros_like(grad_out))\n        # Gradient w.r.t. s: the learned step-size gradient.\n        below = (w_div <= qmin).float() * float(qmin)\n        above = (w_div >= qmax).float() * float(qmax)\n        inside = in_range.float() * (torch.round(w_div) - w_div)\n        grad_s_per_elem = (below + above + inside) * grad_out\n        grad_s = grad_s_per_elem.sum(dim=-1, keepdim=True) * g\n        return grad_w, grad_s, None, None, None\n\n\ndef fake_quantize_weight(weight, num_bits, group_size, scale=None):\n    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    if scale is None:\n        # No learnable scale supplied (prepare-time call) -- fall back to STE.\n        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n        s = w_max / qmax\n        w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s\n        w_dq = w + (w_q - w).detach()\n    else:\n        n_elem = w.numel()\n        g_scale = 1.0 / max(1.0, math.sqrt(n_elem * qmax))\n        w_dq = _LSQQuant.apply(w, scale, qmin, qmax, g_scale)\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)\n\n\ndef fake_quantize_activation(x, num_bits):\n    return x\n\n\ndef quantize_dequantize_weight(weight, num_bits, group_size):\n    # LSQ stores learned scales on the wrapper; the fixed-region\n    # apply_real_quantization would clobber them with a max-abs RTN, so we\n    # return the float weight unchanged and let the wrapper apply LSQ-grid\n    # QDQ in eval mode below.\n    return weight.clone()\n\n\nclass QATWrapper(nn.Module):\n    def __init__(self, linear, num_bits, group_size):\n        super().__init__()\n        self.linear = linear\n        self.num_bits = num_bits\n        self.group_size = group_size\n        qmin, qmax = _qrange(num_bits)\n        out_features, in_features = linear.weight.shape\n        n_groups = in_features // group_size\n        # LSQ initial scale: 2 * |W|.mean() / sqrt(qmax).\n        with torch.no_grad():\n            w = linear.weight.float().reshape(out_features, n_groups, group_size)\n            init = 2.0 * w.abs().mean(dim=-1, keepdim=True) / max(1.0, math.sqrt(qmax))\n            init = init.clamp(min=1e-8)\n        # Shape (out_features, n_groups, 1) so it broadcasts over group_size.\n        self.lsq_scale = nn.Parameter(init.to(linear.weight.dtype))\n\n    @property\n    def weight(self):\n        return self.linear.weight\n\n    @property\n    def bias(self):\n        return self.linear.bias\n\n    def forward(self, x):\n        x = fake_quantize_activation(x, self.num_bits)\n        if self.training:\n            w_q = fake_quantize_weight(\n                self.linear.weight, self.num_bits, self.group_size,\n                scale=self.lsq_scale.float(),\n            )\n        else:\n            # Eval: produce a *real* quantize-dequantize on the LSQ grid.\n            qmin, qmax = _qrange(self.num_bits)\n            with torch.no_grad():\n                w = self.linear.weight.float().reshape(\n                    self.linear.weight.shape[0], -1, self.group_size\n                )\n                s = self.lsq_scale.float()\n                w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s\n                w_q = w_q.reshape_as(self.linear.weight).to(self.linear.weight.dtype)\n"
+       "old_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 3: STE QAT\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 2e-5,\n    \"num_steps\": 500,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 4,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 50,\n    \"weight_decay\": 0.0,\n}\n\n\ndef _qrange(num_bits):\n    qmax = (1 << (num_bits - 1)) - 1\n    qmin = -(1 << (num_bits - 1))\n    return qmin, qmax\n\n\ndef fake_quantize_weight(weight, num_bits, group_size):\n    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    # Recompute scale on-the-fly each forward (max-abs / qmax).\n    w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n    scale = w_max / qmax\n    w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n    # Straight-through: forward = quantized, backward = identity.\n    w_dq = w + (w_q - w).detach()\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)\n\n\ndef fake_quantize_activation(x, num_bits):\n    return x\n\n\ndef quantize_dequantize_weight(weight, num_bits, group_size):\n    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    with torch.no_grad():\n        w = weight.float().reshape(out_features, -1, group_size)\n        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n        scale = w_max / qmax\n        w_q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale\n        return w_q.reshape(out_features, in_features).to(weight.dtype)\n\n\nclass QATWrapper(nn.Module):\n    def __init__(self, linear, num_bits, group_size):\n        super().__init__()\n        self.linear = linear\n        self.num_bits = num_bits\n        self.group_size = group_size\n\n    @property\n    def weight(self):\n        return self.linear.weight\n\n    @property\n    def bias(self):\n        return self.linear.bias\n\n    def forward(self, x):\n        x = fake_quantize_activation(x, self.num_bits)\n        w_q = fake_quantize_weight(self.linear.weight, self.num_bits, self.group_size)",
+       "new_str": "# EDITABLE region of custom_qat.py (lines 33-176) — step 4: LSQ (learned step size)\n\nCONFIG_OVERRIDES = {\n    \"learning_rate\": 2e-5,\n    \"num_steps\": 500,\n    \"batch_size\": 2,\n    \"gradient_accumulation_steps\": 4,\n    \"max_grad_norm\": 1.0,\n    \"warmup_steps\": 50,\n    \"weight_decay\": 0.0,\n}\n\n\ndef _qrange(num_bits):\n    qmax = (1 << (num_bits - 1)) - 1\n    qmin = -(1 << (num_bits - 1))\n    return qmin, qmax\n\n\nclass _LSQQuant(torch.autograd.Function):\n    \"\"\"LSQ quantize-dequantize with the learned step-size gradient.\"\"\"\n\n    @staticmethod\n    def forward(ctx, w, scale, qmin, qmax, g_scale):\n        # w: (out, n_groups, group_size); scale: (out, n_groups, 1) broadcastable.\n        w_div = w / scale\n        w_clip = torch.clamp(w_div, qmin, qmax)\n        w_round = torch.round(w_clip)\n        ctx.save_for_backward(w_div, scale)\n        ctx.qmin = qmin\n        ctx.qmax = qmax\n        ctx.g_scale = g_scale\n        return w_round * scale\n\n    @staticmethod\n    def backward(ctx, grad_out):\n        w_div, scale = ctx.saved_tensors\n        qmin, qmax, g = ctx.qmin, ctx.qmax, ctx.g_scale\n        # Gradient w.r.t. w: pass-through inside the clip range.\n        in_range = (w_div > qmin) & (w_div < qmax)\n        grad_w = torch.where(in_range, grad_out, torch.zeros_like(grad_out))\n        # Gradient w.r.t. s: the learned step-size gradient.\n        below = (w_div <= qmin).float() * float(qmin)\n        above = (w_div >= qmax).float() * float(qmax)\n        inside = in_range.float() * (torch.round(w_div) - w_div)\n        grad_s_per_elem = (below + above + inside) * grad_out\n        grad_s = grad_s_per_elem.sum(dim=-1, keepdim=True) * g\n        return grad_w, grad_s, None, None, None\n\n\ndef fake_quantize_weight(weight, num_bits, group_size, scale=None):\n    qmin, qmax = _qrange(num_bits)\n    out_features, in_features = weight.shape\n    assert in_features % group_size == 0\n    w = weight.float().reshape(out_features, -1, group_size)\n    if scale is None:\n        # No learnable scale supplied (prepare-time call) -- fall back to STE.\n        w_max = w.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)\n        s = w_max / qmax\n        w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s\n        w_dq = w + (w_q - w).detach()\n    else:\n        n_elem = w.numel()\n        g_scale = 1.0 / max(1.0, math.sqrt(n_elem * qmax))\n        w_dq = _LSQQuant.apply(w, scale, qmin, qmax, g_scale)\n    return w_dq.reshape(out_features, in_features).to(weight.dtype)\n\n\ndef fake_quantize_activation(x, num_bits):\n    return x\n\n\ndef quantize_dequantize_weight(weight, num_bits, group_size):\n    # LSQ stores learned scales on the wrapper; the fixed-region\n    # apply_real_quantization would clobber them with a max-abs RTN, so we\n    # return the float weight unchanged and let the wrapper apply LSQ-grid\n    # QDQ in eval mode below.\n    return weight.clone()\n\n\nclass QATWrapper(nn.Module):\n    def __init__(self, linear, num_bits, group_size):\n        super().__init__()\n        self.linear = linear\n        self.num_bits = num_bits\n        self.group_size = group_size\n        qmin, qmax = _qrange(num_bits)\n        out_features, in_features = linear.weight.shape\n        n_groups = in_features // group_size\n        # LSQ initial scale: 2 * |W|.mean() / sqrt(qmax).\n        with torch.no_grad():\n            w = linear.weight.float().reshape(out_features, n_groups, group_size)\n            init = 2.0 * w.abs().mean(dim=-1, keepdim=True) / max(1.0, math.sqrt(qmax))\n            init = init.clamp(min=1e-8)\n        # Shape (out_features, n_groups, 1) so it broadcasts over group_size.\n        self.lsq_scale = nn.Parameter(init.to(linear.weight.dtype))\n\n    @property\n    def weight(self):\n        return self.linear.weight\n\n    @property\n    def bias(self):\n        return self.linear.bias\n\n    def forward(self, x):\n        x = fake_quantize_activation(x, self.num_bits)\n        if self.training:\n            w_q = fake_quantize_weight(\n                self.linear.weight, self.num_bits, self.group_size,\n                scale=self.lsq_scale.float(),\n            )\n        else:\n            # Eval: produce a *real* quantize-dequantize on the LSQ grid.\n            qmin, qmax = _qrange(self.num_bits)\n            with torch.no_grad():\n                w = self.linear.weight.float().reshape(\n                    self.linear.weight.shape[0], -1, self.group_size\n                )\n                s = self.lsq_scale.float()\n                w_q = torch.clamp(torch.round(w / s), qmin, qmax) * s\n                w_q = w_q.reshape_as(self.linear.weight).to(self.linear.weight.dtype)"
       }
      }
     }

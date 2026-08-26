@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "\"\"\"Editable strategy scaffold for the optimization-convex-concave MLS-Bench task.\"\"\"\n\nfrom __future__ import annotations\n\nfrom typing import Any\n\nimport numpy as np\n\nfrom fixed_benchmark import (\n    ProblemSpec,\n    StepOutput,\n    StochasticOracle,\n    as_vector,\n    make_step_output,\n    run_cli,\n)\n\n\n# =====================================================================\n# EDITABLE: init_state, step, get_hyperparameters\n# =====================================================================\n\n\ndef init_state(\n    problem: ProblemSpec,\n    initial_z: np.ndarray,\n    seed: int,\n    hyperparameters: dict[str, Any],\n) -> dict[str, Any]:\n    \"\"\"Initialize algorithm state from the fixed starting point.\"\"\"\n    return {\n        \"z\": as_vector(initial_z, expected_dim=2 * problem.dim),\n        \"step_index\": 0,\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    \"\"\"Default baseline: the official SEG / EG update from the MATLAB scripts.\"\"\"\n    tau = float(hyperparameters[\"tau\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n\n    g = oracle.grad(z)\n    w = z - tau * g + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"step_index\": step_index + 1},\n        metric_iterate,\n        2,\n    )\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    \"\"\"Return the official per-problem step size.\"\"\"\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0}\n",
-       "new_str": "def init_state(\n    problem: ProblemSpec,\n    initial_z: np.ndarray,\n    seed: int,\n    hyperparameters: dict[str, Any],\n) -> dict[str, Any]:\n    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)\n    return {\n        \"z\": z0,\n        \"anchor_z\": z0.copy(),\n        \"step_index\": 0,\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    tau = float(hyperparameters[\"tau\"])\n    lam = float(hyperparameters[\"lambda\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n\n    g = oracle.grad(z)\n    w = z - tau * g + tau * lam * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + tau * lam * (anchor_z - w) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},\n        metric_iterate,\n        2,\n    )\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1, \"lambda\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0, \"lambda\": 0.01}\n"
+       "old_str": "\"\"\"Editable strategy scaffold for the optimization-convex-concave MLS-Bench task.\"\"\"\n\nfrom __future__ import annotations\n\nfrom typing import Any\n\nimport numpy as np\n\nfrom fixed_benchmark import (\n    ProblemSpec,\n    StepOutput,\n    StochasticOracle,\n    as_vector,\n    make_step_output,\n    run_cli,\n)\n\n\n# =====================================================================\n# EDITABLE: init_state, step, get_hyperparameters\n# =====================================================================\n\n\ndef init_state(\n    problem: ProblemSpec,\n    initial_z: np.ndarray,\n    seed: int,\n    hyperparameters: dict[str, Any],\n) -> dict[str, Any]:\n    \"\"\"Initialize algorithm state from the fixed starting point.\"\"\"\n    return {\n        \"z\": as_vector(initial_z, expected_dim=2 * problem.dim),\n        \"step_index\": 0,\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    \"\"\"Default baseline: the official SEG / EG update from the MATLAB scripts.\"\"\"\n    tau = float(hyperparameters[\"tau\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n\n    g = oracle.grad(z)\n    w = z - tau * g + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"step_index\": step_index + 1},\n        metric_iterate,\n        2,\n    )\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    \"\"\"Return the official per-problem step size.\"\"\"\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0}",
+       "new_str": "def init_state(\n    problem: ProblemSpec,\n    initial_z: np.ndarray,\n    seed: int,\n    hyperparameters: dict[str, Any],\n) -> dict[str, Any]:\n    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)\n    return {\n        \"z\": z0,\n        \"anchor_z\": z0.copy(),\n        \"step_index\": 0,\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    tau = float(hyperparameters[\"tau\"])\n    lam = float(hyperparameters[\"lambda\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n\n    g = oracle.grad(z)\n    w = z - tau * g + tau * lam * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + tau * lam * (anchor_z - w) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},\n        metric_iterate,\n        2,\n    )\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1, \"lambda\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0, \"lambda\": 0.01}"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "        return {\"tau\": 0.1, \"lambda\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0, \"lambda\": 0.01}\n",
-       "new_str": "        return {\"tau\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0}\n"
+       "old_str": "        return {\"tau\": 0.1, \"lambda\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0, \"lambda\": 0.01}",
+       "new_str": "        return {\"tau\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0}"
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "    w = z - tau * g + tau * lam * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + tau * lam * (anchor_z - w) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},\n",
-       "new_str": "    w = z - tau * g + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"step_index\": step_index + 1},\n"
+       "old_str": "    w = z - tau * g + tau * lam * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + tau * lam * (anchor_z - w) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},",
+       "new_str": "    w = z - tau * g + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"step_index\": step_index + 1},"
       }
      }
     }
@@ -231,8 +231,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "    lam = float(hyperparameters[\"lambda\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)\n",
-       "new_str": "    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n"
+       "old_str": "    lam = float(hyperparameters[\"lambda\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)",
+       "new_str": "    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)"
       }
      }
     }
@@ -254,8 +254,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)\n    return {\n        \"z\": z0,\n        \"anchor_z\": z0.copy(),\n",
-       "new_str": "    return {\n        \"z\": as_vector(initial_z, expected_dim=2 * problem.dim),\n"
+       "old_str": "    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)\n    return {\n        \"z\": z0,\n        \"anchor_z\": z0.copy(),",
+       "new_str": "    return {\n        \"z\": as_vector(initial_z, expected_dim=2 * problem.dim),"
       }
      }
     }
@@ -295,8 +295,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "    step_index = int(state.get(\"step_index\", 0))\n\n    g = oracle.grad(z)\n    w = z - tau * g + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"step_index\": step_index + 1},\n",
-       "new_str": "    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n    coeff = 1.0 / (step_index + 3.0)\n\n    g = oracle.grad(z)\n    w = z - tau * g + coeff * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + coeff * (anchor_z - z) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},\n"
+       "old_str": "    step_index = int(state.get(\"step_index\", 0))\n\n    g = oracle.grad(z)\n    w = z - tau * g + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"step_index\": step_index + 1},",
+       "new_str": "    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n    coeff = 1.0 / (step_index + 3.0)\n\n    g = oracle.grad(z)\n    w = z - tau * g + coeff * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + coeff * (anchor_z - z) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},"
       }
      }
     }
@@ -318,8 +318,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "    return {\n        \"z\": as_vector(initial_z, expected_dim=2 * problem.dim),\n",
-       "new_str": "    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)\n    return {\n        \"z\": z0,\n        \"anchor_z\": z0.copy(),\n"
+       "old_str": "    return {\n        \"z\": as_vector(initial_z, expected_dim=2 * problem.dim),",
+       "new_str": "    z0 = as_vector(initial_z, expected_dim=2 * problem.dim)\n    return {\n        \"z\": z0,\n        \"anchor_z\": z0.copy(),"
       }
      }
     }
@@ -359,8 +359,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "RAIN/optimization_convex_concave/custom_strategy.py",
-       "old_str": "        \"anchor_z\": z0.copy(),\n        \"step_index\": 0,\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    tau = float(hyperparameters[\"tau\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n    coeff = 1.0 / (step_index + 3.0)\n\n    g = oracle.grad(z)\n    w = z - tau * g + coeff * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + coeff * (anchor_z - z) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},\n        metric_iterate,\n        2,\n    )\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0}\n",
-       "new_str": "        \"step_index\": 0,\n        \"weight_sum\": 0.0,\n        \"weighted_flow_sum\": np.zeros_like(z0),\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    tau = float(hyperparameters[\"tau\"])\n    lam = float(hyperparameters[\"lambda\"])\n    gamma = float(hyperparameters[\"gamma\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n    weight_sum = float(state.get(\"weight_sum\", 0.0))\n    weighted_flow_sum = as_vector(state.get(\"weighted_flow_sum\", np.zeros_like(z)), expected_dim=2 * problem.dim)\n\n    g = oracle.grad(z)\n    anchor_z = tau * lam * (weighted_flow_sum - weight_sum * z)\n    w = z - tau * g + anchor_z + oracle.noise()\n    gw = oracle.grad(w)\n    anchor_w = tau * lam * (weighted_flow_sum - weight_sum * w)\n    z_next = z - tau * gw + anchor_w + oracle.noise()\n\n    current_weight = gamma * (1.0 + gamma) ** (step_index + 1)\n    next_state = {\n        \"z\": z_next,\n        \"step_index\": step_index + 1,\n        \"weight_sum\": weight_sum + current_weight,\n        \"weighted_flow_sum\": weighted_flow_sum + current_weight * z_next,\n    }\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(next_state, metric_iterate, 2)\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1, \"lambda\": 0.1, \"gamma\": 0.001}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0, \"lambda\": 0.01, \"gamma\": 0.0001}\n"
+       "old_str": "        \"anchor_z\": z0.copy(),\n        \"step_index\": 0,\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    tau = float(hyperparameters[\"tau\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    anchor_z = as_vector(state[\"anchor_z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n    coeff = 1.0 / (step_index + 3.0)\n\n    g = oracle.grad(z)\n    w = z - tau * g + coeff * (anchor_z - z) + oracle.noise()\n    gw = oracle.grad(w)\n    z_next = z - tau * gw + coeff * (anchor_z - z) + oracle.noise()\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(\n        {\"z\": z_next, \"anchor_z\": anchor_z, \"step_index\": step_index + 1},\n        metric_iterate,\n        2,\n    )\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0}",
+       "new_str": "        \"step_index\": 0,\n        \"weight_sum\": 0.0,\n        \"weighted_flow_sum\": np.zeros_like(z0),\n    }\n\n\ndef step(\n    state: dict[str, Any],\n    oracle: StochasticOracle,\n    problem: ProblemSpec,\n    hyperparameters: dict[str, Any],\n    max_sfo_calls: int,\n) -> StepOutput:\n    tau = float(hyperparameters[\"tau\"])\n    lam = float(hyperparameters[\"lambda\"])\n    gamma = float(hyperparameters[\"gamma\"])\n    z = as_vector(state[\"z\"], expected_dim=2 * problem.dim)\n    step_index = int(state.get(\"step_index\", 0))\n    weight_sum = float(state.get(\"weight_sum\", 0.0))\n    weighted_flow_sum = as_vector(state.get(\"weighted_flow_sum\", np.zeros_like(z)), expected_dim=2 * problem.dim)\n\n    g = oracle.grad(z)\n    anchor_z = tau * lam * (weighted_flow_sum - weight_sum * z)\n    w = z - tau * g + anchor_z + oracle.noise()\n    gw = oracle.grad(w)\n    anchor_w = tau * lam * (weighted_flow_sum - weight_sum * w)\n    z_next = z - tau * gw + anchor_w + oracle.noise()\n\n    current_weight = gamma * (1.0 + gamma) ** (step_index + 1)\n    next_state = {\n        \"z\": z_next,\n        \"step_index\": step_index + 1,\n        \"weight_sum\": weight_sum + current_weight,\n        \"weighted_flow_sum\": weighted_flow_sum + current_weight * z_next,\n    }\n    metric_iterate = z_next if problem.name == \"bilinear\" else z\n    return make_step_output(next_state, metric_iterate, 2)\n\n\ndef get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:\n    if problem_name == \"bilinear\":\n        return {\"tau\": 0.1, \"lambda\": 0.1, \"gamma\": 0.001}\n    if problem_name == \"delta_nu\":\n        return {\"tau\": 1.0, \"lambda\": 0.01, \"gamma\": 0.0001}"
       }
      }
     }

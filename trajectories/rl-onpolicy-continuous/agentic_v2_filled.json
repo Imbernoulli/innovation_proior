@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_onpolicy_continuous.py",
-       "old_str": "    # EDITABLE region of custom_onpolicy_continuous.py (lines 175-221) — default fill\n    def get_action_and_value(self, obs, action=None):\n        action_mean = self.actor_mean(obs)\n        action_logstd = self.actor_logstd.expand_as(action_mean)\n        action_std = torch.exp(action_logstd)\n        probs = Normal(action_mean, action_std)\n        if action is None:\n            action = probs.sample()\n        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(obs)\n\n\ndef compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, args):\n    \"\"\"Compute policy and value losses for a minibatch.\"\"\"\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss -- placeholder (un-clipped policy gradient)\n    pg_loss = (-mb_advantages * ratio).mean()\n\n    # Value loss -- placeholder (plain MSE)\n",
-       "new_str": "    def get_action_and_value(self, obs, action=None):\n        action_mean = self.actor_mean(obs)\n        action_logstd = self.actor_logstd.expand_as(action_mean)\n        action_std = torch.exp(action_logstd)\n        probs = Normal(action_mean, action_std)\n        if action is None:\n            action = probs.sample()\n        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(obs)\n\n\ndef compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, args):\n    \"\"\"PPO-Penalty: adaptive KL penalty instead of clipped surrogate.\"\"\"\n    if not hasattr(agent, '_kl_beta'):\n        agent._kl_beta = 0.5\n        agent._target_kl = 0.01\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    # KL divergence — WITH gradient for the penalty term\n    kl = ((ratio - 1) - logratio).mean()\n\n    with torch.no_grad():\n        approx_kl = kl.detach()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss — KL-penalized (no clipping)\n    pg_loss = -(mb_advantages * ratio).mean() + agent._kl_beta * kl\n\n    # Adapt KL penalty coefficient\n    with torch.no_grad():\n        if approx_kl > 1.5 * agent._target_kl:\n            agent._kl_beta = min(agent._kl_beta * 2.0, 100.0)\n        elif approx_kl < agent._target_kl / 1.5:\n            agent._kl_beta = max(agent._kl_beta / 2.0, 1e-4)\n\n    # Value loss — simple MSE (no clipping)\n"
+       "old_str": "    # EDITABLE region of custom_onpolicy_continuous.py (lines 175-221) — default fill\n    def get_action_and_value(self, obs, action=None):\n        action_mean = self.actor_mean(obs)\n        action_logstd = self.actor_logstd.expand_as(action_mean)\n        action_std = torch.exp(action_logstd)\n        probs = Normal(action_mean, action_std)\n        if action is None:\n            action = probs.sample()\n        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(obs)\n\n\ndef compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, args):\n    \"\"\"Compute policy and value losses for a minibatch.\"\"\"\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss -- placeholder (un-clipped policy gradient)\n    pg_loss = (-mb_advantages * ratio).mean()\n\n    # Value loss -- placeholder (plain MSE)",
+       "new_str": "    def get_action_and_value(self, obs, action=None):\n        action_mean = self.actor_mean(obs)\n        action_logstd = self.actor_logstd.expand_as(action_mean)\n        action_std = torch.exp(action_logstd)\n        probs = Normal(action_mean, action_std)\n        if action is None:\n            action = probs.sample()\n        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(obs)\n\n\ndef compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages, mb_returns, mb_values, args):\n    \"\"\"PPO-Penalty: adaptive KL penalty instead of clipped surrogate.\"\"\"\n    if not hasattr(agent, '_kl_beta'):\n        agent._kl_beta = 0.5\n        agent._target_kl = 0.01\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    # KL divergence — WITH gradient for the penalty term\n    kl = ((ratio - 1) - logratio).mean()\n\n    with torch.no_grad():\n        approx_kl = kl.detach()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss — KL-penalized (no clipping)\n    pg_loss = -(mb_advantages * ratio).mean() + agent._kl_beta * kl\n\n    # Adapt KL penalty coefficient\n    with torch.no_grad():\n        if approx_kl > 1.5 * agent._target_kl:\n            agent._kl_beta = min(agent._kl_beta * 2.0, 100.0)\n        elif approx_kl < agent._target_kl / 1.5:\n            agent._kl_beta = max(agent._kl_beta / 2.0, 1e-4)\n\n    # Value loss — simple MSE (no clipping)"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_onpolicy_continuous.py",
-       "old_str": "    \"\"\"PPO-Penalty: adaptive KL penalty instead of clipped surrogate.\"\"\"\n    if not hasattr(agent, '_kl_beta'):\n        agent._kl_beta = 0.5\n        agent._target_kl = 0.01\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    # KL divergence — WITH gradient for the penalty term\n    kl = ((ratio - 1) - logratio).mean()\n\n    with torch.no_grad():\n        approx_kl = kl.detach()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss — KL-penalized (no clipping)\n    pg_loss = -(mb_advantages * ratio).mean() + agent._kl_beta * kl\n\n    # Adapt KL penalty coefficient\n    with torch.no_grad():\n        if approx_kl > 1.5 * agent._target_kl:\n            agent._kl_beta = min(agent._kl_beta * 2.0, 100.0)\n        elif approx_kl < agent._target_kl / 1.5:\n            agent._kl_beta = max(agent._kl_beta / 2.0, 1e-4)\n\n    # Value loss — simple MSE (no clipping)\n",
-       "new_str": "    \"\"\"AWR: advantage-weighted regression loss.\"\"\"\n    _awr_beta = 0.05\n    _awr_max_weight = 20.0\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Compute advantage weights: exp(advantage / beta), clamped for stability\n    with torch.no_grad():\n        weights = torch.exp(mb_advantages / _awr_beta)\n        weights = torch.clamp(weights, max=_awr_max_weight)\n        weights = weights / (weights.sum() + 1e-8) * weights.numel()\n\n    # Policy loss — advantage-weighted regression (supervised)\n    pg_loss = -(newlogprob * weights).mean()\n\n    # Value loss — simple MSE\n"
+       "old_str": "    \"\"\"PPO-Penalty: adaptive KL penalty instead of clipped surrogate.\"\"\"\n    if not hasattr(agent, '_kl_beta'):\n        agent._kl_beta = 0.5\n        agent._target_kl = 0.01\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    # KL divergence — WITH gradient for the penalty term\n    kl = ((ratio - 1) - logratio).mean()\n\n    with torch.no_grad():\n        approx_kl = kl.detach()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss — KL-penalized (no clipping)\n    pg_loss = -(mb_advantages * ratio).mean() + agent._kl_beta * kl\n\n    # Adapt KL penalty coefficient\n    with torch.no_grad():\n        if approx_kl > 1.5 * agent._target_kl:\n            agent._kl_beta = min(agent._kl_beta * 2.0, 100.0)\n        elif approx_kl < agent._target_kl / 1.5:\n            agent._kl_beta = max(agent._kl_beta / 2.0, 1e-4)\n\n    # Value loss — simple MSE (no clipping)",
+       "new_str": "    \"\"\"AWR: advantage-weighted regression loss.\"\"\"\n    _awr_beta = 0.05\n    _awr_max_weight = 20.0\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Compute advantage weights: exp(advantage / beta), clamped for stability\n    with torch.no_grad():\n        weights = torch.exp(mb_advantages / _awr_beta)\n        weights = torch.clamp(weights, max=_awr_max_weight)\n        weights = weights / (weights.sum() + 1e-8) * weights.numel()\n\n    # Policy loss — advantage-weighted regression (supervised)\n    pg_loss = -(newlogprob * weights).mean()\n\n    # Value loss — simple MSE"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_onpolicy_continuous.py",
-       "old_str": "    \"\"\"AWR: advantage-weighted regression loss.\"\"\"\n    _awr_beta = 0.05\n    _awr_max_weight = 20.0\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Compute advantage weights: exp(advantage / beta), clamped for stability\n    with torch.no_grad():\n        weights = torch.exp(mb_advantages / _awr_beta)\n        weights = torch.clamp(weights, max=_awr_max_weight)\n        weights = weights / (weights.sum() + 1e-8) * weights.numel()\n\n    # Policy loss — advantage-weighted regression (supervised)\n    pg_loss = -(newlogprob * weights).mean()\n\n    # Value loss — simple MSE\n    newvalue = newvalue.view(-1)\n    v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()\n",
-       "new_str": "    \"\"\"PPO clipped surrogate objective + clipped value loss.\"\"\"\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss — clipped surrogate\n    pg_loss1 = -mb_advantages * ratio\n    pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)\n    pg_loss = torch.max(pg_loss1, pg_loss2).mean()\n\n    # Value loss — clipped\n    newvalue = newvalue.view(-1)\n    if args.clip_vloss:\n        v_loss_unclipped = (newvalue - mb_returns) ** 2\n        v_clipped = mb_values + torch.clamp(\n            newvalue - mb_values,\n            -args.clip_coef,\n            args.clip_coef,\n        )\n        v_loss_clipped = (v_clipped - mb_returns) ** 2\n        v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)\n        v_loss = 0.5 * v_loss_max.mean()\n    else:\n        v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()\n"
+       "old_str": "    \"\"\"AWR: advantage-weighted regression loss.\"\"\"\n    _awr_beta = 0.05\n    _awr_max_weight = 20.0\n\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Compute advantage weights: exp(advantage / beta), clamped for stability\n    with torch.no_grad():\n        weights = torch.exp(mb_advantages / _awr_beta)\n        weights = torch.clamp(weights, max=_awr_max_weight)\n        weights = weights / (weights.sum() + 1e-8) * weights.numel()\n\n    # Policy loss — advantage-weighted regression (supervised)\n    pg_loss = -(newlogprob * weights).mean()\n\n    # Value loss — simple MSE\n    newvalue = newvalue.view(-1)\n    v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()",
+       "new_str": "    \"\"\"PPO clipped surrogate objective + clipped value loss.\"\"\"\n    _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)\n    logratio = newlogprob - mb_logprobs\n    ratio = logratio.exp()\n\n    with torch.no_grad():\n        approx_kl = ((ratio - 1) - logratio).mean()\n        clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()\n\n    # Policy loss — clipped surrogate\n    pg_loss1 = -mb_advantages * ratio\n    pg_loss2 = -mb_advantages * torch.clamp(ratio, 1 - args.clip_coef, 1 + args.clip_coef)\n    pg_loss = torch.max(pg_loss1, pg_loss2).mean()\n\n    # Value loss — clipped\n    newvalue = newvalue.view(-1)\n    if args.clip_vloss:\n        v_loss_unclipped = (newvalue - mb_returns) ** 2\n        v_clipped = mb_values + torch.clamp(\n            newvalue - mb_values,\n            -args.clip_coef,\n            args.clip_coef,\n        )\n        v_loss_clipped = (v_clipped - mb_returns) ** 2\n        v_loss_max = torch.max(v_loss_unclipped, v_loss_clipped)\n        v_loss = 0.5 * v_loss_max.mean()\n    else:\n        v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()"
       }
      }
     }

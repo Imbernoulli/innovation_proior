@@ -153,22 +153,6 @@ TOOLS = [
                         "description": "Content to write (required for op='create')."}},
             "required": ["op", "filename"]}}},
     {"type": "function", "function": {
-        "name": "view",
-        "description": (
-            "Read the current contents of a file in the workspace. Call this before "
-            "op='str_replace' whenever you are unsure of the exact text (especially "
-            "after an edit, an undo, or when the initial prompt has gone stale) — "
-            "old_str must reproduce the file's text, and this is how you check it.\n"
-            "Line numbers in the output are a display prefix ('NNNNNN: ') and must "
-            "NOT be included in old_str.\n"
-            "With no line range, shows the editable region of the file."),
-        "parameters": {"type": "object", "properties": {
-            "filename": {"type": "string",
-                         "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."},
-            "start_line": {"type": "integer", "description": "First line to show (1-indexed, optional)."},
-            "end_line": {"type": "integer", "description": "Last line to show (1-indexed, inclusive, optional)."}},
-            "required": ["filename"]}}},
-    {"type": "function", "function": {
         "name": "test",
         "description": (
             "Run a new experiment. Executes training and evaluation, then returns metrics. "
@@ -191,6 +175,22 @@ TOOLS = [
                         "restoring pre-edit snapshots. Does not undo test calls."),
         "parameters": {"type": "object", "properties": {
             "n": {"type": "integer", "description": "Number of edit actions to undo (default: 1)."}}}}},
+    {"type": "function", "function": {
+        "name": "view",
+        "description": (
+            "Read the current contents of a file in the workspace. Call this before "
+            "op='str_replace' whenever you are unsure of the exact text (especially "
+            "after an edit, an undo, or when the initial prompt has gone stale) — "
+            "old_str must reproduce the file's text, and this is how you check it.\n"
+            "Line numbers in the output are a display prefix ('NNNNNN: ') and must "
+            "NOT be included in old_str.\n"
+            "With no line range, shows the editable region of the file."),
+        "parameters": {"type": "object", "properties": {
+            "filename": {"type": "string",
+                         "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."},
+            "start_line": {"type": "integer", "description": "First line to show (1-indexed, optional)."},
+            "end_line": {"type": "integer", "description": "Last line to show (1-indexed, inclusive, optional)."}},
+            "required": ["filename"]}}},
 ]
 
 
@@ -327,11 +327,48 @@ def plan_ops(prev, new):
     return [{'op': 'str_replace', 'old_str': o, 'new_str': n} for o, n in pairs]
 
 
+def _aligned(state, old_str):
+    idx = state.find(old_str); end = idx + len(old_str)
+    return idx >= 0 and (idx == 0 or state[idx - 1] == '\n') and (end == len(state) or state[end] == '\n')
+
+
+def harness_align(state, old_str, new_str):
+    """Re-express an exact whole-line (old_str, new_str) pair — both newline-terminated —
+    in the form the harness's resolve_old_str() accepts at level='exact': NO trailing
+    newline on either side (a newline-terminated anchor ends mid-"line" for the harness:
+    text[end] is the next line's first char, so it is 'realigned to line boundaries', the
+    echo gains a [matched after: …] note and the file gains a blank line). The pair must
+    stay unique as a raw substring and still replay to the same target; pure deletions
+    (empty new_str) and anchors that lose uniqueness are widened with neighbouring lines.
+    2026-08-26: found by two independent verifiers replaying the corpus on the real harness."""
+    assert state.count(old_str) == 1, 'anchor not unique before alignment'
+    target = state.replace(old_str, new_str, 1)
+    lines = state.splitlines(True)
+    i1 = state.count('\n', 0, state.index(old_str))
+    i2 = i1 + old_str.count('\n') + (0 if old_str.endswith('\n') else 1)
+    assert ''.join(lines[i1:i2]) == old_str, 'anchor is not a run of whole lines'
+    new_lines = new_str.splitlines(True)
+    for _ in range(len(lines) + 2):
+        o = ''.join(lines[i1:i2]); n = ''.join(new_lines)
+        o2 = o[:-1] if o.endswith('\n') else o
+        n2 = n[:-1] if n.endswith('\n') else n
+        if (o2 and n2 and state.count(o2) == 1 and _aligned(state, o2)
+                and state.replace(o2, n2, 1) == target):
+            return o2, n2
+        if i1 > 0:
+            i1 -= 1; new_lines = [lines[i1]] + new_lines
+        elif i2 < len(lines):
+            new_lines = new_lines + [lines[i2]]; i2 += 1
+        else:
+            break
+    raise ValueError('cannot express the edit as a harness-aligned str_replace')
+
+
 def line_span(state, old_str):
+    """(line_start, line_end) exactly as tools.py resolve_old_str reports them at level='exact'."""
     idx = state.find(old_str)
     start = state.count('\n', 0, idx) + 1
-    end = start + old_str.rstrip('\n').count('\n')
-    return start, end
+    return start, start + old_str.count('\n')
 
 
 # ---------------------------------------------------------------------------
@@ -600,6 +637,7 @@ def build_task(task_dir, task):
                 if not cumulative:      # cumulative stacks grow files; replace mode
                     replay = op['content']  # replaces the single-file state
             else:
+                op['old_str'], op['new_str'] = harness_align(replay, op['old_str'], op['new_str'])
                 a, b = line_span(replay, op['old_str'])
                 msgs.append(asst(slot, say, 'edit',
                                  {'op': 'str_replace', 'filename': filename,
@@ -670,8 +708,20 @@ def seed_replay(messages):
     return '\n'.join(LINENO.sub('', ln, count=1) for ln in m.group(1).split('\n')) + '\n'
 
 
+HARNESS_SRC = 'training/FrontierSmith/.cache/mlsbench-eval/src'
+
+
+def _harness_resolve():
+    sys.path.insert(0, HARNESS_SRC)
+    os.environ.pop('MLSBENCH_STRICT_STR_REPLACE', None)
+    from mlsbench.agent.tools import resolve_old_str
+    return resolve_old_str
+
+
 def lint(paths):
     bad = 0
+    resolve = _harness_resolve()
+    LINES = re.compile(r'\(lines (\d+)\.\.(\d+)\)')
     for p in paths:
         d = json.load(open(p))
         replay = seed_replay(d.get('messages'))
@@ -694,6 +744,17 @@ def lint(paths):
                     if replay is None or _count(replay, args['old_str']) != 1:
                         print('%s: msg %d old_str not unique in replay state' % (p, i)); bad += 1
                     else:
+                        # the REAL harness matcher must take this anchor at level='exact' and
+                        # report the same line span the echoed result string carries
+                        r = resolve(replay, args['old_str'])
+                        res = (d['messages'][i + 1].get('content') or '') if i + 1 < len(d['messages']) else ''
+                        lm = LINES.search(res)
+                        if not r.get('ok') or r.get('level') != 'exact' or r.get('note'):
+                            print('%s: msg %d harness would not match exactly: %s' % (p, i, {k: r.get(k) for k in ('ok', 'level', 'note', 'reason')})); bad += 1
+                        elif not lm or (int(lm.group(1)), int(lm.group(2))) != (r['line_start'], r['line_end']):
+                            print('%s: msg %d result line span %s != harness %s' % (p, i, lm.groups() if lm else None, (r['line_start'], r['line_end']))); bad += 1
+                        elif replay[r['start']:r['end']] != args['old_str']:
+                            print('%s: msg %d harness match region differs from anchor' % (p, i)); bad += 1
                         replay = replay.replace(args['old_str'], args['new_str'], 1)
     print('lint: %d problem(s) in %d file(s)' % (bad, len(paths)))
     return bad

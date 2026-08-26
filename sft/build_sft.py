@@ -394,7 +394,7 @@ for ap in _v2_files:
     data = json.load(open(ap))
     tools_str = json.dumps(data.get('tools', []), ensure_ascii=False)
     year_pfx = f"It is now year {yr}. " if yr else ""
-    sysp = year_pfx + neutralize(data['system'].strip())
+    sysp = year_pfx + neutralize(data['system'])   # no strip: harness prompt ends with '\n'
     init, rounds = parse_rounds(data['messages'])
     if init is None or not rounds:
         continue

@@ -141,6 +141,8 @@ def contract_check():
     want = {'edit': EDIT_REPLACE_SCHEMA, 'view': VIEW_SCHEMA}
     for s in TOOL_SCHEMAS:
         if s['name'] != 'edit': want[s['name']] = s
+    order = [s['name'] for s in TOOL_SCHEMAS] + ['view']    # interactive.py appends VIEW_SCHEMA last
+    if [t['function']['name'] for t in B.TOOLS] != order: problems.append(f'tools order {[t["function"]["name"] for t in B.TOOLS]} != harness {order}')
     for t in B.TOOLS:
         f = t['function']; w = want.get(f['name'])
         if not w: problems.append(f"extra tool {f['name']}"); continue

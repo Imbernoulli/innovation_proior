@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_residual.py",
-       "old_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- default fill: plain post-activation block\nclass CustomBlock(nn.Module):\n    \"\"\"Custom residual block for CIFAR ResNets.\n\n    Args:\n        in_planes: input channels\n        planes: output channels\n        stride: spatial stride (1 or 2)\n\n    Must set class attribute `expansion = 1` (or 4 for bottleneck).\n    The shortcut dimension must match planes * expansion.\n    \"\"\"\n    expansion = 1\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n\n    def forward(self, x):\n        out = F.relu(self.bn1(self.conv1(x)))\n        out = self.bn2(self.conv2(out))\n        out += self.shortcut(x)\n",
-       "new_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 1: learnable residual gate, alpha init=1.0\nclass CustomBlock(nn.Module):\n    \"\"\"Residual block with learnable residual gate (scalar scaling).\n\n    A learnable parameter alpha scales the residual branch output before\n    adding to the shortcut: out = shortcut(x) + alpha * F(x).\n    Initialized at alpha=1.0 (standard residual behavior).\n    \"\"\"\n    expansion = 1\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n        # Learnable residual gate initialized at 1.0\n        self.alpha = nn.Parameter(torch.ones(1))\n\n    def forward(self, x):\n        out = F.relu(self.bn1(self.conv1(x)))\n        out = self.bn2(self.conv2(out))\n        out = self.shortcut(x) + self.alpha * out\n"
+       "old_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- default fill: plain post-activation block\nclass CustomBlock(nn.Module):\n    \"\"\"Custom residual block for CIFAR ResNets.\n\n    Args:\n        in_planes: input channels\n        planes: output channels\n        stride: spatial stride (1 or 2)\n\n    Must set class attribute `expansion = 1` (or 4 for bottleneck).\n    The shortcut dimension must match planes * expansion.\n    \"\"\"\n    expansion = 1\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n\n    def forward(self, x):\n        out = F.relu(self.bn1(self.conv1(x)))\n        out = self.bn2(self.conv2(out))\n        out += self.shortcut(x)",
+       "new_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 1: learnable residual gate, alpha init=1.0\nclass CustomBlock(nn.Module):\n    \"\"\"Residual block with learnable residual gate (scalar scaling).\n\n    A learnable parameter alpha scales the residual branch output before\n    adding to the shortcut: out = shortcut(x) + alpha * F(x).\n    Initialized at alpha=1.0 (standard residual behavior).\n    \"\"\"\n    expansion = 1\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n        # Learnable residual gate initialized at 1.0\n        self.alpha = nn.Parameter(torch.ones(1))\n\n    def forward(self, x):\n        out = F.relu(self.bn1(self.conv1(x)))\n        out = self.bn2(self.conv2(out))\n        out = self.shortcut(x) + self.alpha * out"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_residual.py",
-       "old_str": "        # Learnable residual gate initialized at 1.0\n        self.alpha = nn.Parameter(torch.ones(1))\n\n    def forward(self, x):\n        out = F.relu(self.bn1(self.conv1(x)))\n        out = self.bn2(self.conv2(out))\n        out = self.shortcut(x) + self.alpha * out\n        return F.relu(out)\n",
-       "new_str": "\n    def forward(self, x):\n        pre = F.relu(self.bn1(x))\n        out = self.conv1(pre)\n        out = self.conv2(F.relu(self.bn2(out)))\n        shortcut = self.downsample(x) if self.downsample is not None else x\n        return shortcut + self.alpha * out\n"
+       "old_str": "        # Learnable residual gate initialized at 1.0\n        self.alpha = nn.Parameter(torch.ones(1))\n\n    def forward(self, x):\n        out = F.relu(self.bn1(self.conv1(x)))\n        out = self.bn2(self.conv2(out))\n        out = self.shortcut(x) + self.alpha * out\n        return F.relu(out)",
+       "new_str": "\n    def forward(self, x):\n        pre = F.relu(self.bn1(x))\n        out = self.conv1(pre)\n        out = self.conv2(F.relu(self.bn2(out)))\n        shortcut = self.downsample(x) if self.downsample is not None else x\n        return shortcut + self.alpha * out"
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_residual.py",
-       "old_str": "        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(\n",
-       "new_str": "        self.bn1 = nn.BatchNorm2d(in_planes)\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.alpha = nn.Parameter(torch.tensor(0.1))\n        self.downsample = None\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.downsample = nn.Sequential(\n"
+       "old_str": "        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(",
+       "new_str": "        self.bn1 = nn.BatchNorm2d(in_planes)\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.alpha = nn.Parameter(torch.tensor(0.1))\n        self.downsample = None\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.downsample = nn.Sequential("
       }
      }
     }
@@ -231,8 +231,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_residual.py",
-       "old_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 1: learnable residual gate, alpha init=1.0\nclass CustomBlock(nn.Module):\n    \"\"\"Residual block with learnable residual gate (scalar scaling).\n\n    A learnable parameter alpha scales the residual branch output before\n    adding to the shortcut: out = shortcut(x) + alpha * F(x).\n    Initialized at alpha=1.0 (standard residual behavior).\n",
-       "new_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 2: pre-activation (BN-ReLU-Conv) + 0.1 scale\nclass CustomBlock(nn.Module):\n    \"\"\"Pre-activation residual block (He et al., 2016 v2).\n\n    Uses BN-ReLU-Conv order for cleaner gradient flow.\n    Both main branch and shortcut share the same pre-activation.\n    Residual scaling (alpha, init=0.1) stabilizes very deep networks.\n"
+       "old_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 1: learnable residual gate, alpha init=1.0\nclass CustomBlock(nn.Module):\n    \"\"\"Residual block with learnable residual gate (scalar scaling).\n\n    A learnable parameter alpha scales the residual branch output before\n    adding to the shortcut: out = shortcut(x) + alpha * F(x).\n    Initialized at alpha=1.0 (standard residual behavior).",
+       "new_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 2: pre-activation (BN-ReLU-Conv) + 0.1 scale\nclass CustomBlock(nn.Module):\n    \"\"\"Pre-activation residual block (He et al., 2016 v2).\n\n    Uses BN-ReLU-Conv order for cleaner gradient flow.\n    Both main branch and shortcut share the same pre-activation.\n    Residual scaling (alpha, init=0.1) stabilizes very deep networks."
       }
      }
     }
@@ -272,8 +272,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_residual.py",
-       "old_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 2: pre-activation (BN-ReLU-Conv) + 0.1 scale\nclass CustomBlock(nn.Module):\n    \"\"\"Pre-activation residual block (He et al., 2016 v2).\n\n    Uses BN-ReLU-Conv order for cleaner gradient flow.\n    Both main branch and shortcut share the same pre-activation.\n    Residual scaling (alpha, init=0.1) stabilizes very deep networks.\n    \"\"\"\n    expansion = 1\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.bn1 = nn.BatchNorm2d(in_planes)\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.alpha = nn.Parameter(torch.tensor(0.1))\n        self.downsample = None\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.downsample = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n\n    def forward(self, x):\n        pre = F.relu(self.bn1(x))\n        out = self.conv1(pre)\n        out = self.conv2(F.relu(self.bn2(out)))\n        shortcut = self.downsample(x) if self.downsample is not None else x\n        return shortcut + self.alpha * out\n",
-       "new_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 3: stochastic depth, linear decay, p_L=0.5\nclass CustomBlock(nn.Module):\n    \"\"\"Residual block with stochastic depth (Huang et al., 2016).\n\n    During training, each block's residual branch is randomly dropped with\n    probability (1 - survival_prob). The survival probability linearly decays\n    from 1.0 (first block) to p_L (last block). At test time, the residual\n    output is deterministically scaled by the survival probability.\n    \"\"\"\n    expansion = 1\n    _block_counter = 0\n    _p_last = 0.5  # survival prob of the deepest block\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n        # Reset counter when first block of a new model is created\n        # (CIFAR ResNets always start layer1 with in_planes=16, planes=16, stride=1)\n        if in_planes == 16 and planes == 16 and stride == 1:\n            CustomBlock._block_counter = 0\n        CustomBlock._block_counter += 1\n        self.block_idx = CustomBlock._block_counter\n\n    def forward(self, x):\n        shortcut = self.shortcut(x)\n        L = CustomBlock._block_counter\n        p = 1.0 - (self.block_idx / L) * (1.0 - CustomBlock._p_last)\n        if self.training:\n            if torch.rand(1).item() < p:\n                out = F.relu(self.bn1(self.conv1(x)))\n                out = self.bn2(self.conv2(out))\n                return F.relu(out + shortcut)\n            else:\n                return F.relu(shortcut)\n        else:\n            out = F.relu(self.bn1(self.conv1(x)))\n            out = self.bn2(self.conv2(out))\n            return F.relu(p * out + shortcut)\n"
+       "old_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 2: pre-activation (BN-ReLU-Conv) + 0.1 scale\nclass CustomBlock(nn.Module):\n    \"\"\"Pre-activation residual block (He et al., 2016 v2).\n\n    Uses BN-ReLU-Conv order for cleaner gradient flow.\n    Both main branch and shortcut share the same pre-activation.\n    Residual scaling (alpha, init=0.1) stabilizes very deep networks.\n    \"\"\"\n    expansion = 1\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.bn1 = nn.BatchNorm2d(in_planes)\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.alpha = nn.Parameter(torch.tensor(0.1))\n        self.downsample = None\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.downsample = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n\n    def forward(self, x):\n        pre = F.relu(self.bn1(x))\n        out = self.conv1(pre)\n        out = self.conv2(F.relu(self.bn2(out)))\n        shortcut = self.downsample(x) if self.downsample is not None else x\n        return shortcut + self.alpha * out",
+       "new_str": "# EDITABLE region of custom_residual.py (lines 31-61) -- step 3: stochastic depth, linear decay, p_L=0.5\nclass CustomBlock(nn.Module):\n    \"\"\"Residual block with stochastic depth (Huang et al., 2016).\n\n    During training, each block's residual branch is randomly dropped with\n    probability (1 - survival_prob). The survival probability linearly decays\n    from 1.0 (first block) to p_L (last block). At test time, the residual\n    output is deterministically scaled by the survival probability.\n    \"\"\"\n    expansion = 1\n    _block_counter = 0\n    _p_last = 0.5  # survival prob of the deepest block\n\n    def __init__(self, in_planes, planes, stride=1):\n        super().__init__()\n        self.conv1 = nn.Conv2d(in_planes, planes, 3, stride=stride, padding=1, bias=False)\n        self.bn1 = nn.BatchNorm2d(planes)\n        self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)\n        self.bn2 = nn.BatchNorm2d(planes)\n        self.shortcut = nn.Sequential()\n        if stride != 1 or in_planes != planes * self.expansion:\n            self.shortcut = nn.Sequential(\n                nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),\n                nn.BatchNorm2d(planes * self.expansion),\n            )\n        # Reset counter when first block of a new model is created\n        # (CIFAR ResNets always start layer1 with in_planes=16, planes=16, stride=1)\n        if in_planes == 16 and planes == 16 and stride == 1:\n            CustomBlock._block_counter = 0\n        CustomBlock._block_counter += 1\n        self.block_idx = CustomBlock._block_counter\n\n    def forward(self, x):\n        shortcut = self.shortcut(x)\n        L = CustomBlock._block_counter\n        p = 1.0 - (self.block_idx / L) * (1.0 - CustomBlock._p_last)\n        if self.training:\n            if torch.rand(1).item() < p:\n                out = F.relu(self.bn1(self.conv1(x)))\n                out = self.bn2(self.conv2(out))\n                return F.relu(out + shortcut)\n            else:\n                return F.relu(shortcut)\n        else:\n            out = F.relu(self.bn1(self.conv1(x)))\n            out = self.bn2(self.conv2(out))\n            return F.relu(p * out + shortcut)"
       }
      }
     }

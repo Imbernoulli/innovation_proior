@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "nanoGPT/custom_pretrain.py",
-       "old_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — default: softmax attention\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        assert config.n_embd % config.n_head == 0\n        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)\n        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)\n        self.attn_dropout = nn.Dropout(config.dropout)\n        self.resid_dropout = nn.Dropout(config.dropout)\n        self.n_head = config.n_head\n        self.n_embd = config.n_embd\n        self.dropout = config.dropout\n        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')\n        if not self.flash:\n            self.register_buffer(\"bias\", torch.tril(torch.ones(config.block_size, config.block_size))\n                                        .view(1, 1, config.block_size, config.block_size))\n        self.use_pos_emb = True                      # softmax attention uses learned absolute positions\n\n    def forward(self, x):\n        B, T, C = x.size()\n        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)\n        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)\n        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)\n        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)\n        if self.flash:\n            y = torch.nn.functional.scaled_dot_product_attention(\n                q, k, v, attn_mask=None,\n                dropout_p=self.dropout if self.training else 0, is_causal=True)\n        else:\n            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))\n            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))\n            att = F.softmax(att, dim=-1)\n            att = self.attn_dropout(att)\n            y = att @ v\n        y = y.transpose(1, 2).contiguous().view(B, T, C)\n        y = self.resid_dropout(self.c_proj(y))\n        return y\n\n\n# EDITABLE region 2 of nanoGPT/custom_pretrain.py (lines 88-100) — default: pre-norm block\n",
-       "new_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — RetNet (multi-scale retention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import MultiScaleRetention\n        self.attn = MultiScaleRetention(\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=1.0,                 # d_k = d  (matched to softmax width)\n            expand_v=1.0,                 # d_v = d  (state d x d; no value widening)\n            use_output_gate=True,         # swish output gate = the restored nonlinearity\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # gamma^{n-m} decay + rotary phase encode position\n\n    def forward(self, x):\n        o, _, _ = self.attn(x)            # FLA returns (output, attn_weights, past_kv)\n        return o\n\n\n# EDITABLE region 2 of nanoGPT/custom_pretrain.py (lines 88-100) — standard pre-norm block (unchanged)\n"
+       "old_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — default: softmax attention\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        assert config.n_embd % config.n_head == 0\n        self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd, bias=config.bias)\n        self.c_proj = nn.Linear(config.n_embd, config.n_embd, bias=config.bias)\n        self.attn_dropout = nn.Dropout(config.dropout)\n        self.resid_dropout = nn.Dropout(config.dropout)\n        self.n_head = config.n_head\n        self.n_embd = config.n_embd\n        self.dropout = config.dropout\n        self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')\n        if not self.flash:\n            self.register_buffer(\"bias\", torch.tril(torch.ones(config.block_size, config.block_size))\n                                        .view(1, 1, config.block_size, config.block_size))\n        self.use_pos_emb = True                      # softmax attention uses learned absolute positions\n\n    def forward(self, x):\n        B, T, C = x.size()\n        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)\n        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)\n        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)\n        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)\n        if self.flash:\n            y = torch.nn.functional.scaled_dot_product_attention(\n                q, k, v, attn_mask=None,\n                dropout_p=self.dropout if self.training else 0, is_causal=True)\n        else:\n            att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))\n            att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float('-inf'))\n            att = F.softmax(att, dim=-1)\n            att = self.attn_dropout(att)\n            y = att @ v\n        y = y.transpose(1, 2).contiguous().view(B, T, C)\n        y = self.resid_dropout(self.c_proj(y))\n        return y\n\n\n# EDITABLE region 2 of nanoGPT/custom_pretrain.py (lines 88-100) — default: pre-norm block",
+       "new_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — RetNet (multi-scale retention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import MultiScaleRetention\n        self.attn = MultiScaleRetention(\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=1.0,                 # d_k = d  (matched to softmax width)\n            expand_v=1.0,                 # d_v = d  (state d x d; no value widening)\n            use_output_gate=True,         # swish output gate = the restored nonlinearity\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # gamma^{n-m} decay + rotary phase encode position\n\n    def forward(self, x):\n        o, _, _ = self.attn(x)            # FLA returns (output, attn_weights, past_kv)\n        return o\n\n\n# EDITABLE region 2 of nanoGPT/custom_pretrain.py (lines 88-100) — standard pre-norm block (unchanged)"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "nanoGPT/custom_pretrain.py",
-       "old_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — RetNet (multi-scale retention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import MultiScaleRetention\n        self.attn = MultiScaleRetention(\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=1.0,                 # d_k = d  (matched to softmax width)\n            expand_v=1.0,                 # d_v = d  (state d x d; no value widening)\n            use_output_gate=True,         # swish output gate = the restored nonlinearity\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # gamma^{n-m} decay + rotary phase encode position\n\n    def forward(self, x):\n        o, _, _ = self.attn(x)            # FLA returns (output, attn_weights, past_kv)\n",
-       "new_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — GLA (gated linear attention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import GatedLinearAttention\n        self.attn = GatedLinearAttention(\n            mode='chunk',\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=0.5,                 # d_k = d/2\n            expand_v=1.0,                 # d_v = d  (full-width state = memory capacity)\n            use_output_gate=True,         # swish output gate\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # cumulative data-dependent decay encodes relative position\n\n    @torch.compiler.disable\n    def _attn_forward(self, x):\n        return self.attn(x)\n\n    def forward(self, x):\n        o, _, _ = self._attn_forward(x)\n"
+       "old_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — RetNet (multi-scale retention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import MultiScaleRetention\n        self.attn = MultiScaleRetention(\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=1.0,                 # d_k = d  (matched to softmax width)\n            expand_v=1.0,                 # d_v = d  (state d x d; no value widening)\n            use_output_gate=True,         # swish output gate = the restored nonlinearity\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # gamma^{n-m} decay + rotary phase encode position\n\n    def forward(self, x):\n        o, _, _ = self.attn(x)            # FLA returns (output, attn_weights, past_kv)",
+       "new_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — GLA (gated linear attention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import GatedLinearAttention\n        self.attn = GatedLinearAttention(\n            mode='chunk',\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=0.5,                 # d_k = d/2\n            expand_v=1.0,                 # d_v = d  (full-width state = memory capacity)\n            use_output_gate=True,         # swish output gate\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # cumulative data-dependent decay encodes relative position\n\n    @torch.compiler.disable\n    def _attn_forward(self, x):\n        return self.attn(x)\n\n    def forward(self, x):\n        o, _, _ = self._attn_forward(x)"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "nanoGPT/custom_pretrain.py",
-       "old_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — GLA (gated linear attention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import GatedLinearAttention\n        self.attn = GatedLinearAttention(\n            mode='chunk',\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=0.5,                 # d_k = d/2\n            expand_v=1.0,                 # d_v = d  (full-width state = memory capacity)\n            use_output_gate=True,         # swish output gate\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # cumulative data-dependent decay encodes relative position\n\n    @torch.compiler.disable\n    def _attn_forward(self, x):\n        return self.attn(x)\n\n    def forward(self, x):\n        o, _, _ = self._attn_forward(x)\n",
-       "new_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — DeltaNet (delta-rule linear attention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import DeltaNet\n        self.attn = DeltaNet(\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            use_beta=True,                # learned writing strength beta_t (the delta rule)\n            use_short_conv=True,\n            conv_size=4,                  # depthwise short conv for local token comparison\n            qk_activation='silu',\n            qk_norm='l2',                 # L2-normalized keys -> transition is a projection at beta=1\n        )\n        self.use_pos_emb = False          # DeltaNet handles sequence ordering internally\n\n    def forward(self, x):\n        o, _, _ = self.attn(x)\n"
+       "old_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — GLA (gated linear attention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import GatedLinearAttention\n        self.attn = GatedLinearAttention(\n            mode='chunk',\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            expand_k=0.5,                 # d_k = d/2\n            expand_v=1.0,                 # d_v = d  (full-width state = memory capacity)\n            use_output_gate=True,         # swish output gate\n            gate_fn='swish',\n        )\n        self.use_pos_emb = False          # cumulative data-dependent decay encodes relative position\n\n    @torch.compiler.disable\n    def _attn_forward(self, x):\n        return self.attn(x)\n\n    def forward(self, x):\n        o, _, _ = self._attn_forward(x)",
+       "new_str": "# EDITABLE region 1 of nanoGPT/custom_pretrain.py (lines 33-70) — DeltaNet (delta-rule linear attention)\nclass CausalSelfAttention(nn.Module):\n    def __init__(self, config):\n        super().__init__()\n        from fla.layers import DeltaNet\n        self.attn = DeltaNet(\n            hidden_size=config.n_embd,\n            num_heads=config.n_head,\n            use_beta=True,                # learned writing strength beta_t (the delta rule)\n            use_short_conv=True,\n            conv_size=4,                  # depthwise short conv for local token comparison\n            qk_activation='silu',\n            qk_norm='l2',                 # L2-normalized keys -> transition is a projection at beta=1\n        )\n        self.use_pos_emb = False          # DeltaNet handles sequence ordering internally\n\n    def forward(self, x):\n        o, _, _ = self.attn(x)"
       }
      }
     }

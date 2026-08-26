@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "nanoGPT/custom_pretrain.py",
-       "old_str": "# EDITABLE region of nanoGPT/custom_pretrain.py (lines 191-201) — default fill: cosine\nimport math\n\ndef get_lr(it, warmup_iters, lr_decay_iters, learning_rate, min_lr):\n    \"\"\"Cosine learning rate schedule with linear warmup.\"\"\"\n    if it < warmup_iters:\n        return learning_rate * (it + 1) / (warmup_iters + 1)\n    if it > lr_decay_iters:\n        return min_lr\n    decay_ratio = (it - warmup_iters) / (lr_decay_iters - warmup_iters)\n    assert 0 <= decay_ratio <= 1\n    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))\n    return min_lr + coeff * (learning_rate - min_lr)\n",
-       "new_str": "def get_lr(it, warmup_iters, lr_decay_iters, learning_rate, min_lr):\n    \"\"\"Trapezoidal learning rate schedule: warmup, constant plateau, cooldown.\"\"\"\n    if it > lr_decay_iters:\n        return min_lr\n    # Warmup phase\n    if it < warmup_iters:\n        return learning_rate * (it + 1) / (warmup_iters + 1)\n    # Cooldown phase: last 40% of training\n    cooldown_start = int(lr_decay_iters * 0.6)\n    if it >= cooldown_start:\n        t = (it - cooldown_start) / (lr_decay_iters - cooldown_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - t)\n    # Constant plateau\n    return learning_rate\n"
+       "old_str": "# EDITABLE region of nanoGPT/custom_pretrain.py (lines 191-201) — default fill: cosine\nimport math\n\ndef get_lr(it, warmup_iters, lr_decay_iters, learning_rate, min_lr):\n    \"\"\"Cosine learning rate schedule with linear warmup.\"\"\"\n    if it < warmup_iters:\n        return learning_rate * (it + 1) / (warmup_iters + 1)\n    if it > lr_decay_iters:\n        return min_lr\n    decay_ratio = (it - warmup_iters) / (lr_decay_iters - warmup_iters)\n    assert 0 <= decay_ratio <= 1\n    coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))\n    return min_lr + coeff * (learning_rate - min_lr)",
+       "new_str": "def get_lr(it, warmup_iters, lr_decay_iters, learning_rate, min_lr):\n    \"\"\"Trapezoidal learning rate schedule: warmup, constant plateau, cooldown.\"\"\"\n    if it > lr_decay_iters:\n        return min_lr\n    # Warmup phase\n    if it < warmup_iters:\n        return learning_rate * (it + 1) / (warmup_iters + 1)\n    # Cooldown phase: last 40% of training\n    cooldown_start = int(lr_decay_iters * 0.6)\n    if it >= cooldown_start:\n        t = (it - cooldown_start) / (lr_decay_iters - cooldown_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - t)\n    # Constant plateau\n    return learning_rate"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "nanoGPT/custom_pretrain.py",
-       "old_str": "    # Cooldown phase: last 40% of training\n    cooldown_start = int(lr_decay_iters * 0.6)\n    if it >= cooldown_start:\n        t = (it - cooldown_start) / (lr_decay_iters - cooldown_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - t)\n    # Constant plateau\n",
-       "new_str": "    # Decay phase: last 20% of training\n    decay_start = int(lr_decay_iters * 0.8)\n    if it >= decay_start:\n        decay_ratio = (it - decay_start) / (lr_decay_iters - decay_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - decay_ratio)\n    # Stable phase: constant LR\n"
+       "old_str": "    # Cooldown phase: last 40% of training\n    cooldown_start = int(lr_decay_iters * 0.6)\n    if it >= cooldown_start:\n        t = (it - cooldown_start) / (lr_decay_iters - cooldown_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - t)\n    # Constant plateau",
+       "new_str": "    # Decay phase: last 20% of training\n    decay_start = int(lr_decay_iters * 0.8)\n    if it >= decay_start:\n        decay_ratio = (it - decay_start) / (lr_decay_iters - decay_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - decay_ratio)\n    # Stable phase: constant LR"
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "nanoGPT/custom_pretrain.py",
-       "old_str": "    \"\"\"Trapezoidal learning rate schedule: warmup, constant plateau, cooldown.\"\"\"\n    if it > lr_decay_iters:\n        return min_lr\n",
-       "new_str": "    \"\"\"WSD (Warmup-Stable-Decay) learning rate schedule.\"\"\"\n"
+       "old_str": "    \"\"\"Trapezoidal learning rate schedule: warmup, constant plateau, cooldown.\"\"\"\n    if it > lr_decay_iters:\n        return min_lr",
+       "new_str": "    \"\"\"WSD (Warmup-Stable-Decay) learning rate schedule.\"\"\""
       }
      }
     }
@@ -249,8 +249,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "nanoGPT/custom_pretrain.py",
-       "old_str": "    \"\"\"WSD (Warmup-Stable-Decay) learning rate schedule.\"\"\"\n    # Warmup phase\n    if it < warmup_iters:\n        return learning_rate * (it + 1) / (warmup_iters + 1)\n    # Decay phase: last 20% of training\n    decay_start = int(lr_decay_iters * 0.8)\n    if it >= decay_start:\n        decay_ratio = (it - decay_start) / (lr_decay_iters - decay_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - decay_ratio)\n    # Stable phase: constant LR\n",
-       "new_str": "    \"\"\"WSD with inverse-sqrt decay and extended warmup.\"\"\"\n    import math\n    # Extended warmup: 6% of training\n    effective_warmup = max(warmup_iters, int(lr_decay_iters * 0.06))\n    if it < effective_warmup:\n        return learning_rate * (it + 1) / (effective_warmup + 1)\n    # Decay phase: last 20% uses inverse-sqrt cooldown\n    decay_start = int(lr_decay_iters * 0.8)\n    if it >= decay_start:\n        decay_len = lr_decay_iters - decay_start\n        t = (it - decay_start) / decay_len\n        # Inverse-sqrt decay: gentler than linear, reaches min_lr at t=1\n        coeff = (1.0 / math.sqrt(1.0 + 9.0 * t) - 1.0 / math.sqrt(10.0)) / (1.0 - 1.0 / math.sqrt(10.0))\n        return min_lr + (learning_rate - min_lr) * coeff\n    # Stable phase\n"
+       "old_str": "    \"\"\"WSD (Warmup-Stable-Decay) learning rate schedule.\"\"\"\n    # Warmup phase\n    if it < warmup_iters:\n        return learning_rate * (it + 1) / (warmup_iters + 1)\n    # Decay phase: last 20% of training\n    decay_start = int(lr_decay_iters * 0.8)\n    if it >= decay_start:\n        decay_ratio = (it - decay_start) / (lr_decay_iters - decay_start)\n        return min_lr + (learning_rate - min_lr) * (1.0 - decay_ratio)\n    # Stable phase: constant LR",
+       "new_str": "    \"\"\"WSD with inverse-sqrt decay and extended warmup.\"\"\"\n    import math\n    # Extended warmup: 6% of training\n    effective_warmup = max(warmup_iters, int(lr_decay_iters * 0.06))\n    if it < effective_warmup:\n        return learning_rate * (it + 1) / (effective_warmup + 1)\n    # Decay phase: last 20% uses inverse-sqrt cooldown\n    decay_start = int(lr_decay_iters * 0.8)\n    if it >= decay_start:\n        decay_len = lr_decay_iters - decay_start\n        t = (it - decay_start) / decay_len\n        # Inverse-sqrt decay: gentler than linear, reaches min_lr at t=1\n        coeff = (1.0 / math.sqrt(1.0 + 9.0 * t) - 1.0 / math.sqrt(10.0)) / (1.0 - 1.0 / math.sqrt(10.0))\n        return min_lr + (learning_rate - min_lr) * coeff\n    # Stable phase"
       }
      }
     }

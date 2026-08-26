@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algo_online_bin_packing.py",
-       "old_str": "def get_valid_bin_indices(item, bins):\n    return np.nonzero((bins - item) >= 0)[0]\n\ndef online_binpack(items, bins, priority):\n    for item in items:                                  # items arrive one at a time\n        valid = get_valid_bin_indices(item, bins)       # bins that can still fit it\n        best = valid[np.argmax(priority(item, bins[valid]))]\n        bins[best] -= item                              # place, immediately & irrevocably\n    return bins\n\ndef num_bins_used(items, capacity, priority):\n    bins = np.array([capacity] * len(items), dtype=float)   # always a fresh bin available\n    bins = online_binpack(items, bins, priority)\n    return int((bins != capacity).sum())                    # count non-empty bins\n\ndef l1_bound(items, capacity):\n    return int(np.ceil(np.sum(items) / capacity))           # ceil(Σ items / C)\n\n# ---- EDITABLE: the priority function. Default = Best-Fit. ----\ndef priority(item, bins):\n    return -(bins - item)        # prefer the bin left with the least slack\n",
-       "new_str": "def priority(item, bins):\n    \"\"\"First-Fit: prefer the earliest (lowest-index) valid bin.\n\n    `bins` holds the remaining capacities of the bins that can currently fit the\n    item, in stable positional order. A strictly decreasing score over position\n    makes the earliest valid bin the argmax, i.e. 'first bin that fits'.\n    \"\"\"\n    return -np.arange(len(bins), dtype=float)\n"
+       "old_str": "def get_valid_bin_indices(item, bins):\n    return np.nonzero((bins - item) >= 0)[0]\n\ndef online_binpack(items, bins, priority):\n    for item in items:                                  # items arrive one at a time\n        valid = get_valid_bin_indices(item, bins)       # bins that can still fit it\n        best = valid[np.argmax(priority(item, bins[valid]))]\n        bins[best] -= item                              # place, immediately & irrevocably\n    return bins\n\ndef num_bins_used(items, capacity, priority):\n    bins = np.array([capacity] * len(items), dtype=float)   # always a fresh bin available\n    bins = online_binpack(items, bins, priority)\n    return int((bins != capacity).sum())                    # count non-empty bins\n\ndef l1_bound(items, capacity):\n    return int(np.ceil(np.sum(items) / capacity))           # ceil(Σ items / C)\n\n# ---- EDITABLE: the priority function. Default = Best-Fit. ----\ndef priority(item, bins):\n    return -(bins - item)        # prefer the bin left with the least slack",
+       "new_str": "def priority(item, bins):\n    \"\"\"First-Fit: prefer the earliest (lowest-index) valid bin.\n\n    `bins` holds the remaining capacities of the bins that can currently fit the\n    item, in stable positional order. A strictly decreasing score over position\n    makes the earliest valid bin the argmax, i.e. 'first bin that fits'.\n    \"\"\"\n    return -np.arange(len(bins), dtype=float)"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algo_online_bin_packing.py",
-       "old_str": "    \"\"\"First-Fit: prefer the earliest (lowest-index) valid bin.\n\n    `bins` holds the remaining capacities of the bins that can currently fit the\n    item, in stable positional order. A strictly decreasing score over position\n    makes the earliest valid bin the argmax, i.e. 'first bin that fits'.\n    \"\"\"\n    return -np.arange(len(bins), dtype=float)\n",
-       "new_str": "    \"\"\"Best-Fit: prefer the valid bin left with the least slack after placement.\n\n    `bins` are remaining capacities of bins that can fit the item (so bins - item >= 0).\n    Maximising -(bins - item) selects the tightest fit; a still-full bin has the\n    largest slack and the most negative score, so a new bin opens only as a last resort.\n    \"\"\"\n    return -(bins - item)\n"
+       "old_str": "    \"\"\"First-Fit: prefer the earliest (lowest-index) valid bin.\n\n    `bins` holds the remaining capacities of the bins that can currently fit the\n    item, in stable positional order. A strictly decreasing score over position\n    makes the earliest valid bin the argmax, i.e. 'first bin that fits'.\n    \"\"\"\n    return -np.arange(len(bins), dtype=float)",
+       "new_str": "    \"\"\"Best-Fit: prefer the valid bin left with the least slack after placement.\n\n    `bins` are remaining capacities of bins that can fit the item (so bins - item >= 0).\n    Maximising -(bins - item) selects the tightest fit; a still-full bin has the\n    largest slack and the most negative score, so a new bin opens only as a last resort.\n    \"\"\"\n    return -(bins - item)"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algo_online_bin_packing.py",
-       "old_str": "    \"\"\"Best-Fit: prefer the valid bin left with the least slack after placement.\n\n    `bins` are remaining capacities of bins that can fit the item (so bins - item >= 0).\n    Maximising -(bins - item) selects the tightest fit; a still-full bin has the\n    largest slack and the most negative score, so a new bin opens only as a last resort.\n    \"\"\"\n    return -(bins - item)\n",
-       "new_str": "    \"\"\"Relational score: squared distance below the emptiest valid bin, item-weighted,\n    then differenced across neighbouring bins so each bin is judged in context.\n\n    `bins` are remaining capacities of bins that can fit the item (bins - item >= 0).\n    \"\"\"\n    max_bin_cap = max(bins)\n    score = (bins - max_bin_cap) ** 2 / item     # distance below the emptiest bin, item-weighted\n    score[bins > item] = -score[bins > item]      # respect feasibility on the fitting bins\n    score[1:] -= score[:-1]                        # couple each bin to its neighbour (differencing)\n    return score\n"
+       "old_str": "    \"\"\"Best-Fit: prefer the valid bin left with the least slack after placement.\n\n    `bins` are remaining capacities of bins that can fit the item (so bins - item >= 0).\n    Maximising -(bins - item) selects the tightest fit; a still-full bin has the\n    largest slack and the most negative score, so a new bin opens only as a last resort.\n    \"\"\"\n    return -(bins - item)",
+       "new_str": "    \"\"\"Relational score: squared distance below the emptiest valid bin, item-weighted,\n    then differenced across neighbouring bins so each bin is judged in context.\n\n    `bins` are remaining capacities of bins that can fit the item (bins - item >= 0).\n    \"\"\"\n    max_bin_cap = max(bins)\n    score = (bins - max_bin_cap) ** 2 / item     # distance below the emptiest bin, item-weighted\n    score[bins > item] = -score[bins > item]      # respect feasibility on the fitting bins\n    score[1:] -= score[:-1]                        # couple each bin to its neighbour (differencing)\n    return score"
       }
      }
     }
@@ -267,8 +267,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_algo_online_bin_packing.py",
-       "old_str": "    \"\"\"Relational score: squared distance below the emptiest valid bin, item-weighted,\n    then differenced across neighbouring bins so each bin is judged in context.\n\n    `bins` are remaining capacities of bins that can fit the item (bins - item >= 0).\n    \"\"\"\n    max_bin_cap = max(bins)\n    score = (bins - max_bin_cap) ** 2 / item     # distance below the emptiest bin, item-weighted\n    score[bins > item] = -score[bins > item]      # respect feasibility on the fitting bins\n    score[1:] -= score[:-1]                        # couple each bin to its neighbour (differencing)\n",
-       "new_str": "    \"\"\"FunSearch-discovered online bin-packing heuristic (Weibull dataset), verbatim from\n    google-deepmind/funsearch, bin_packing/bin_packing.ipynb.\n\n    bins: remaining capacities of bins that can fit `item` (bins - item >= 0).\n    Returns a priority per bin; the item is placed in the argmax bin.\n    \"\"\"\n    max_bin_cap = max(bins)\n    score = (bins - max_bin_cap) ** 2 / item + bins ** 2 / (item ** 2)\n    score += bins ** 2 / item ** 3\n    score[bins > item] = -score[bins > item]\n    score[1:] -= score[:-1]\n"
+       "old_str": "    \"\"\"Relational score: squared distance below the emptiest valid bin, item-weighted,\n    then differenced across neighbouring bins so each bin is judged in context.\n\n    `bins` are remaining capacities of bins that can fit the item (bins - item >= 0).\n    \"\"\"\n    max_bin_cap = max(bins)\n    score = (bins - max_bin_cap) ** 2 / item     # distance below the emptiest bin, item-weighted\n    score[bins > item] = -score[bins > item]      # respect feasibility on the fitting bins\n    score[1:] -= score[:-1]                        # couple each bin to its neighbour (differencing)",
+       "new_str": "    \"\"\"FunSearch-discovered online bin-packing heuristic (Weibull dataset), verbatim from\n    google-deepmind/funsearch, bin_packing/bin_packing.ipynb.\n\n    bins: remaining capacities of bins that can fit `item` (bins - item >= 0).\n    Returns a priority per bin; the item is placed in the argmax bin.\n    \"\"\"\n    max_bin_cap = max(bins)\n    score = (bins - max_bin_cap) ** 2 / item + bins ** 2 / (item ** 2)\n    score += bins ** 2 / item ** 3\n    score[bins > item] = -score[bins > item]\n    score[1:] -= score[:-1]"
       }
      }
     }

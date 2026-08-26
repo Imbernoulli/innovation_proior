@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_init.py",
-       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.normal_(m.weight, 0, 0.01)\n            if m.bias is not None:\n",
-       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:\n"
+       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.normal_(m.weight, 0, 0.01)\n            if m.bias is not None:",
+       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:"
       }
      }
     }
@@ -167,8 +167,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_init.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\ndef initialize_weights(model, config):\n    \"\"\"Initialize all weights in the vision model.\n\n    config: {'arch': str, 'num_classes': int, 'depth': int}\n    Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.normal_(m.weight, 0, 0.01)\n",
-       "new_str": "def initialize_weights(model, config):\n    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_init.py (lines 228-261) — default fill\ndef initialize_weights(model, config):\n    \"\"\"Initialize all weights in the vision model.\n\n    config: {'arch': str, 'num_classes': int, 'depth': int}\n    Layer types: nn.Conv2d (bias=False under BN), nn.BatchNorm2d, nn.Linear.\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.normal_(m.weight, 0, 0.01)",
+       "new_str": "def initialize_weights(model, config):\n    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)"
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_init.py",
-       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:\n",
-       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')\n            if m.bias is not None:\n"
+       "old_str": "        elif isinstance(m, nn.Linear):\n            nn.init.orthogonal_(m.weight, gain=gain)\n            if m.bias is not None:",
+       "new_str": "        elif isinstance(m, nn.Linear):\n            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')\n            if m.bias is not None:"
       }
      }
     }
@@ -231,8 +231,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_init.py",
-       "old_str": "    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)\n",
-       "new_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')\n"
+       "old_str": "    \"\"\"Orthogonal initialization.\n\n    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).\n    BatchNorm2d: weight=1, bias=0.\n    \"\"\"\n    gain = nn.init.calculate_gain('relu')\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.orthogonal_(m.weight, gain=gain)",
+       "new_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d):\n            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')"
       }
      }
     }
@@ -272,8 +272,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_init.py",
-       "old_str": "                nn.init.constant_(m.bias, 0)\n",
-       "new_str": "                nn.init.constant_(m.bias, 0)\n\n    # Phase 2: Fixup-inspired residual branch scaling for ResNets\n    if is_resnet:\n        n_blocks = sum(1 for m in model.modules() if isinstance(m, BasicBlock))\n        fixup_scale = n_blocks ** (-0.5)\n        for m in model.modules():\n            if isinstance(m, BasicBlock):\n                # Scale the last conv (conv2) in each residual block\n                m.conv2.weight.data.mul_(fixup_scale)\n                # Zero-init the last BN so residual branch starts near identity\n                nn.init.constant_(m.bn2.weight, 0)\n"
+       "old_str": "                nn.init.constant_(m.bias, 0)",
+       "new_str": "                nn.init.constant_(m.bias, 0)\n\n    # Phase 2: Fixup-inspired residual branch scaling for ResNets\n    if is_resnet:\n        n_blocks = sum(1 for m in model.modules() if isinstance(m, BasicBlock))\n        fixup_scale = n_blocks ** (-0.5)\n        for m in model.modules():\n            if isinstance(m, BasicBlock):\n                # Scale the last conv (conv2) in each residual block\n                m.conv2.weight.data.mul_(fixup_scale)\n                # Zero-init the last BN so residual branch starts near identity\n                nn.init.constant_(m.bn2.weight, 0)"
       }
      }
     }
@@ -295,8 +295,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_init.py",
-       "old_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"\n",
-       "new_str": "    \"\"\"Fixup-inspired residual scaling with zero-gamma BatchNorm.\n\n    For ResNets: Kaiming normal for all Conv2d, then scale the last conv in\n    each residual block by n_blocks^(-0.5) to control variance accumulation.\n    Zero-initialize the last BN in each block (Goyal et al., 2017).\n    For VGG: Kaiming normal (no residual branches to scale).\n    Linear: small normal init with zero bias.\n    \"\"\"\n    arch = config['arch']\n    is_resnet = arch.startswith('resnet')\n\n    # Phase 1: standard Kaiming init for all layers\n"
+       "old_str": "    \"\"\"Kaiming/He normal initialization (fan_out, ReLU).\n\n    Conv2d: N(0, sqrt(2/fan_out)) — preserves forward-pass variance with ReLU.\n    BatchNorm2d: weight=1, bias=0.\n    Linear: N(0, sqrt(2/fan_in)).\n    \"\"\"",
+       "new_str": "    \"\"\"Fixup-inspired residual scaling with zero-gamma BatchNorm.\n\n    For ResNets: Kaiming normal for all Conv2d, then scale the last conv in\n    each residual block by n_blocks^(-0.5) to control variance accumulation.\n    Zero-initialize the last BN in each block (Goyal et al., 2017).\n    For VGG: Kaiming normal (no residual branches to scale).\n    Linear: small normal init with zero bias.\n    \"\"\"\n    arch = config['arch']\n    is_resnet = arch.startswith('resnet')\n\n    # Phase 1: standard Kaiming init for all layers"
       }
      }
     }

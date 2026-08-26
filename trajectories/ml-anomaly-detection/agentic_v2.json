@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/custom_anomaly.py",
-       "old_str": "# EDITABLE region of scikit-learn/custom_anomaly.py (lines 160-212) — default fill\nclass CustomAnomalyDetector:\n    \"\"\"Custom unsupervised anomaly detection algorithm.\n\n    fit(X): train on unlabeled, standardized X (n_samples, n_features).\n    decision_function(X): return anomaly scores (n_samples,), higher = more anomalous.\n    \"\"\"\n\n    def __init__(self):\n        # Default: simple Isolation Forest wrapper\n        from pyod.models.iforest import IForest\n\n        self.model = IForest(random_state=SEED)\n\n    def fit(self, X):\n        self.model.fit(X)\n        return self\n\n    def decision_function(self, X):\n        return self.model.decision_function(X)\n",
-       "new_str": "class CustomAnomalyDetector:\n    \"\"\"Local Outlier Factor anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match the preprocessing\n    used by ADBench (data_generator.py: MinMaxScaler().fit(X_train)).\n    LOF is density-based and extremely sensitive to feature scaling,\n    so this is required to reproduce the Table D4 numbers.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.lof import LOF\n\n        # PyOD defaults (matches ADBench with no hyperparameter tuning):\n        # n_neighbors=20, algorithm='auto', metric='minkowski', p=2,\n        # contamination=0.1.\n        self.model = LOF()\n        self._scaler = None\n\n    def fit(self, X):\n        from sklearn.preprocessing import MinMaxScaler\n        self._scaler = MinMaxScaler()\n        Xs = self._scaler.fit_transform(X)\n        self.model.fit(Xs)\n        return self\n\n    def decision_function(self, X):\n        Xs = self._scaler.transform(X)\n        return self.model.decision_function(Xs)\n"
+       "old_str": "# EDITABLE region of scikit-learn/custom_anomaly.py (lines 160-212) — default fill\nclass CustomAnomalyDetector:\n    \"\"\"Custom unsupervised anomaly detection algorithm.\n\n    fit(X): train on unlabeled, standardized X (n_samples, n_features).\n    decision_function(X): return anomaly scores (n_samples,), higher = more anomalous.\n    \"\"\"\n\n    def __init__(self):\n        # Default: simple Isolation Forest wrapper\n        from pyod.models.iforest import IForest\n\n        self.model = IForest(random_state=SEED)\n\n    def fit(self, X):\n        self.model.fit(X)\n        return self\n\n    def decision_function(self, X):\n        return self.model.decision_function(X)",
+       "new_str": "class CustomAnomalyDetector:\n    \"\"\"Local Outlier Factor anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match the preprocessing\n    used by ADBench (data_generator.py: MinMaxScaler().fit(X_train)).\n    LOF is density-based and extremely sensitive to feature scaling,\n    so this is required to reproduce the Table D4 numbers.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.lof import LOF\n\n        # PyOD defaults (matches ADBench with no hyperparameter tuning):\n        # n_neighbors=20, algorithm='auto', metric='minkowski', p=2,\n        # contamination=0.1.\n        self.model = LOF()\n        self._scaler = None\n\n    def fit(self, X):\n        from sklearn.preprocessing import MinMaxScaler\n        self._scaler = MinMaxScaler()\n        Xs = self._scaler.fit_transform(X)\n        self.model.fit(Xs)\n        return self\n\n    def decision_function(self, X):\n        Xs = self._scaler.transform(X)\n        return self.model.decision_function(Xs)"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/custom_anomaly.py",
-       "old_str": "        from pyod.models.lof import LOF\n\n        # PyOD defaults (matches ADBench with no hyperparameter tuning):\n        # n_neighbors=20, algorithm='auto', metric='minkowski', p=2,\n        # contamination=0.1.\n        self.model = LOF()\n",
-       "new_str": "        from pyod.models.ocsvm import OCSVM\n\n        # PyOD default: kernel='rbf', nu=0.5, gamma='auto'.\n        self.model = OCSVM()\n"
+       "old_str": "        from pyod.models.lof import LOF\n\n        # PyOD defaults (matches ADBench with no hyperparameter tuning):\n        # n_neighbors=20, algorithm='auto', metric='minkowski', p=2,\n        # contamination=0.1.\n        self.model = LOF()",
+       "new_str": "        from pyod.models.ocsvm import OCSVM\n\n        # PyOD default: kernel='rbf', nu=0.5, gamma='auto'.\n        self.model = OCSVM()"
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/custom_anomaly.py",
-       "old_str": "    \"\"\"Local Outlier Factor anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match the preprocessing\n    used by ADBench (data_generator.py: MinMaxScaler().fit(X_train)).\n    LOF is density-based and extremely sensitive to feature scaling,\n    so this is required to reproduce the Table D4 numbers.\n",
-       "new_str": "    \"\"\"One-Class SVM anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match ADBench's\n    preprocessing. Uses PyOD defaults: kernel='rbf', nu=0.5,\n    gamma='auto' (= 1/n_features).\n"
+       "old_str": "    \"\"\"Local Outlier Factor anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match the preprocessing\n    used by ADBench (data_generator.py: MinMaxScaler().fit(X_train)).\n    LOF is density-based and extremely sensitive to feature scaling,\n    so this is required to reproduce the Table D4 numbers.",
+       "new_str": "    \"\"\"One-Class SVM anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match ADBench's\n    preprocessing. Uses PyOD defaults: kernel='rbf', nu=0.5,\n    gamma='auto' (= 1/n_features)."
       }
      }
     }
@@ -249,8 +249,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/custom_anomaly.py",
-       "old_str": "    \"\"\"One-Class SVM anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match ADBench's\n    preprocessing. Uses PyOD defaults: kernel='rbf', nu=0.5,\n    gamma='auto' (= 1/n_features).\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.ocsvm import OCSVM\n\n        # PyOD default: kernel='rbf', nu=0.5, gamma='auto'.\n        self.model = OCSVM()\n        self._scaler = None\n\n    def fit(self, X):\n        from sklearn.preprocessing import MinMaxScaler\n        self._scaler = MinMaxScaler()\n        Xs = self._scaler.fit_transform(X)\n        self.model.fit(Xs)\n        return self\n\n    def decision_function(self, X):\n        Xs = self._scaler.transform(X)\n        return self.model.decision_function(Xs)\n",
-       "new_str": "    \"\"\"COPOD: Copula-Based Outlier Detection.\n\n    Parameter-free method using empirical copula functions to model\n    the joint tail probability of observations across features.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.copod import COPOD\n\n        self.model = COPOD(contamination=0.1)\n\n    def fit(self, X):\n        self.model.fit(X)\n        return self\n\n    def decision_function(self, X):\n        return self.model.decision_function(X)\n"
+       "old_str": "    \"\"\"One-Class SVM anomaly detector (ADBench protocol).\n\n    Applies MinMax normalization internally to match ADBench's\n    preprocessing. Uses PyOD defaults: kernel='rbf', nu=0.5,\n    gamma='auto' (= 1/n_features).\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.ocsvm import OCSVM\n\n        # PyOD default: kernel='rbf', nu=0.5, gamma='auto'.\n        self.model = OCSVM()\n        self._scaler = None\n\n    def fit(self, X):\n        from sklearn.preprocessing import MinMaxScaler\n        self._scaler = MinMaxScaler()\n        Xs = self._scaler.fit_transform(X)\n        self.model.fit(Xs)\n        return self\n\n    def decision_function(self, X):\n        Xs = self._scaler.transform(X)\n        return self.model.decision_function(Xs)",
+       "new_str": "    \"\"\"COPOD: Copula-Based Outlier Detection.\n\n    Parameter-free method using empirical copula functions to model\n    the joint tail probability of observations across features.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.copod import COPOD\n\n        self.model = COPOD(contamination=0.1)\n\n    def fit(self, X):\n        self.model.fit(X)\n        return self\n\n    def decision_function(self, X):\n        return self.model.decision_function(X)"
       }
      }
     }
@@ -290,8 +290,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/custom_anomaly.py",
-       "old_str": "    \"\"\"COPOD: Copula-Based Outlier Detection.\n\n    Parameter-free method using empirical copula functions to model\n    the joint tail probability of observations across features.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.copod import COPOD\n\n        self.model = COPOD(contamination=0.1)\n",
-       "new_str": "    \"\"\"ECOD anomaly detector (PyOD default, matches ADBench).\"\"\"\n\n    def __init__(self):\n        from pyod.models.ecod import ECOD\n\n        self.model = ECOD()\n"
+       "old_str": "    \"\"\"COPOD: Copula-Based Outlier Detection.\n\n    Parameter-free method using empirical copula functions to model\n    the joint tail probability of observations across features.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.copod import COPOD\n\n        self.model = COPOD(contamination=0.1)",
+       "new_str": "    \"\"\"ECOD anomaly detector (PyOD default, matches ADBench).\"\"\"\n\n    def __init__(self):\n        from pyod.models.ecod import ECOD\n\n        self.model = ECOD()"
       }
      }
     }
@@ -331,8 +331,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/custom_anomaly.py",
-       "old_str": "    \"\"\"ECOD anomaly detector (PyOD default, matches ADBench).\"\"\"\n\n    def __init__(self):\n        from pyod.models.ecod import ECOD\n\n        self.model = ECOD()\n",
-       "new_str": "    \"\"\"Isolation Forest anomaly detector.\n\n    Ensemble of random isolation trees. Anomaly score is based on the\n    average path length to isolate each sample.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.iforest import IForest\n\n        self.model = IForest(\n            n_estimators=100,\n            max_samples=\"auto\",\n            contamination=0.1,\n            random_state=SEED,\n        )\n"
+       "old_str": "    \"\"\"ECOD anomaly detector (PyOD default, matches ADBench).\"\"\"\n\n    def __init__(self):\n        from pyod.models.ecod import ECOD\n\n        self.model = ECOD()",
+       "new_str": "    \"\"\"Isolation Forest anomaly detector.\n\n    Ensemble of random isolation trees. Anomaly score is based on the\n    average path length to isolate each sample.\n    \"\"\"\n\n    def __init__(self):\n        from pyod.models.iforest import IForest\n\n        self.model = IForest(\n            n_estimators=100,\n            max_samples=\"auto\",\n            contamination=0.1,\n            random_state=SEED,\n        )"
       }
      }
     }

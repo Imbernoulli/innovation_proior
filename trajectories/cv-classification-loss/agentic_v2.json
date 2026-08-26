@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_loss.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_loss.py (lines 246-266) — default fill\ndef compute_loss(logits, targets, config):\n    \"\"\"Compute classification loss.\n\n    Args:\n        logits: [B, C] raw model output (pre-softmax)\n        targets: [B] integer class labels (0 to C-1)\n        config: dict with keys num_classes (int), epoch (int, 0-indexed),\n                total_epochs (int)\n    Returns:\n        scalar loss tensor (differentiable)\n    \"\"\"\n    return F.cross_entropy(logits, targets)\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 1: focal loss (gamma=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"Focal Loss (gamma=2.0): modulate CE by (1 - p_t)^gamma to focus on hard\n    examples, reducing the relative loss on well-classified ones.\"\"\"\n    ce = F.cross_entropy(logits, targets, reduction='none')   # -log(p_t), [B]\n    pt = torch.exp(-ce)                                        # p_t = exp(-CE), [B]\n    return ((1 - pt) ** 2.0 * ce).mean()                      # (1 - p_t)^2 * CE\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_loss.py (lines 246-266) — default fill\ndef compute_loss(logits, targets, config):\n    \"\"\"Compute classification loss.\n\n    Args:\n        logits: [B, C] raw model output (pre-softmax)\n        targets: [B] integer class labels (0 to C-1)\n        config: dict with keys num_classes (int), epoch (int, 0-indexed),\n                total_epochs (int)\n    Returns:\n        scalar loss tensor (differentiable)\n    \"\"\"\n    return F.cross_entropy(logits, targets)",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 1: focal loss (gamma=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"Focal Loss (gamma=2.0): modulate CE by (1 - p_t)^gamma to focus on hard\n    examples, reducing the relative loss on well-classified ones.\"\"\"\n    ce = F.cross_entropy(logits, targets, reduction='none')   # -log(p_t), [B]\n    pt = torch.exp(-ce)                                        # p_t = exp(-CE), [B]\n    return ((1 - pt) ** 2.0 * ce).mean()                      # (1 - p_t)^2 * CE"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_loss.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 1: focal loss (gamma=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"Focal Loss (gamma=2.0): modulate CE by (1 - p_t)^gamma to focus on hard\n    examples, reducing the relative loss on well-classified ones.\"\"\"\n    ce = F.cross_entropy(logits, targets, reduction='none')   # -log(p_t), [B]\n    pt = torch.exp(-ce)                                        # p_t = exp(-CE), [B]\n    return ((1 - pt) ** 2.0 * ce).mean()                      # (1 - p_t)^2 * CE\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 2: PolyLoss Poly-1 (eps=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"PolyLoss Poly-1: cross-entropy plus a leading-polynomial correction,\n    L = -log(p_t) + eps * (1 - p_t), with eps = 2.0. p_t is the softmax\n    probability at the true class.\"\"\"\n    ce = F.cross_entropy(logits, targets)                                   # -log(p_t)\n    pt = F.softmax(logits, dim=-1).gather(1, targets.unsqueeze(1)).squeeze()  # p_t\n    return ce + 2.0 * (1 - pt).mean()                                       # + eps*(1 - p_t)\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 1: focal loss (gamma=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"Focal Loss (gamma=2.0): modulate CE by (1 - p_t)^gamma to focus on hard\n    examples, reducing the relative loss on well-classified ones.\"\"\"\n    ce = F.cross_entropy(logits, targets, reduction='none')   # -log(p_t), [B]\n    pt = torch.exp(-ce)                                        # p_t = exp(-CE), [B]\n    return ((1 - pt) ** 2.0 * ce).mean()                      # (1 - p_t)^2 * CE",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 2: PolyLoss Poly-1 (eps=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"PolyLoss Poly-1: cross-entropy plus a leading-polynomial correction,\n    L = -log(p_t) + eps * (1 - p_t), with eps = 2.0. p_t is the softmax\n    probability at the true class.\"\"\"\n    ce = F.cross_entropy(logits, targets)                                   # -log(p_t)\n    pt = F.softmax(logits, dim=-1).gather(1, targets.unsqueeze(1)).squeeze()  # p_t\n    return ce + 2.0 * (1 - pt).mean()                                       # + eps*(1 - p_t)"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_loss.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 2: PolyLoss Poly-1 (eps=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"PolyLoss Poly-1: cross-entropy plus a leading-polynomial correction,\n    L = -log(p_t) + eps * (1 - p_t), with eps = 2.0. p_t is the softmax\n    probability at the true class.\"\"\"\n    ce = F.cross_entropy(logits, targets)                                   # -log(p_t)\n    pt = F.softmax(logits, dim=-1).gather(1, targets.unsqueeze(1)).squeeze()  # p_t\n    return ce + 2.0 * (1 - pt).mean()                                       # + eps*(1 - p_t)\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 3: label smoothing (eps=0.1)\ndef compute_loss(logits, targets, config):\n    \"\"\"Label-smoothing cross-entropy: soften the one-hot target to\n    (1 - eps)*one_hot + eps/C with eps = 0.1, preventing the true-vs-rest logit\n    gap from running to infinity and curbing overconfidence.\"\"\"\n    return F.cross_entropy(logits, targets, label_smoothing=0.1)\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 2: PolyLoss Poly-1 (eps=2.0)\ndef compute_loss(logits, targets, config):\n    \"\"\"PolyLoss Poly-1: cross-entropy plus a leading-polynomial correction,\n    L = -log(p_t) + eps * (1 - p_t), with eps = 2.0. p_t is the softmax\n    probability at the true class.\"\"\"\n    ce = F.cross_entropy(logits, targets)                                   # -log(p_t)\n    pt = F.softmax(logits, dim=-1).gather(1, targets.unsqueeze(1)).squeeze()  # p_t\n    return ce + 2.0 * (1 - pt).mean()                                       # + eps*(1 - p_t)",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_loss.py — step 3: label smoothing (eps=0.1)\ndef compute_loss(logits, targets, config):\n    \"\"\"Label-smoothing cross-entropy: soften the one-hot target to\n    (1 - eps)*one_hot + eps/C with eps = 0.1, preventing the true-vs-rest logit\n    gap from running to infinity and curbing overconfidence.\"\"\"\n    return F.cross_entropy(logits, targets, label_smoothing=0.1)"
       }
      }
     }

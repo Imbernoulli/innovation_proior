@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/mix_trainer.py",
-       "old_str": "# EDITABLE region of mix_trainer.py — default fill (never switch; pure on-policy)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return 0, 0, 0\n",
-       "new_str": "# EDITABLE region of mix_trainer.py — step 1: pure SFT (drop on-policy for every question)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return self.config.actor_rollout_ref.rollout.n_verify, 0, 1\n"
+       "old_str": "# EDITABLE region of mix_trainer.py — default fill (never switch; pure on-policy)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return 0, 0, 0",
+       "new_str": "# EDITABLE region of mix_trainer.py — step 1: pure SFT (drop on-policy for every question)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return self.config.actor_rollout_ref.rollout.n_verify, 0, 1"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/mix_trainer.py",
-       "old_str": "# EDITABLE region of mix_trainer.py — step 1: pure SFT (drop on-policy for every question)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return self.config.actor_rollout_ref.rollout.n_verify, 0, 1\n",
-       "new_str": "# EDITABLE region of mix_trainer.py — step 2: HPT per-question switch\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        if self.config.trainer.unify_strategy == 'switch':\n            on_add_num = 0\n            if on_solve_num <= self.config.trainer.switch_gate:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = 1\n            elif on_solve_num <= self.config.trainer.switch_gate_off:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = -1\n            else:\n                on_remove_num = 0\n                off_add_num = 0\n\n            return on_remove_num, on_add_num, off_add_num\n\n        if self.config.trainer.unify_strategy == 'soft':\n            on_remove_num = 0\n            on_add_num = 0\n            off_add_num = 1\n\n            return on_remove_num, on_add_num, off_add_num\n"
+       "old_str": "# EDITABLE region of mix_trainer.py — step 1: pure SFT (drop on-policy for every question)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return self.config.actor_rollout_ref.rollout.n_verify, 0, 1",
+       "new_str": "# EDITABLE region of mix_trainer.py — step 2: HPT per-question switch\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        if self.config.trainer.unify_strategy == 'switch':\n            on_add_num = 0\n            if on_solve_num <= self.config.trainer.switch_gate:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = 1\n            elif on_solve_num <= self.config.trainer.switch_gate_off:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = -1\n            else:\n                on_remove_num = 0\n                off_add_num = 0\n\n            return on_remove_num, on_add_num, off_add_num\n\n        if self.config.trainer.unify_strategy == 'soft':\n            on_remove_num = 0\n            on_add_num = 0\n            off_add_num = 1\n\n            return on_remove_num, on_add_num, off_add_num"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/mix_trainer.py",
-       "old_str": "# EDITABLE region of mix_trainer.py — step 2: HPT per-question switch\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        if self.config.trainer.unify_strategy == 'switch':\n            on_add_num = 0\n            if on_solve_num <= self.config.trainer.switch_gate:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = 1\n            elif on_solve_num <= self.config.trainer.switch_gate_off:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = -1\n            else:\n                on_remove_num = 0\n                off_add_num = 0\n\n            return on_remove_num, on_add_num, off_add_num\n\n        if self.config.trainer.unify_strategy == 'soft':\n            on_remove_num = 0\n            on_add_num = 0\n            off_add_num = 1\n\n            return on_remove_num, on_add_num, off_add_num\n",
-       "new_str": "# EDITABLE region of mix_trainer.py — step 3: pure GRPO (never switch)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return 0, 0, 0\n"
+       "old_str": "# EDITABLE region of mix_trainer.py — step 2: HPT per-question switch\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        if self.config.trainer.unify_strategy == 'switch':\n            on_add_num = 0\n            if on_solve_num <= self.config.trainer.switch_gate:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = 1\n            elif on_solve_num <= self.config.trainer.switch_gate_off:\n                on_remove_num = self.config.actor_rollout_ref.rollout.n_verify\n                off_add_num = -1\n            else:\n                on_remove_num = 0\n                off_add_num = 0\n\n            return on_remove_num, on_add_num, off_add_num\n\n        if self.config.trainer.unify_strategy == 'soft':\n            on_remove_num = 0\n            on_add_num = 0\n            off_add_num = 1\n\n            return on_remove_num, on_add_num, off_add_num",
+       "new_str": "# EDITABLE region of mix_trainer.py — step 3: pure GRPO (never switch)\n    def select_on_off_ada_balance(self, on_solve_num: int):\n        del on_solve_num\n        return 0, 0, 0"
       }
      }
     }

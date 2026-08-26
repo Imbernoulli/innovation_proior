@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_activation.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- default fill (ReLU)\nclass CustomActivation(nn.Module):\n    \"\"\"Custom activation function. Drop-in replacement for ReLU.\n\n    Input/Output: tensor of any shape, element-wise operation.\n\n    Design considerations:\n        - Monotonicity vs non-monotonicity tradeoffs\n        - Smoothness (differentiability everywhere vs piecewise)\n        - Negative-domain behavior (zero, linear, bounded)\n        - Computational cost (simple ops vs learned parameters)\n        - Interaction with BatchNorm and residual connections\n    \"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x):\n        return F.relu(x)  # default: ReLU\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 1: SiLU\nclass CustomActivation(nn.Module):\n    \"\"\"SiLU/Swish activation function.\n\n    SiLU(x) = x * sigmoid(x).\n    Self-gated activation discovered via automated search.\n    \"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x):\n        return F.silu(x)\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- default fill (ReLU)\nclass CustomActivation(nn.Module):\n    \"\"\"Custom activation function. Drop-in replacement for ReLU.\n\n    Input/Output: tensor of any shape, element-wise operation.\n\n    Design considerations:\n        - Monotonicity vs non-monotonicity tradeoffs\n        - Smoothness (differentiability everywhere vs piecewise)\n        - Negative-domain behavior (zero, linear, bounded)\n        - Computational cost (simple ops vs learned parameters)\n        - Interaction with BatchNorm and residual connections\n    \"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x):\n        return F.relu(x)  # default: ReLU",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 1: SiLU\nclass CustomActivation(nn.Module):\n    \"\"\"SiLU/Swish activation function.\n\n    SiLU(x) = x * sigmoid(x).\n    Self-gated activation discovered via automated search.\n    \"\"\"\n\n    def __init__(self):\n        super().__init__()\n\n    def forward(self, x):\n        return F.silu(x)"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_activation.py",
-       "old_str": "        return F.silu(x)\n",
-       "new_str": "        return x * torch.tanh(F.softplus(x))\n"
+       "old_str": "        return F.silu(x)",
+       "new_str": "        return x * torch.tanh(F.softplus(x))"
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_activation.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 1: SiLU\nclass CustomActivation(nn.Module):\n    \"\"\"SiLU/Swish activation function.\n\n    SiLU(x) = x * sigmoid(x).\n    Self-gated activation discovered via automated search.\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 2: Mish\nclass CustomActivation(nn.Module):\n    \"\"\"Mish activation function.\n\n    Mish(x) = x * tanh(softplus(x)).\n    Self-regularized non-monotonic activation with smooth gradients.\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 1: SiLU\nclass CustomActivation(nn.Module):\n    \"\"\"SiLU/Swish activation function.\n\n    SiLU(x) = x * sigmoid(x).\n    Self-gated activation discovered via automated search.",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 2: Mish\nclass CustomActivation(nn.Module):\n    \"\"\"Mish activation function.\n\n    Mish(x) = x * tanh(softplus(x)).\n    Self-regularized non-monotonic activation with smooth gradients."
       }
      }
     }
@@ -249,8 +249,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_activation.py",
-       "old_str": "        return x * torch.tanh(F.softplus(x))\n",
-       "new_str": "        return F.gelu(x)\n"
+       "old_str": "        return x * torch.tanh(F.softplus(x))",
+       "new_str": "        return F.gelu(x)"
       }
      }
     }
@@ -272,8 +272,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_activation.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 2: Mish\nclass CustomActivation(nn.Module):\n    \"\"\"Mish activation function.\n\n    Mish(x) = x * tanh(softplus(x)).\n    Self-regularized non-monotonic activation with smooth gradients.\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 3: GELU\nclass CustomActivation(nn.Module):\n    \"\"\"GELU activation function.\n\n    GELU(x) = x * Phi(x) where Phi is the Gaussian CDF.\n    Smooth, non-monotonic, allows small negative values.\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 2: Mish\nclass CustomActivation(nn.Module):\n    \"\"\"Mish activation function.\n\n    Mish(x) = x * tanh(softplus(x)).\n    Self-regularized non-monotonic activation with smooth gradients.",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_activation.py (lines 32-49) -- step 3: GELU\nclass CustomActivation(nn.Module):\n    \"\"\"GELU activation function.\n\n    GELU(x) = x * Phi(x) where Phi is the Gaussian CDF.\n    Smooth, non-monotonic, allows small negative values."
       }
      }
     }

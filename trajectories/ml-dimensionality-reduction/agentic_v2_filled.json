@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "        \"\"\"Reduce dimensionality of X to (n_samples, n_components).\"\"\"\n        # Default: random projection (poor baseline) -- replace with your design\n        rng = np.random.RandomState(self.random_state)\n        n_samples, n_features = X.shape\n        projection = rng.randn(n_features, self.n_components)\n        projection /= np.linalg.norm(projection, axis=0, keepdims=True)\n        X_reduced = X @ projection\n        return X_reduced\n",
-       "new_str": "        from sklearn.decomposition import PCA\n        pca = PCA(n_components=self.n_components, random_state=self.random_state)\n        return pca.fit_transform(X)\n"
+       "old_str": "        \"\"\"Reduce dimensionality of X to (n_samples, n_components).\"\"\"\n        # Default: random projection (poor baseline) -- replace with your design\n        rng = np.random.RandomState(self.random_state)\n        n_samples, n_features = X.shape\n        projection = rng.randn(n_features, self.n_components)\n        projection /= np.linalg.norm(projection, axis=0, keepdims=True)\n        X_reduced = X @ projection\n        return X_reduced",
+       "new_str": "        from sklearn.decomposition import PCA\n        pca = PCA(n_components=self.n_components, random_state=self.random_state)\n        return pca.fit_transform(X)"
       }
      }
     }
@@ -167,8 +167,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "# EDITABLE region of scikit-learn/bench/custom_dimred.py (lines 15-59) -- default fill\nclass CustomDimReduction:\n    \"\"\"Custom dimensionality reduction method.\n\n    Must implement fit_transform(X) -> X_reduced.\n    \"\"\"\n",
-       "new_str": "class CustomDimReduction:\n    \"\"\"PCA dimensionality reduction (linear baseline).\"\"\"\n"
+       "old_str": "# EDITABLE region of scikit-learn/bench/custom_dimred.py (lines 15-59) -- default fill\nclass CustomDimReduction:\n    \"\"\"Custom dimensionality reduction method.\n\n    Must implement fit_transform(X) -> X_reduced.\n    \"\"\"",
+       "new_str": "class CustomDimReduction:\n    \"\"\"PCA dimensionality reduction (linear baseline).\"\"\""
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "        from sklearn.decomposition import PCA\n        pca = PCA(n_components=self.n_components, random_state=self.random_state)\n        return pca.fit_transform(X)\n",
-       "new_str": "        import trimap\n        reducer = trimap.TRIMAP(\n            n_dims=self.n_components,\n            n_inliers=10,\n            n_outliers=5,\n            n_random=5,\n            n_iters=400,\n        )\n        return reducer.fit_transform(X)\n"
+       "old_str": "        from sklearn.decomposition import PCA\n        pca = PCA(n_components=self.n_components, random_state=self.random_state)\n        return pca.fit_transform(X)",
+       "new_str": "        import trimap\n        reducer = trimap.TRIMAP(\n            n_dims=self.n_components,\n            n_inliers=10,\n            n_outliers=5,\n            n_random=5,\n            n_iters=400,\n        )\n        return reducer.fit_transform(X)"
       }
      }
     }
@@ -231,8 +231,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "    \"\"\"PCA dimensionality reduction (linear baseline).\"\"\"\n",
-       "new_str": "    \"\"\"TriMap dimensionality reduction.\"\"\"\n"
+       "old_str": "    \"\"\"PCA dimensionality reduction (linear baseline).\"\"\"",
+       "new_str": "    \"\"\"TriMap dimensionality reduction.\"\"\""
       }
      }
     }
@@ -272,8 +272,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "        import trimap\n        reducer = trimap.TRIMAP(\n            n_dims=self.n_components,\n            n_inliers=10,\n            n_outliers=5,\n            n_random=5,\n            n_iters=400,\n",
-       "new_str": "        import pacmap\n        reducer = pacmap.PaCMAP(\n            n_components=self.n_components,\n            n_neighbors=10,\n            MN_ratio=0.5,\n            FP_ratio=2.0,\n            random_state=self.random_state,\n"
+       "old_str": "        import trimap\n        reducer = trimap.TRIMAP(\n            n_dims=self.n_components,\n            n_inliers=10,\n            n_outliers=5,\n            n_random=5,\n            n_iters=400,",
+       "new_str": "        import pacmap\n        reducer = pacmap.PaCMAP(\n            n_components=self.n_components,\n            n_neighbors=10,\n            MN_ratio=0.5,\n            FP_ratio=2.0,\n            random_state=self.random_state,"
       }
      }
     }
@@ -295,8 +295,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "    \"\"\"TriMap dimensionality reduction.\"\"\"\n",
-       "new_str": "    \"\"\"PaCMAP dimensionality reduction (SOTA).\"\"\"\n"
+       "old_str": "    \"\"\"TriMap dimensionality reduction.\"\"\"",
+       "new_str": "    \"\"\"PaCMAP dimensionality reduction (SOTA).\"\"\""
       }
      }
     }
@@ -336,8 +336,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "        import pacmap\n        reducer = pacmap.PaCMAP(\n            n_components=self.n_components,\n            n_neighbors=10,\n            MN_ratio=0.5,\n            FP_ratio=2.0,\n",
-       "new_str": "        import umap\n        reducer = umap.UMAP(\n            n_components=self.n_components,\n            n_neighbors=15,\n            min_dist=0.1,\n            metric=\"euclidean\",\n"
+       "old_str": "        import pacmap\n        reducer = pacmap.PaCMAP(\n            n_components=self.n_components,\n            n_neighbors=10,\n            MN_ratio=0.5,\n            FP_ratio=2.0,",
+       "new_str": "        import umap\n        reducer = umap.UMAP(\n            n_components=self.n_components,\n            n_neighbors=15,\n            min_dist=0.1,\n            metric=\"euclidean\","
       }
      }
     }
@@ -359,8 +359,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "    \"\"\"PaCMAP dimensionality reduction (SOTA).\"\"\"\n",
-       "new_str": "    \"\"\"UMAP dimensionality reduction.\"\"\"\n"
+       "old_str": "    \"\"\"PaCMAP dimensionality reduction (SOTA).\"\"\"",
+       "new_str": "    \"\"\"UMAP dimensionality reduction.\"\"\""
       }
      }
     }
@@ -400,8 +400,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "        import umap\n        reducer = umap.UMAP(\n            n_components=self.n_components,\n            n_neighbors=15,\n            min_dist=0.1,\n            metric=\"euclidean\",\n            random_state=self.random_state,\n        )\n        return reducer.fit_transform(X)\n",
-       "new_str": "        from sklearn.manifold import TSNE\n        tsne = TSNE(\n            n_components=self.n_components,\n            perplexity=30.0,\n            learning_rate=\"auto\",\n            init=\"pca\",\n            random_state=self.random_state,\n            n_iter=1000,\n        )\n        return tsne.fit_transform(X)\n"
+       "old_str": "        import umap\n        reducer = umap.UMAP(\n            n_components=self.n_components,\n            n_neighbors=15,\n            min_dist=0.1,\n            metric=\"euclidean\",\n            random_state=self.random_state,\n        )\n        return reducer.fit_transform(X)",
+       "new_str": "        from sklearn.manifold import TSNE\n        tsne = TSNE(\n            n_components=self.n_components,\n            perplexity=30.0,\n            learning_rate=\"auto\",\n            init=\"pca\",\n            random_state=self.random_state,\n            n_iter=1000,\n        )\n        return tsne.fit_transform(X)"
       }
      }
     }
@@ -423,8 +423,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "scikit-learn/bench/custom_dimred.py",
-       "old_str": "    \"\"\"UMAP dimensionality reduction.\"\"\"\n",
-       "new_str": "    \"\"\"t-SNE dimensionality reduction.\"\"\"\n"
+       "old_str": "    \"\"\"UMAP dimensionality reduction.\"\"\"",
+       "new_str": "    \"\"\"t-SNE dimensionality reduction.\"\"\""
       }
      }
     }

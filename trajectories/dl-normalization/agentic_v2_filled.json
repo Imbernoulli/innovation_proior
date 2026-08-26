@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_norm.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_norm.py (lines 31-45) -- default fill\nclass CustomNorm(nn.Module):\n    \"\"\"Custom normalization layer. Drop-in replacement for BatchNorm2d.\n\n    Args:\n        num_features: number of channels C\n    Input: [B, C, H, W]\n    Output: [B, C, H, W]\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.norm = nn.BatchNorm2d(num_features)\n\n    def forward(self, x):\n        return self.norm(x)\n",
-       "new_str": "class CustomNorm(nn.Module):\n    \"\"\"Batch-Instance Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Learns a per-channel gate rho in [0, 1] (via sigmoid) that interpolates\n    between BatchNorm statistics and InstanceNorm statistics.\n\n    Reference: Nam & Kim, \"Batch-Instance Normalization for Adaptively\n    Style-Invariant Neural Networks\" (NeurIPS 2018)\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.num_features = num_features\n        self.eps = 1e-5\n        # Learnable affine parameters\n        self.weight = nn.Parameter(torch.ones(num_features))\n        self.bias = nn.Parameter(torch.zeros(num_features))\n        # Gate parameter (before sigmoid); init at 1.0 -> sigmoid ~ 0.73 -> mostly BN\n        self.rho = nn.Parameter(torch.ones(num_features) * 1.0)\n\n    def forward(self, x):\n        # x: [B, C, H, W]\n        gate = torch.sigmoid(self.rho).view(1, -1, 1, 1)\n        # Batch stats: per C over (B, H, W)\n        mean_bn = x.mean(dim=(0, 2, 3), keepdim=True)\n        var_bn = x.var(dim=(0, 2, 3), keepdim=True, unbiased=False)\n        # Instance stats: per (B, C) over (H, W)\n        mean_in = x.mean(dim=(2, 3), keepdim=True)\n        var_in = x.var(dim=(2, 3), keepdim=True, unbiased=False)\n        # Interpolate\n        x_bn = (x - mean_bn) / (var_bn + self.eps).sqrt()\n        x_in = (x - mean_in) / (var_in + self.eps).sqrt()\n        x_norm = gate * x_bn + (1 - gate) * x_in\n        return x_norm * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_norm.py (lines 31-45) -- default fill\nclass CustomNorm(nn.Module):\n    \"\"\"Custom normalization layer. Drop-in replacement for BatchNorm2d.\n\n    Args:\n        num_features: number of channels C\n    Input: [B, C, H, W]\n    Output: [B, C, H, W]\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.norm = nn.BatchNorm2d(num_features)\n\n    def forward(self, x):\n        return self.norm(x)",
+       "new_str": "class CustomNorm(nn.Module):\n    \"\"\"Batch-Instance Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Learns a per-channel gate rho in [0, 1] (via sigmoid) that interpolates\n    between BatchNorm statistics and InstanceNorm statistics.\n\n    Reference: Nam & Kim, \"Batch-Instance Normalization for Adaptively\n    Style-Invariant Neural Networks\" (NeurIPS 2018)\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.num_features = num_features\n        self.eps = 1e-5\n        # Learnable affine parameters\n        self.weight = nn.Parameter(torch.ones(num_features))\n        self.bias = nn.Parameter(torch.zeros(num_features))\n        # Gate parameter (before sigmoid); init at 1.0 -> sigmoid ~ 0.73 -> mostly BN\n        self.rho = nn.Parameter(torch.ones(num_features) * 1.0)\n\n    def forward(self, x):\n        # x: [B, C, H, W]\n        gate = torch.sigmoid(self.rho).view(1, -1, 1, 1)\n        # Batch stats: per C over (B, H, W)\n        mean_bn = x.mean(dim=(0, 2, 3), keepdim=True)\n        var_bn = x.var(dim=(0, 2, 3), keepdim=True, unbiased=False)\n        # Instance stats: per (B, C) over (H, W)\n        mean_in = x.mean(dim=(2, 3), keepdim=True)\n        var_in = x.var(dim=(2, 3), keepdim=True, unbiased=False)\n        # Interpolate\n        x_bn = (x - mean_bn) / (var_bn + self.eps).sqrt()\n        x_in = (x - mean_in) / (var_in + self.eps).sqrt()\n        x_norm = gate * x_bn + (1 - gate) * x_in\n        return x_norm * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_norm.py",
-       "old_str": "    \"\"\"Batch-Instance Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Learns a per-channel gate rho in [0, 1] (via sigmoid) that interpolates\n    between BatchNorm statistics and InstanceNorm statistics.\n\n    Reference: Nam & Kim, \"Batch-Instance Normalization for Adaptively\n    Style-Invariant Neural Networks\" (NeurIPS 2018)\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.num_features = num_features\n        self.eps = 1e-5\n        # Learnable affine parameters\n        self.weight = nn.Parameter(torch.ones(num_features))\n        self.bias = nn.Parameter(torch.zeros(num_features))\n        # Gate parameter (before sigmoid); init at 1.0 -> sigmoid ~ 0.73 -> mostly BN\n        self.rho = nn.Parameter(torch.ones(num_features) * 1.0)\n\n    def forward(self, x):\n        # x: [B, C, H, W]\n        gate = torch.sigmoid(self.rho).view(1, -1, 1, 1)\n        # Batch stats: per C over (B, H, W)\n        mean_bn = x.mean(dim=(0, 2, 3), keepdim=True)\n        var_bn = x.var(dim=(0, 2, 3), keepdim=True, unbiased=False)\n        # Instance stats: per (B, C) over (H, W)\n        mean_in = x.mean(dim=(2, 3), keepdim=True)\n        var_in = x.var(dim=(2, 3), keepdim=True, unbiased=False)\n        # Interpolate\n        x_bn = (x - mean_bn) / (var_bn + self.eps).sqrt()\n        x_in = (x - mean_in) / (var_in + self.eps).sqrt()\n        x_norm = gate * x_bn + (1 - gate) * x_in\n        return x_norm * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)\n",
-       "new_str": "    \"\"\"Group Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Divides channels into groups and normalizes within each group independently.\n    Works well with small batch sizes where BatchNorm statistics are noisy.\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        num_groups = min(32, num_features)\n        # Ensure num_features is divisible by num_groups\n        while num_features % num_groups != 0:\n            num_groups -= 1\n        self.norm = nn.GroupNorm(num_groups, num_features)\n\n    def forward(self, x):\n        return self.norm(x)\n"
+       "old_str": "    \"\"\"Batch-Instance Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Learns a per-channel gate rho in [0, 1] (via sigmoid) that interpolates\n    between BatchNorm statistics and InstanceNorm statistics.\n\n    Reference: Nam & Kim, \"Batch-Instance Normalization for Adaptively\n    Style-Invariant Neural Networks\" (NeurIPS 2018)\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.num_features = num_features\n        self.eps = 1e-5\n        # Learnable affine parameters\n        self.weight = nn.Parameter(torch.ones(num_features))\n        self.bias = nn.Parameter(torch.zeros(num_features))\n        # Gate parameter (before sigmoid); init at 1.0 -> sigmoid ~ 0.73 -> mostly BN\n        self.rho = nn.Parameter(torch.ones(num_features) * 1.0)\n\n    def forward(self, x):\n        # x: [B, C, H, W]\n        gate = torch.sigmoid(self.rho).view(1, -1, 1, 1)\n        # Batch stats: per C over (B, H, W)\n        mean_bn = x.mean(dim=(0, 2, 3), keepdim=True)\n        var_bn = x.var(dim=(0, 2, 3), keepdim=True, unbiased=False)\n        # Instance stats: per (B, C) over (H, W)\n        mean_in = x.mean(dim=(2, 3), keepdim=True)\n        var_in = x.var(dim=(2, 3), keepdim=True, unbiased=False)\n        # Interpolate\n        x_bn = (x - mean_bn) / (var_bn + self.eps).sqrt()\n        x_in = (x - mean_in) / (var_in + self.eps).sqrt()\n        x_norm = gate * x_bn + (1 - gate) * x_in\n        return x_norm * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)",
+       "new_str": "    \"\"\"Group Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Divides channels into groups and normalizes within each group independently.\n    Works well with small batch sizes where BatchNorm statistics are noisy.\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        num_groups = min(32, num_features)\n        # Ensure num_features is divisible by num_groups\n        while num_features % num_groups != 0:\n            num_groups -= 1\n        self.norm = nn.GroupNorm(num_groups, num_features)\n\n    def forward(self, x):\n        return self.norm(x)"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_norm.py",
-       "old_str": "    \"\"\"Group Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Divides channels into groups and normalizes within each group independently.\n    Works well with small batch sizes where BatchNorm statistics are noisy.\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        num_groups = min(32, num_features)\n        # Ensure num_features is divisible by num_groups\n        while num_features % num_groups != 0:\n            num_groups -= 1\n        self.norm = nn.GroupNorm(num_groups, num_features)\n\n    def forward(self, x):\n        return self.norm(x)\n",
-       "new_str": "    \"\"\"Switchable Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Learns to combine BatchNorm, InstanceNorm, and LayerNorm statistics via\n    softmax-weighted importance weights. Adapts normalization strategy per\n    channel during training.\n\n    Reference: Luo et al., \"Differentiable Learning-to-Normalize via\n    Switchable Normalization\" (ICLR 2019)\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.num_features = num_features\n        self.eps = 1e-5\n        # Learnable affine parameters\n        self.weight = nn.Parameter(torch.ones(num_features))\n        self.bias = nn.Parameter(torch.zeros(num_features))\n        # Importance weights for mean (3 norms) and var (3 norms)\n        self.mean_weight = nn.Parameter(torch.ones(3))\n        self.var_weight = nn.Parameter(torch.ones(3))\n\n    def forward(self, x):\n        # x: [B, C, H, W]\n        B, C, H, W = x.shape\n        # Softmax over importance weights\n        mean_w = F.softmax(self.mean_weight, dim=0)\n        var_w = F.softmax(self.var_weight, dim=0)\n        # Instance stats: per (B, C) over (H, W)\n        mean_in = x.mean(dim=(2, 3), keepdim=True)\n        var_in = x.var(dim=(2, 3), keepdim=True, unbiased=False)\n        # Layer stats: per B over (C, H, W)\n        mean_ln = x.mean(dim=(1, 2, 3), keepdim=True)\n        var_ln = x.var(dim=(1, 2, 3), keepdim=True, unbiased=False)\n        # Batch stats: per C over (B, H, W)\n        mean_bn = x.mean(dim=(0, 2, 3), keepdim=True)\n        var_bn = x.var(dim=(0, 2, 3), keepdim=True, unbiased=False)\n        # Weighted combination\n        mean = mean_w[0] * mean_in + mean_w[1] * mean_ln + mean_w[2] * mean_bn\n        var = var_w[0] * var_in + var_w[1] * var_ln + var_w[2] * var_bn\n        x_norm = (x - mean) / (var + self.eps).sqrt()\n        return x_norm * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)\n"
+       "old_str": "    \"\"\"Group Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Divides channels into groups and normalizes within each group independently.\n    Works well with small batch sizes where BatchNorm statistics are noisy.\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        num_groups = min(32, num_features)\n        # Ensure num_features is divisible by num_groups\n        while num_features % num_groups != 0:\n            num_groups -= 1\n        self.norm = nn.GroupNorm(num_groups, num_features)\n\n    def forward(self, x):\n        return self.norm(x)",
+       "new_str": "    \"\"\"Switchable Normalization for 2D feature maps. Drop-in replacement for BatchNorm2d.\n\n    Learns to combine BatchNorm, InstanceNorm, and LayerNorm statistics via\n    softmax-weighted importance weights. Adapts normalization strategy per\n    channel during training.\n\n    Reference: Luo et al., \"Differentiable Learning-to-Normalize via\n    Switchable Normalization\" (ICLR 2019)\n    \"\"\"\n\n    def __init__(self, num_features):\n        super().__init__()\n        self.num_features = num_features\n        self.eps = 1e-5\n        # Learnable affine parameters\n        self.weight = nn.Parameter(torch.ones(num_features))\n        self.bias = nn.Parameter(torch.zeros(num_features))\n        # Importance weights for mean (3 norms) and var (3 norms)\n        self.mean_weight = nn.Parameter(torch.ones(3))\n        self.var_weight = nn.Parameter(torch.ones(3))\n\n    def forward(self, x):\n        # x: [B, C, H, W]\n        B, C, H, W = x.shape\n        # Softmax over importance weights\n        mean_w = F.softmax(self.mean_weight, dim=0)\n        var_w = F.softmax(self.var_weight, dim=0)\n        # Instance stats: per (B, C) over (H, W)\n        mean_in = x.mean(dim=(2, 3), keepdim=True)\n        var_in = x.var(dim=(2, 3), keepdim=True, unbiased=False)\n        # Layer stats: per B over (C, H, W)\n        mean_ln = x.mean(dim=(1, 2, 3), keepdim=True)\n        var_ln = x.var(dim=(1, 2, 3), keepdim=True, unbiased=False)\n        # Batch stats: per C over (B, H, W)\n        mean_bn = x.mean(dim=(0, 2, 3), keepdim=True)\n        var_bn = x.var(dim=(0, 2, 3), keepdim=True, unbiased=False)\n        # Weighted combination\n        mean = mean_w[0] * mean_in + mean_w[1] * mean_ln + mean_w[2] * mean_bn\n        var = var_w[0] * var_in + var_w[1] * var_ln + var_w[2] * var_bn\n        x_norm = (x - mean) / (var + self.eps).sqrt()\n        return x_norm * self.weight.view(1, -1, 1, 1) + self.bias.view(1, -1, 1, 1)"
       }
      }
     }

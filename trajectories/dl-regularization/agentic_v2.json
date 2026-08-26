@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_reg.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — default fill\n# torch, torch.nn as nn, torch.nn.functional as F are already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Compute regularization loss term added to classification loss.\n\n    Called every training step. The returned scalar is added to the\n    cross-entropy loss before backpropagation.\n\n    Args:\n        model: the network (nn.Module, ResNet / VGG / MobileNetV2)\n        inputs: [B, 3, 32, 32] input batch\n        outputs: [B, num_classes] model logits\n        targets: [B] integer class labels\n        config: dict with keys:\n            - 'num_classes': int (10 or 100)\n            - 'epoch': int (current epoch, 0-indexed)\n            - 'total_epochs': int (total training epochs)\n\n    Returns:\n        scalar torch.Tensor -- regularization loss (added to CE loss).\n        Return 0 for no regularization.\n\n    Design considerations:\n        - Weight-based penalties (L1, L2, orthogonality, spectral)\n        - Output-based penalties (confidence, entropy, label smoothing)\n        - Activation-based penalties (sparsity, diversity)\n        - Gradient-based penalties (gradient penalty, Jacobian)\n        - Epoch-dependent scheduling (warm-up, annealing)\n    \"\"\"\n    raise NotImplementedError(\"Implement your regularization strategy\")\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired\n# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Spatial co-activation penalty on convolutional weights.\n\n    Applies a spatial co-activation penalty on convolutional weights.\n    For each Conv2d layer with spatial kernels >= block_size, it\n    penalizes the mean energy of local spatial blocks in the weight\n    tensor, discouraging spatially correlated filter patterns.\n\n    Uses conservative strength (lambda_max=1e-4) with linear warm-up\n    and only activates after 20% of training to avoid destabilizing\n    early learning, particularly for BatchNorm-heavy architectures.\n\n    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.\n    \"\"\"\n    block_size = 3\n    lambda_max = 1e-4\n    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)\n\n    # Delay activation: no penalty for first 20% of training\n    if progress < 0.2:\n        return torch.tensor(0.0, device=outputs.device)\n\n    # Linear schedule from 20% to 100% of training\n    adjusted_progress = (progress - 0.2) / 0.8\n    lam = lambda_max * adjusted_progress\n\n    reg = torch.tensor(0.0, device=outputs.device)\n    count = 0\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:\n            w = m.weight  # [out_c, in_c, kH, kW]\n            if w.size(-1) >= block_size and w.size(-2) >= block_size:\n                # Mean squared magnitude within spatial blocks\n                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]\n                pad = block_size // 2\n                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)\n                reg = reg + local.mean()\n                count += 1\n\n    if count > 0:\n        reg = reg / count\n    return lam * reg\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — default fill\n# torch, torch.nn as nn, torch.nn.functional as F are already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Compute regularization loss term added to classification loss.\n\n    Called every training step. The returned scalar is added to the\n    cross-entropy loss before backpropagation.\n\n    Args:\n        model: the network (nn.Module, ResNet / VGG / MobileNetV2)\n        inputs: [B, 3, 32, 32] input batch\n        outputs: [B, num_classes] model logits\n        targets: [B] integer class labels\n        config: dict with keys:\n            - 'num_classes': int (10 or 100)\n            - 'epoch': int (current epoch, 0-indexed)\n            - 'total_epochs': int (total training epochs)\n\n    Returns:\n        scalar torch.Tensor -- regularization loss (added to CE loss).\n        Return 0 for no regularization.\n\n    Design considerations:\n        - Weight-based penalties (L1, L2, orthogonality, spectral)\n        - Output-based penalties (confidence, entropy, label smoothing)\n        - Activation-based penalties (sparsity, diversity)\n        - Gradient-based penalties (gradient penalty, Jacobian)\n        - Epoch-dependent scheduling (warm-up, annealing)\n    \"\"\"\n    raise NotImplementedError(\"Implement your regularization strategy\")",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired\n# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Spatial co-activation penalty on convolutional weights.\n\n    Applies a spatial co-activation penalty on convolutional weights.\n    For each Conv2d layer with spatial kernels >= block_size, it\n    penalizes the mean energy of local spatial blocks in the weight\n    tensor, discouraging spatially correlated filter patterns.\n\n    Uses conservative strength (lambda_max=1e-4) with linear warm-up\n    and only activates after 20% of training to avoid destabilizing\n    early learning, particularly for BatchNorm-heavy architectures.\n\n    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.\n    \"\"\"\n    block_size = 3\n    lambda_max = 1e-4\n    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)\n\n    # Delay activation: no penalty for first 20% of training\n    if progress < 0.2:\n        return torch.tensor(0.0, device=outputs.device)\n\n    # Linear schedule from 20% to 100% of training\n    adjusted_progress = (progress - 0.2) / 0.8\n    lam = lambda_max * adjusted_progress\n\n    reg = torch.tensor(0.0, device=outputs.device)\n    count = 0\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:\n            w = m.weight  # [out_c, in_c, kH, kW]\n            if w.size(-1) >= block_size and w.size(-2) >= block_size:\n                # Mean squared magnitude within spatial blocks\n                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]\n                pad = block_size // 2\n                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)\n                reg = reg + local.mean()\n                count += 1\n\n    if count > 0:\n        reg = reg / count\n    return lam * reg"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_reg.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired\n# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Spatial co-activation penalty on convolutional weights.\n\n    Applies a spatial co-activation penalty on convolutional weights.\n    For each Conv2d layer with spatial kernels >= block_size, it\n    penalizes the mean energy of local spatial blocks in the weight\n    tensor, discouraging spatially correlated filter patterns.\n\n    Uses conservative strength (lambda_max=1e-4) with linear warm-up\n    and only activates after 20% of training to avoid destabilizing\n    early learning, particularly for BatchNorm-heavy architectures.\n\n    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.\n    \"\"\"\n    block_size = 3\n    lambda_max = 1e-4\n    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)\n\n    # Delay activation: no penalty for first 20% of training\n    if progress < 0.2:\n        return torch.tensor(0.0, device=outputs.device)\n\n    # Linear schedule from 20% to 100% of training\n    adjusted_progress = (progress - 0.2) / 0.8\n    lam = lambda_max * adjusted_progress\n\n    reg = torch.tensor(0.0, device=outputs.device)\n    count = 0\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:\n            w = m.weight  # [out_c, in_c, kH, kW]\n            if w.size(-1) >= block_size and w.size(-2) >= block_size:\n                # Mean squared magnitude within spatial blocks\n                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]\n                pad = block_size // 2\n                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)\n                reg = reg + local.mean()\n                count += 1\n\n    if count > 0:\n        reg = reg / count\n    return lam * reg\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Confidence penalty: penalize low-entropy predictions.\n\n    Computes negative entropy of the softmax distribution and adds it\n    as a penalty, encouraging the model to be less over-confident.\n    Beta=0.1.\n    \"\"\"\n    probs = F.softmax(outputs, dim=-1)\n    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()\n    return -0.1 * entropy  # penalize confident (low-entropy) predictions\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 1: DropBlock-inspired\n# spatial co-activation penalty on conv weights. torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Spatial co-activation penalty on convolutional weights.\n\n    Applies a spatial co-activation penalty on convolutional weights.\n    For each Conv2d layer with spatial kernels >= block_size, it\n    penalizes the mean energy of local spatial blocks in the weight\n    tensor, discouraging spatially correlated filter patterns.\n\n    Uses conservative strength (lambda_max=1e-4) with linear warm-up\n    and only activates after 20% of training to avoid destabilizing\n    early learning, particularly for BatchNorm-heavy architectures.\n\n    block_size=3, lambda_max=1e-4, linear warm-up with delayed start.\n    \"\"\"\n    block_size = 3\n    lambda_max = 1e-4\n    progress = config['epoch'] / max(config['total_epochs'] - 1, 1)\n\n    # Delay activation: no penalty for first 20% of training\n    if progress < 0.2:\n        return torch.tensor(0.0, device=outputs.device)\n\n    # Linear schedule from 20% to 100% of training\n    adjusted_progress = (progress - 0.2) / 0.8\n    lam = lambda_max * adjusted_progress\n\n    reg = torch.tensor(0.0, device=outputs.device)\n    count = 0\n    for m in model.modules():\n        if isinstance(m, nn.Conv2d) and m.kernel_size[0] >= block_size:\n            w = m.weight  # [out_c, in_c, kH, kW]\n            if w.size(-1) >= block_size and w.size(-2) >= block_size:\n                # Mean squared magnitude within spatial blocks\n                w_sq = w.pow(2).mean(dim=1, keepdim=True)  # [out_c, 1, kH, kW]\n                pad = block_size // 2\n                local = F.avg_pool2d(w_sq, block_size, stride=1, padding=pad)\n                reg = reg + local.mean()\n                count += 1\n\n    if count > 0:\n        reg = reg / count\n    return lam * reg",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Confidence penalty: penalize low-entropy predictions.\n\n    Computes negative entropy of the softmax distribution and adds it\n    as a penalty, encouraging the model to be less over-confident.\n    Beta=0.1.\n    \"\"\"\n    probs = F.softmax(outputs, dim=-1)\n    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()\n    return -0.1 * entropy  # penalize confident (low-entropy) predictions"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "pytorch-vision/custom_reg.py",
-       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Confidence penalty: penalize low-entropy predictions.\n\n    Computes negative entropy of the softmax distribution and adds it\n    as a penalty, encouraging the model to be less over-confident.\n    Beta=0.1.\n    \"\"\"\n    probs = F.softmax(outputs, dim=-1)\n    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()\n    return -0.1 * entropy  # penalize confident (low-entropy) predictions\n",
-       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 3: orthogonal regularization.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Orthogonal regularization on convolutional weights.\n\n    Penalizes deviation from orthogonality: ||W^T W - I||_F^2 for each\n    4D conv weight reshaped to [out_channels, in*k*k]. Coefficient=1e-4.\n    \"\"\"\n    reg = torch.tensor(0.0, device=outputs.device)\n    for name, p in model.named_parameters():\n        if 'conv' in name and 'weight' in name and p.dim() == 4:\n            W = p.view(p.size(0), -1)  # [out, in*k*k]\n            WtW = W @ W.t()\n            I = torch.eye(W.size(0), device=W.device)\n            reg = reg + ((WtW - I) ** 2).sum()\n    return 1e-4 * reg\n"
+       "old_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 2: confidence penalty.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Confidence penalty: penalize low-entropy predictions.\n\n    Computes negative entropy of the softmax distribution and adds it\n    as a penalty, encouraging the model to be less over-confident.\n    Beta=0.1.\n    \"\"\"\n    probs = F.softmax(outputs, dim=-1)\n    entropy = -(probs * torch.log(probs + 1e-8)).sum(dim=-1).mean()\n    return -0.1 * entropy  # penalize confident (low-entropy) predictions",
+       "new_str": "# EDITABLE region of pytorch-vision/custom_reg.py (lines 246-273) — step 3: orthogonal regularization.\n# torch / nn / F already imported at module scope.\ndef compute_regularization(model, inputs, outputs, targets, config):\n    \"\"\"Orthogonal regularization on convolutional weights.\n\n    Penalizes deviation from orthogonality: ||W^T W - I||_F^2 for each\n    4D conv weight reshaped to [out_channels, in*k*k]. Coefficient=1e-4.\n    \"\"\"\n    reg = torch.tensor(0.0, device=outputs.device)\n    for name, p in model.named_parameters():\n        if 'conv' in name and 'weight' in name and p.dim() == 4:\n            W = p.view(p.size(0), -1)  # [out, in*k*k]\n            WtW = W @ W.t()\n            I = torch.eye(W.size(0), device=W.device)\n            reg = reg + ((WtW - I) ** 2).sum()\n    return 1e-4 * reg"
       }
      }
     }

@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_critic.py",
-       "old_str": "    \"\"\"Centralized critic for MAPPO on SMAC (via smaclite).\n\n    Plugged into epymarl's ppo_learner via ``critic_type: \"custom_critic\"``.\n    The learner calls ``critic(batch)`` without ``t`` and later does\n    ``.squeeze(3)``, so the output MUST be ``(B, T, n_agents, 1)``.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        # Default: simple state + agent-id MLP (central V baseline).\n        self.state_dim = int(scheme[\"state\"][\"vshape\"])\n        input_shape = self.state_dim + self.n_agents\n        self.fc1 = nn.Linear(input_shape, args.hidden_dim)\n        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)\n        self.fc3 = nn.Linear(args.hidden_dim, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)\n\n        x = F.relu(self.fc1(inputs))\n        x = F.relu(self.fc2(x))\n        q = self.fc3(x)                                                  # (B, T, n, 1)\n",
-       "new_str": "    \"\"\"MAT-style attention critic — self-attention over per-agent tokens.\n\n    The critic-only form of the multi-agent Transformer (MAT).\n    Each agent's token encodes its local observation together with the\n    global state; a single TransformerEncoder layer mixes information\n    across agents via self-attention, then a per-token linear head\n    produces the scalar value.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        state_dim = int(scheme[\"state\"][\"vshape\"])\n        self.d_model = args.hidden_dim\n\n        # Per-agent token projection: [obs_i ⊕ state] → d_model\n        self.token_proj = nn.Linear(obs_dim + state_dim, self.d_model)\n\n        # Single transformer encoder layer with self-attention across agents\n        enc_layer = nn.TransformerEncoderLayer(\n            d_model=self.d_model,\n            nhead=4,\n            dim_feedforward=4 * self.d_model,\n            dropout=0.0,\n            batch_first=True,\n            activation=\"gelu\",\n        )\n        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=1)\n\n        # Per-agent value head\n        self.v_head = nn.Linear(self.d_model, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        tokens = th.cat([obs, state], dim=-1)                            # (B, T, n, obs+state)\n        tokens = self.token_proj(tokens)                                 # (B, T, n, d_model)\n\n        # Flatten (B, T) into a single batch dim for the transformer,\n        # then restore: TransformerEncoder expects (bs*, seq_len, d_model).\n        b, tt, n, d = tokens.shape\n        tokens = tokens.reshape(b * tt, n, d)\n        attn_out = self.encoder(tokens)                                  # (B*T, n, d_model)\n        attn_out = attn_out.reshape(b, tt, n, d)\n\n        q = self.v_head(attn_out)                                       # (B, T, n, 1)\n"
+       "old_str": "    \"\"\"Centralized critic for MAPPO on SMAC (via smaclite).\n\n    Plugged into epymarl's ppo_learner via ``critic_type: \"custom_critic\"``.\n    The learner calls ``critic(batch)`` without ``t`` and later does\n    ``.squeeze(3)``, so the output MUST be ``(B, T, n_agents, 1)``.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        # Default: simple state + agent-id MLP (central V baseline).\n        self.state_dim = int(scheme[\"state\"][\"vshape\"])\n        input_shape = self.state_dim + self.n_agents\n        self.fc1 = nn.Linear(input_shape, args.hidden_dim)\n        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)\n        self.fc3 = nn.Linear(args.hidden_dim, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)\n\n        x = F.relu(self.fc1(inputs))\n        x = F.relu(self.fc2(x))\n        q = self.fc3(x)                                                  # (B, T, n, 1)",
+       "new_str": "    \"\"\"MAT-style attention critic — self-attention over per-agent tokens.\n\n    The critic-only form of the multi-agent Transformer (MAT).\n    Each agent's token encodes its local observation together with the\n    global state; a single TransformerEncoder layer mixes information\n    across agents via self-attention, then a per-token linear head\n    produces the scalar value.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        state_dim = int(scheme[\"state\"][\"vshape\"])\n        self.d_model = args.hidden_dim\n\n        # Per-agent token projection: [obs_i ⊕ state] → d_model\n        self.token_proj = nn.Linear(obs_dim + state_dim, self.d_model)\n\n        # Single transformer encoder layer with self-attention across agents\n        enc_layer = nn.TransformerEncoderLayer(\n            d_model=self.d_model,\n            nhead=4,\n            dim_feedforward=4 * self.d_model,\n            dropout=0.0,\n            batch_first=True,\n            activation=\"gelu\",\n        )\n        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=1)\n\n        # Per-agent value head\n        self.v_head = nn.Linear(self.d_model, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        tokens = th.cat([obs, state], dim=-1)                            # (B, T, n, obs+state)\n        tokens = self.token_proj(tokens)                                 # (B, T, n, d_model)\n\n        # Flatten (B, T) into a single batch dim for the transformer,\n        # then restore: TransformerEncoder expects (bs*, seq_len, d_model).\n        b, tt, n, d = tokens.shape\n        tokens = tokens.reshape(b * tt, n, d)\n        attn_out = self.encoder(tokens)                                  # (B*T, n, d_model)\n        attn_out = attn_out.reshape(b, tt, n, d)\n\n        q = self.v_head(attn_out)                                       # (B, T, n, 1)"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_critic.py",
-       "old_str": "    \"\"\"MAT-style attention critic — self-attention over per-agent tokens.\n\n    The critic-only form of the multi-agent Transformer (MAT).\n    Each agent's token encodes its local observation together with the\n    global state; a single TransformerEncoder layer mixes information\n    across agents via self-attention, then a per-token linear head\n    produces the scalar value.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        state_dim = int(scheme[\"state\"][\"vshape\"])\n        self.d_model = args.hidden_dim\n\n        # Per-agent token projection: [obs_i ⊕ state] → d_model\n        self.token_proj = nn.Linear(obs_dim + state_dim, self.d_model)\n\n        # Single transformer encoder layer with self-attention across agents\n        enc_layer = nn.TransformerEncoderLayer(\n            d_model=self.d_model,\n            nhead=4,\n            dim_feedforward=4 * self.d_model,\n            dropout=0.0,\n            batch_first=True,\n            activation=\"gelu\",\n        )\n        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=1)\n\n        # Per-agent value head\n        self.v_head = nn.Linear(self.d_model, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        tokens = th.cat([obs, state], dim=-1)                            # (B, T, n, obs+state)\n        tokens = self.token_proj(tokens)                                 # (B, T, n, d_model)\n\n        # Flatten (B, T) into a single batch dim for the transformer,\n        # then restore: TransformerEncoder expects (bs*, seq_len, d_model).\n        b, tt, n, d = tokens.shape\n        tokens = tokens.reshape(b * tt, n, d)\n        attn_out = self.encoder(tokens)                                  # (B*T, n, d_model)\n        attn_out = attn_out.reshape(b, tt, n, d)\n\n        q = self.v_head(attn_out)                                       # (B, T, n, 1)\n",
-       "new_str": "    \"\"\"IPPO critic — per-agent MLP over local obs + agent one-hot.\n\n    Matches epymarl's ACCritic. No centralization: each agent's value\n    depends only on its own observation. Serves as the \"no centralization\"\n    floor baseline.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        input_shape = obs_dim + self.n_agents   # obs + agent-one-hot\n        self.fc1 = nn.Linear(input_shape, args.hidden_dim)\n        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)\n        self.fc3 = nn.Linear(args.hidden_dim, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([obs, agent_id], dim=-1)                         # (B, T, n, obs+n)\n\n        x = F.relu(self.fc1(inputs))\n        x = F.relu(self.fc2(x))\n        q = self.fc3(x)                                                  # (B, T, n, 1)\n"
+       "old_str": "    \"\"\"MAT-style attention critic — self-attention over per-agent tokens.\n\n    The critic-only form of the multi-agent Transformer (MAT).\n    Each agent's token encodes its local observation together with the\n    global state; a single TransformerEncoder layer mixes information\n    across agents via self-attention, then a per-token linear head\n    produces the scalar value.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        state_dim = int(scheme[\"state\"][\"vshape\"])\n        self.d_model = args.hidden_dim\n\n        # Per-agent token projection: [obs_i ⊕ state] → d_model\n        self.token_proj = nn.Linear(obs_dim + state_dim, self.d_model)\n\n        # Single transformer encoder layer with self-attention across agents\n        enc_layer = nn.TransformerEncoderLayer(\n            d_model=self.d_model,\n            nhead=4,\n            dim_feedforward=4 * self.d_model,\n            dropout=0.0,\n            batch_first=True,\n            activation=\"gelu\",\n        )\n        self.encoder = nn.TransformerEncoder(enc_layer, num_layers=1)\n\n        # Per-agent value head\n        self.v_head = nn.Linear(self.d_model, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        tokens = th.cat([obs, state], dim=-1)                            # (B, T, n, obs+state)\n        tokens = self.token_proj(tokens)                                 # (B, T, n, d_model)\n\n        # Flatten (B, T) into a single batch dim for the transformer,\n        # then restore: TransformerEncoder expects (bs*, seq_len, d_model).\n        b, tt, n, d = tokens.shape\n        tokens = tokens.reshape(b * tt, n, d)\n        attn_out = self.encoder(tokens)                                  # (B*T, n, d_model)\n        attn_out = attn_out.reshape(b, tt, n, d)\n\n        q = self.v_head(attn_out)                                       # (B, T, n, 1)",
+       "new_str": "    \"\"\"IPPO critic — per-agent MLP over local obs + agent one-hot.\n\n    Matches epymarl's ACCritic. No centralization: each agent's value\n    depends only on its own observation. Serves as the \"no centralization\"\n    floor baseline.\n    \"\"\"\n\n    def __init__(self, scheme, args):\n        super(CustomCritic, self).__init__()\n        self.args = args\n        self.n_agents = args.n_agents\n        self.n_actions = args.n_actions\n        self.output_type = \"v\"\n\n        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        input_shape = obs_dim + self.n_agents   # obs + agent-one-hot\n        self.fc1 = nn.Linear(input_shape, args.hidden_dim)\n        self.fc2 = nn.Linear(args.hidden_dim, args.hidden_dim)\n        self.fc3 = nn.Linear(args.hidden_dim, 1)\n\n    def forward(self, batch, t=None):\n        bs = batch.batch_size\n        max_t = batch.max_seq_length if t is None else 1\n        ts = slice(None) if t is None else slice(t, t + 1)\n\n        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([obs, agent_id], dim=-1)                         # (B, T, n, obs+n)\n\n        x = F.relu(self.fc1(inputs))\n        x = F.relu(self.fc2(x))\n        q = self.fc3(x)                                                  # (B, T, n, 1)"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_critic.py",
-       "old_str": "        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([obs, agent_id], dim=-1)                         # (B, T, n, obs+n)\n",
-       "new_str": "        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)\n"
+       "old_str": "        obs = batch[\"obs\"][:, ts]                                        # (B, T, n, obs_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([obs, agent_id], dim=-1)                         # (B, T, n, obs+n)",
+       "new_str": "        state = batch[\"state\"][:, ts]                                    # (B, T, state_dim)\n        state = state.unsqueeze(2).expand(-1, -1, self.n_agents, -1)     # (B, T, n, state_dim)\n        agent_id = th.eye(self.n_agents, device=batch.device)\n        agent_id = agent_id.unsqueeze(0).unsqueeze(0).expand(bs, max_t, -1, -1)\n        inputs = th.cat([state, agent_id], dim=-1)                       # (B, T, n, state+n)"
       }
      }
     }
@@ -249,8 +249,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_critic.py",
-       "old_str": "        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        input_shape = obs_dim + self.n_agents   # obs + agent-one-hot\n",
-       "new_str": "        state_dim = int(scheme[\"state\"][\"vshape\"])\n        input_shape = state_dim + self.n_agents\n"
+       "old_str": "        obs_dim = int(scheme[\"obs\"][\"vshape\"])\n        input_shape = obs_dim + self.n_agents   # obs + agent-one-hot",
+       "new_str": "        state_dim = int(scheme[\"state\"][\"vshape\"])\n        input_shape = state_dim + self.n_agents"
       }
      }
     }
@@ -272,8 +272,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_critic.py",
-       "old_str": "    \"\"\"IPPO critic — per-agent MLP over local obs + agent one-hot.\n\n    Matches epymarl's ACCritic. No centralization: each agent's value\n    depends only on its own observation. Serves as the \"no centralization\"\n    floor baseline.\n",
-       "new_str": "    \"\"\"MAPPO critic — shared MLP over (state + agent one-hot).\n\n    Standard centralized V critic, matching epymarl's CentralVCritic.\n    All agents share the same network;\n    the agent one-hot lets the shared network produce agent-specific\n    value estimates while still conditioning on the full global state.\n"
+       "old_str": "    \"\"\"IPPO critic — per-agent MLP over local obs + agent one-hot.\n\n    Matches epymarl's ACCritic. No centralization: each agent's value\n    depends only on its own observation. Serves as the \"no centralization\"\n    floor baseline.",
+       "new_str": "    \"\"\"MAPPO critic — shared MLP over (state + agent one-hot).\n\n    Standard centralized V critic, matching epymarl's CentralVCritic.\n    All agents share the same network;\n    the agent one-hot lets the shared network produce agent-specific\n    value estimates while still conditioning on the full global state."
       }
      }
     }

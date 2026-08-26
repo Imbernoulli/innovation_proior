@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -123,6 +96,33 @@
        "description": "Number of edit actions to undo (default: 1)."
       }
      }
+    }
+   }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
     }
    }
   }
@@ -184,8 +184,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_lion_program_search.py",
-       "old_str": "PowerSign:  update = e^{sign(g) * sign(m)} * g       # alpha = e\nAddSign:    update = (1 + sign(g) * sign(m)) * g      # alpha = 1\n# m: bias-corrected exponential moving average of g (standard Adam-style momentum)\n",
-       "new_str": "def train(w, g, m, lr):           # ONE extra state buffer, not two\n    m = interp(g, m, beta)        # (1-beta)*g + beta*m\n    update = sign(m)\n    update = update + w * weight_decay\n    update = update * lr\n    return update, m\n"
+       "old_str": "PowerSign:  update = e^{sign(g) * sign(m)} * g       # alpha = e\nAddSign:    update = (1 + sign(g) * sign(m)) * g      # alpha = 1\n# m: bias-corrected exponential moving average of g (standard Adam-style momentum)",
+       "new_str": "def train(w, g, m, lr):           # ONE extra state buffer, not two\n    m = interp(g, m, beta)        # (1-beta)*g + beta*m\n    update = sign(m)\n    update = update + w * weight_decay\n    update = update * lr\n    return update, m"
       }
      }
     }
@@ -225,8 +225,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_lion_program_search.py",
-       "old_str": "def train(w, g, m, lr):           # ONE extra state buffer, not two\n    m = interp(g, m, beta)        # (1-beta)*g + beta*m\n    update = sign(m)\n    update = update + w * weight_decay\n    update = update * lr\n    return update, m\n",
-       "new_str": "from __future__ import annotations\nfrom typing import Tuple, Callable\nimport torch\nfrom torch.optim.optimizer import Optimizer\n\n\ndef update_fn(p, grad, exp_avg, lr, wd, beta1, beta2):\n    # decoupled weight decay: theta <- theta * (1 - lr*lambda)\n    p.data.mul_(1. - lr * wd)\n\n    # the step: sign of the interpolated momentum  c = beta1*m + (1-beta1)*g\n    update = exp_avg.clone().mul_(beta1).add(grad, alpha=1. - beta1).sign_()\n    p.add_(update, alpha=-lr)                      # theta <- theta - lr * sign(c)\n\n    # the momentum buffer updates on its OWN, slower constant beta2 (decoupled from the step)\n    exp_avg.mul_(beta2).add_(grad, alpha=1. - beta2)\n\n\nclass Lion(Optimizer):\n    def __init__(self, params, lr: float = 1e-4, betas: Tuple[float, float] = (0.9, 0.99),\n                 weight_decay: float = 0.0):\n        assert lr > 0.\n        assert all([0. <= beta <= 1. for beta in betas])\n        defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)\n        super().__init__(params, defaults)\n        self.update_fn = update_fn\n\n    @torch.no_grad()\n    def step(self, closure: Callable | None = None):\n        loss = None\n        if closure is not None:\n            with torch.enable_grad():\n                loss = closure()\n        for group in self.param_groups:\n            for p in filter(lambda p: p.grad is not None, group['params']):\n                grad, lr, wd, beta1, beta2, state = (\n                    p.grad, group['lr'], group['weight_decay'], *group['betas'], self.state[p]\n                )\n                if len(state) == 0:\n                    state['exp_avg'] = torch.zeros_like(p)\n                self.update_fn(p, grad, state['exp_avg'], lr, wd, beta1, beta2)\n        return loss\n"
+       "old_str": "def train(w, g, m, lr):           # ONE extra state buffer, not two\n    m = interp(g, m, beta)        # (1-beta)*g + beta*m\n    update = sign(m)\n    update = update + w * weight_decay\n    update = update * lr\n    return update, m",
+       "new_str": "from __future__ import annotations\nfrom typing import Tuple, Callable\nimport torch\nfrom torch.optim.optimizer import Optimizer\n\n\ndef update_fn(p, grad, exp_avg, lr, wd, beta1, beta2):\n    # decoupled weight decay: theta <- theta * (1 - lr*lambda)\n    p.data.mul_(1. - lr * wd)\n\n    # the step: sign of the interpolated momentum  c = beta1*m + (1-beta1)*g\n    update = exp_avg.clone().mul_(beta1).add(grad, alpha=1. - beta1).sign_()\n    p.add_(update, alpha=-lr)                      # theta <- theta - lr * sign(c)\n\n    # the momentum buffer updates on its OWN, slower constant beta2 (decoupled from the step)\n    exp_avg.mul_(beta2).add_(grad, alpha=1. - beta2)\n\n\nclass Lion(Optimizer):\n    def __init__(self, params, lr: float = 1e-4, betas: Tuple[float, float] = (0.9, 0.99),\n                 weight_decay: float = 0.0):\n        assert lr > 0.\n        assert all([0. <= beta <= 1. for beta in betas])\n        defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)\n        super().__init__(params, defaults)\n        self.update_fn = update_fn\n\n    @torch.no_grad()\n    def step(self, closure: Callable | None = None):\n        loss = None\n        if closure is not None:\n            with torch.enable_grad():\n                loss = closure()\n        for group in self.param_groups:\n            for p in filter(lambda p: p.grad is not None, group['params']):\n                grad, lr, wd, beta1, beta2, state = (\n                    p.grad, group['lr'], group['weight_decay'], *group['betas'], self.state[p]\n                )\n                if len(state) == 0:\n                    state['exp_avg'] = torch.zeros_like(p)\n                self.update_fn(p, grad, state['exp_avg'], lr, wd, beta1, beta2)\n        return loss"
       }
      }
     }

@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_unlearning.py",
-       "old_str": "# EDITABLE region of custom_unlearning.py -- default fill (retain-only finetuning)\nclass UnlearningMethod:\n    \"\"\"Default retain-only finetuning update.\"\"\"\n\n    def __init__(self):\n        self.forget_weight = 0.0\n",
-       "new_str": "class UnlearningMethod:\n    \"\"\"Continue training on retained data only.\"\"\"\n\n    def __init__(self):\n        pass\n"
+       "old_str": "# EDITABLE region of custom_unlearning.py -- default fill (retain-only finetuning)\nclass UnlearningMethod:\n    \"\"\"Default retain-only finetuning update.\"\"\"\n\n    def __init__(self):\n        self.forget_weight = 0.0",
+       "new_str": "class UnlearningMethod:\n    \"\"\"Continue training on retained data only.\"\"\"\n\n    def __init__(self):\n        pass"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_unlearning.py",
-       "old_str": "        return {\"loss\": loss.item()}\n",
-       "new_str": "        return {\"loss\": loss.item(), \"retain_loss\": retain_loss.item(), \"forget_loss\": forget_loss.item()}\n"
+       "old_str": "        return {\"loss\": loss.item()}",
+       "new_str": "        return {\"loss\": loss.item(), \"retain_loss\": retain_loss.item(), \"forget_loss\": forget_loss.item()}"
       }
      }
     }
@@ -208,8 +208,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_unlearning.py",
-       "old_str": "        logits = model(retain_x)\n        loss = F.cross_entropy(logits, retain_y)\n",
-       "new_str": "        forget_x, forget_y = forget_batch\n        retain_loss = F.cross_entropy(model(retain_x), retain_y)\n        forget_loss = F.cross_entropy(model(forget_x), forget_y)\n        loss = retain_loss - self.forget_weight * forget_loss\n"
+       "old_str": "        logits = model(retain_x)\n        loss = F.cross_entropy(logits, retain_y)",
+       "new_str": "        forget_x, forget_y = forget_batch\n        retain_loss = F.cross_entropy(model(retain_x), retain_y)\n        forget_loss = F.cross_entropy(model(forget_x), forget_y)\n        loss = retain_loss - self.forget_weight * forget_loss"
       }
      }
     }
@@ -231,8 +231,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_unlearning.py",
-       "old_str": "    \"\"\"Continue training on retained data only.\"\"\"\n\n    def __init__(self):\n        pass\n",
-       "new_str": "    \"\"\"Descend retain loss while ascending forget loss.\"\"\"\n\n    def __init__(self):\n        self.forget_weight = 0.5\n"
+       "old_str": "    \"\"\"Continue training on retained data only.\"\"\"\n\n    def __init__(self):\n        pass",
+       "new_str": "    \"\"\"Descend retain loss while ascending forget loss.\"\"\"\n\n    def __init__(self):\n        self.forget_weight = 0.5"
       }
      }
     }
@@ -272,8 +272,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_unlearning.py",
-       "old_str": "class UnlearningMethod:\n    \"\"\"Descend retain loss while ascending forget loss.\"\"\"\n\n    def __init__(self):\n        self.forget_weight = 0.5\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        retain_x, retain_y = retain_batch\n        forget_x, forget_y = forget_batch\n        retain_loss = F.cross_entropy(model(retain_x), retain_y)\n        forget_loss = F.cross_entropy(model(forget_x), forget_y)\n        loss = retain_loss - self.forget_weight * forget_loss\n        optimizer.zero_grad()\n        loss.backward()\n        optimizer.step()\n        return {\"loss\": loss.item(), \"retain_loss\": retain_loss.item(), \"forget_loss\": forget_loss.item()}\n",
-       "new_str": "import copy\nimport torch.nn as nn\n\nclass UnlearningMethod:\n    \"\"\"Bad Teacher: dual-teacher KD with competent + incompetent teachers.\"\"\"\n\n    def __init__(self):\n        self.KL_temperature = 1.0\n        self.competent = None       # = frozen original model\n        self.incompetent = None     # = randomly re-initialised same-arch model\n\n    def _freeze(self, m):\n        for p in m.parameters():\n            p.requires_grad_(False)\n        m.eval()\n\n    def _random_reinit(self, m):\n        # Kaiming init identical to initialize_weights() in run_unlearning.py.\n        for mod in m.modules():\n            if isinstance(mod, nn.Conv2d):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_out', nonlinearity='relu')\n            elif isinstance(mod, nn.BatchNorm2d):\n                nn.init.constant_(mod.weight, 1)\n                nn.init.constant_(mod.bias, 0)\n            elif isinstance(mod, nn.Linear):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_in', nonlinearity='relu')\n                if mod.bias is not None:\n                    nn.init.constant_(mod.bias, 0)\n\n    def _capture_teachers(self, model):\n        self.competent = copy.deepcopy(model)\n        self._freeze(self.competent)\n\n        self.incompetent = copy.deepcopy(model)\n        self._random_reinit(self.incompetent)\n        self._freeze(self.incompetent)\n\n    def _unlearner_loss(self, student_logits, full_teacher_logits,\n                        unlearn_teacher_logits, is_forget):\n        T = self.KL_temperature\n        f_t = F.softmax(full_teacher_logits / T, dim=1)\n        u_t = F.softmax(unlearn_teacher_logits / T, dim=1)\n        lbl = is_forget.view(-1, 1).float()\n        target = lbl * u_t + (1.0 - lbl) * f_t\n        log_s = F.log_softmax(student_logits / T, dim=1)\n        return F.kl_div(log_s, target, reduction='batchmean')\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        if self.competent is None:\n            self._capture_teachers(model)\n\n        retain_x, _ = retain_batch\n        forget_x, _ = forget_batch\n\n        # Balanced mini-batch: concatenate retain + forget samples.\n        x = torch.cat([retain_x, forget_x], dim=0)\n        is_forget = torch.cat([\n            torch.zeros(retain_x.size(0), device=retain_x.device),\n            torch.ones(forget_x.size(0), device=forget_x.device),\n        ], dim=0)\n\n        student_logits = model(x)\n        with torch.no_grad():\n            full_t = self.competent(x)\n            unl_t = self.incompetent(x)\n\n        loss = self._unlearner_loss(student_logits, full_t, unl_t, is_forget)\n\n        optimizer.zero_grad()\n        loss.backward()\n        optimizer.step()\n\n        return {\"loss\": float(loss.item())}\n"
+       "old_str": "class UnlearningMethod:\n    \"\"\"Descend retain loss while ascending forget loss.\"\"\"\n\n    def __init__(self):\n        self.forget_weight = 0.5\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        retain_x, retain_y = retain_batch\n        forget_x, forget_y = forget_batch\n        retain_loss = F.cross_entropy(model(retain_x), retain_y)\n        forget_loss = F.cross_entropy(model(forget_x), forget_y)\n        loss = retain_loss - self.forget_weight * forget_loss\n        optimizer.zero_grad()\n        loss.backward()\n        optimizer.step()\n        return {\"loss\": loss.item(), \"retain_loss\": retain_loss.item(), \"forget_loss\": forget_loss.item()}",
+       "new_str": "import copy\nimport torch.nn as nn\n\nclass UnlearningMethod:\n    \"\"\"Bad Teacher: dual-teacher KD with competent + incompetent teachers.\"\"\"\n\n    def __init__(self):\n        self.KL_temperature = 1.0\n        self.competent = None       # = frozen original model\n        self.incompetent = None     # = randomly re-initialised same-arch model\n\n    def _freeze(self, m):\n        for p in m.parameters():\n            p.requires_grad_(False)\n        m.eval()\n\n    def _random_reinit(self, m):\n        # Kaiming init identical to initialize_weights() in run_unlearning.py.\n        for mod in m.modules():\n            if isinstance(mod, nn.Conv2d):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_out', nonlinearity='relu')\n            elif isinstance(mod, nn.BatchNorm2d):\n                nn.init.constant_(mod.weight, 1)\n                nn.init.constant_(mod.bias, 0)\n            elif isinstance(mod, nn.Linear):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_in', nonlinearity='relu')\n                if mod.bias is not None:\n                    nn.init.constant_(mod.bias, 0)\n\n    def _capture_teachers(self, model):\n        self.competent = copy.deepcopy(model)\n        self._freeze(self.competent)\n\n        self.incompetent = copy.deepcopy(model)\n        self._random_reinit(self.incompetent)\n        self._freeze(self.incompetent)\n\n    def _unlearner_loss(self, student_logits, full_teacher_logits,\n                        unlearn_teacher_logits, is_forget):\n        T = self.KL_temperature\n        f_t = F.softmax(full_teacher_logits / T, dim=1)\n        u_t = F.softmax(unlearn_teacher_logits / T, dim=1)\n        lbl = is_forget.view(-1, 1).float()\n        target = lbl * u_t + (1.0 - lbl) * f_t\n        log_s = F.log_softmax(student_logits / T, dim=1)\n        return F.kl_div(log_s, target, reduction='batchmean')\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        if self.competent is None:\n            self._capture_teachers(model)\n\n        retain_x, _ = retain_batch\n        forget_x, _ = forget_batch\n\n        # Balanced mini-batch: concatenate retain + forget samples.\n        x = torch.cat([retain_x, forget_x], dim=0)\n        is_forget = torch.cat([\n            torch.zeros(retain_x.size(0), device=retain_x.device),\n            torch.ones(forget_x.size(0), device=forget_x.device),\n        ], dim=0)\n\n        student_logits = model(x)\n        with torch.no_grad():\n            full_t = self.competent(x)\n            unl_t = self.incompetent(x)\n\n        loss = self._unlearner_loss(student_logits, full_t, unl_t, is_forget)\n\n        optimizer.zero_grad()\n        loss.backward()\n        optimizer.step()\n\n        return {\"loss\": float(loss.item())}"
       }
      }
     }
@@ -313,8 +313,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_unlearning.py",
-       "old_str": "import torch.nn as nn\n\nclass UnlearningMethod:\n    \"\"\"Bad Teacher: dual-teacher KD with competent + incompetent teachers.\"\"\"\n\n    def __init__(self):\n        self.KL_temperature = 1.0\n        self.competent = None       # = frozen original model\n        self.incompetent = None     # = randomly re-initialised same-arch model\n\n    def _freeze(self, m):\n        for p in m.parameters():\n            p.requires_grad_(False)\n        m.eval()\n\n    def _random_reinit(self, m):\n        # Kaiming init identical to initialize_weights() in run_unlearning.py.\n        for mod in m.modules():\n            if isinstance(mod, nn.Conv2d):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_out', nonlinearity='relu')\n            elif isinstance(mod, nn.BatchNorm2d):\n                nn.init.constant_(mod.weight, 1)\n                nn.init.constant_(mod.bias, 0)\n            elif isinstance(mod, nn.Linear):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_in', nonlinearity='relu')\n                if mod.bias is not None:\n                    nn.init.constant_(mod.bias, 0)\n\n    def _capture_teachers(self, model):\n        self.competent = copy.deepcopy(model)\n        self._freeze(self.competent)\n\n        self.incompetent = copy.deepcopy(model)\n        self._random_reinit(self.incompetent)\n        self._freeze(self.incompetent)\n\n    def _unlearner_loss(self, student_logits, full_teacher_logits,\n                        unlearn_teacher_logits, is_forget):\n        T = self.KL_temperature\n        f_t = F.softmax(full_teacher_logits / T, dim=1)\n        u_t = F.softmax(unlearn_teacher_logits / T, dim=1)\n        lbl = is_forget.view(-1, 1).float()\n        target = lbl * u_t + (1.0 - lbl) * f_t\n        log_s = F.log_softmax(student_logits / T, dim=1)\n        return F.kl_div(log_s, target, reduction='batchmean')\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        if self.competent is None:\n            self._capture_teachers(model)\n\n        retain_x, _ = retain_batch\n        forget_x, _ = forget_batch\n\n        # Balanced mini-batch: concatenate retain + forget samples.\n        x = torch.cat([retain_x, forget_x], dim=0)\n        is_forget = torch.cat([\n            torch.zeros(retain_x.size(0), device=retain_x.device),\n            torch.ones(forget_x.size(0), device=forget_x.device),\n        ], dim=0)\n\n        student_logits = model(x)\n        with torch.no_grad():\n            full_t = self.competent(x)\n            unl_t = self.incompetent(x)\n\n        loss = self._unlearner_loss(student_logits, full_t, unl_t, is_forget)\n\n        optimizer.zero_grad()\n        loss.backward()\n        optimizer.step()\n\n        return {\"loss\": float(loss.item())}\n",
-       "new_str": "\nclass UnlearningMethod:\n    \"\"\"SCRUB: min-max KL distillation vs a frozen original model.\"\"\"\n\n    def __init__(self):\n        # Standard VGG defaults.\n        self.msteps = 2        # number of max-step epochs (rewind)\n        self.kd_T = 4.0        # KD temperature\n        self.alpha = 0.01      # weight on KL(student || teacher) in min step\n        self.gamma = 0.99      # weight on CE(student, y) in min step\n        self.teacher = None    # lazily captured on first step\n\n    def _kd_kl(self, student_logits, teacher_logits):\n        # KL(student || teacher) with temperature, as in Hinton KD.\n        T = self.kd_T\n        p_s = F.log_softmax(student_logits / T, dim=1)\n        p_t = F.softmax(teacher_logits / T, dim=1)\n        return F.kl_div(p_s, p_t, reduction='batchmean') * (T * T)\n\n    def _capture_teacher(self, model):\n        self.teacher = copy.deepcopy(model)\n        for p in self.teacher.parameters():\n            p.requires_grad_(False)\n        self.teacher.eval()\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        if self.teacher is None:\n            self._capture_teacher(model)\n\n        retain_x, retain_y = retain_batch\n        forget_x, _ = forget_batch\n\n        # ---- Max step on forget set (only during the first msteps epochs) ----\n        forget_kl_val = 0.0\n        if epoch < self.msteps:\n            optimizer.zero_grad()\n            s_forget = model(forget_x)\n            with torch.no_grad():\n                t_forget = self.teacher(forget_x)\n            forget_kl = self._kd_kl(s_forget, t_forget)\n            (-forget_kl).backward()\n            optimizer.step()\n            forget_kl_val = forget_kl.item()\n\n        # ---- Min step on retain set (every epoch) ----\n        optimizer.zero_grad()\n        s_retain = model(retain_x)\n        with torch.no_grad():\n            t_retain = self.teacher(retain_x)\n        retain_ce = F.cross_entropy(s_retain, retain_y)\n        retain_kl = self._kd_kl(s_retain, t_retain)\n        loss = self.gamma * retain_ce + self.alpha * retain_kl\n        loss.backward()\n        optimizer.step()\n\n        return {\n            \"loss\": float(loss.item()),\n            \"retain_ce\": float(retain_ce.item()),\n            \"retain_kl\": float(retain_kl.item()),\n            \"forget_kl\": float(forget_kl_val),\n        }\n"
+       "old_str": "import torch.nn as nn\n\nclass UnlearningMethod:\n    \"\"\"Bad Teacher: dual-teacher KD with competent + incompetent teachers.\"\"\"\n\n    def __init__(self):\n        self.KL_temperature = 1.0\n        self.competent = None       # = frozen original model\n        self.incompetent = None     # = randomly re-initialised same-arch model\n\n    def _freeze(self, m):\n        for p in m.parameters():\n            p.requires_grad_(False)\n        m.eval()\n\n    def _random_reinit(self, m):\n        # Kaiming init identical to initialize_weights() in run_unlearning.py.\n        for mod in m.modules():\n            if isinstance(mod, nn.Conv2d):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_out', nonlinearity='relu')\n            elif isinstance(mod, nn.BatchNorm2d):\n                nn.init.constant_(mod.weight, 1)\n                nn.init.constant_(mod.bias, 0)\n            elif isinstance(mod, nn.Linear):\n                nn.init.kaiming_normal_(mod.weight, mode='fan_in', nonlinearity='relu')\n                if mod.bias is not None:\n                    nn.init.constant_(mod.bias, 0)\n\n    def _capture_teachers(self, model):\n        self.competent = copy.deepcopy(model)\n        self._freeze(self.competent)\n\n        self.incompetent = copy.deepcopy(model)\n        self._random_reinit(self.incompetent)\n        self._freeze(self.incompetent)\n\n    def _unlearner_loss(self, student_logits, full_teacher_logits,\n                        unlearn_teacher_logits, is_forget):\n        T = self.KL_temperature\n        f_t = F.softmax(full_teacher_logits / T, dim=1)\n        u_t = F.softmax(unlearn_teacher_logits / T, dim=1)\n        lbl = is_forget.view(-1, 1).float()\n        target = lbl * u_t + (1.0 - lbl) * f_t\n        log_s = F.log_softmax(student_logits / T, dim=1)\n        return F.kl_div(log_s, target, reduction='batchmean')\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        if self.competent is None:\n            self._capture_teachers(model)\n\n        retain_x, _ = retain_batch\n        forget_x, _ = forget_batch\n\n        # Balanced mini-batch: concatenate retain + forget samples.\n        x = torch.cat([retain_x, forget_x], dim=0)\n        is_forget = torch.cat([\n            torch.zeros(retain_x.size(0), device=retain_x.device),\n            torch.ones(forget_x.size(0), device=forget_x.device),\n        ], dim=0)\n\n        student_logits = model(x)\n        with torch.no_grad():\n            full_t = self.competent(x)\n            unl_t = self.incompetent(x)\n\n        loss = self._unlearner_loss(student_logits, full_t, unl_t, is_forget)\n\n        optimizer.zero_grad()\n        loss.backward()\n        optimizer.step()\n\n        return {\"loss\": float(loss.item())}",
+       "new_str": "\nclass UnlearningMethod:\n    \"\"\"SCRUB: min-max KL distillation vs a frozen original model.\"\"\"\n\n    def __init__(self):\n        # Standard VGG defaults.\n        self.msteps = 2        # number of max-step epochs (rewind)\n        self.kd_T = 4.0        # KD temperature\n        self.alpha = 0.01      # weight on KL(student || teacher) in min step\n        self.gamma = 0.99      # weight on CE(student, y) in min step\n        self.teacher = None    # lazily captured on first step\n\n    def _kd_kl(self, student_logits, teacher_logits):\n        # KL(student || teacher) with temperature, as in Hinton KD.\n        T = self.kd_T\n        p_s = F.log_softmax(student_logits / T, dim=1)\n        p_t = F.softmax(teacher_logits / T, dim=1)\n        return F.kl_div(p_s, p_t, reduction='batchmean') * (T * T)\n\n    def _capture_teacher(self, model):\n        self.teacher = copy.deepcopy(model)\n        for p in self.teacher.parameters():\n            p.requires_grad_(False)\n        self.teacher.eval()\n\n    def unlearn_step(self, model, retain_batch, forget_batch, optimizer, step, epoch):\n        if self.teacher is None:\n            self._capture_teacher(model)\n\n        retain_x, retain_y = retain_batch\n        forget_x, _ = forget_batch\n\n        # ---- Max step on forget set (only during the first msteps epochs) ----\n        forget_kl_val = 0.0\n        if epoch < self.msteps:\n            optimizer.zero_grad()\n            s_forget = model(forget_x)\n            with torch.no_grad():\n                t_forget = self.teacher(forget_x)\n            forget_kl = self._kd_kl(s_forget, t_forget)\n            (-forget_kl).backward()\n            optimizer.step()\n            forget_kl_val = forget_kl.item()\n\n        # ---- Min step on retain set (every epoch) ----\n        optimizer.zero_grad()\n        s_retain = model(retain_x)\n        with torch.no_grad():\n            t_retain = self.teacher(retain_x)\n        retain_ce = F.cross_entropy(s_retain, retain_y)\n        retain_kl = self._kd_kl(s_retain, t_retain)\n        loss = self.gamma * retain_ce + self.alpha * retain_kl\n        loss.backward()\n        optimizer.step()\n\n        return {\n            \"loss\": float(loss.item()),\n            \"retain_ce\": float(retain_ce.item()),\n            \"retain_kl\": float(retain_kl.item()),\n            \"forget_kl\": float(forget_kl_val),\n        }"
       }
      }
     }

@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_strategy.py",
-       "old_str": "        return torch.optim.SGD(\n            net.parameters(),\n",
-       "new_str": "        params = [p for p in net.parameters() if p.requires_grad]\n        return torch.optim.SGD(\n            params,\n"
+       "old_str": "        return torch.optim.SGD(\n            net.parameters(),",
+       "new_str": "        params = [p for p in net.parameters() if p.requires_grad]\n        return torch.optim.SGD(\n            params,"
       }
      }
     }
@@ -167,8 +167,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_strategy.py",
-       "old_str": "        # Kaiming-normal first layer; small uniform second layer.\n        nn.init.kaiming_normal_(net.fc1.weight, nonlinearity=\"relu\")\n        nn.init.zeros_(net.fc1.bias)\n",
-       "new_str": "        # Random first-layer rows on the unit sphere; biases sampled uniformly\n        # in [-1, 1] and FROZEN -- the key move.\n        with torch.no_grad():\n            W = torch.randn_like(net.fc1.weight)\n            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)\n            net.fc1.weight.copy_(W)\n            net.fc1.bias.uniform_(-1.0, 1.0)\n        net.fc1.bias.requires_grad_(False)\n\n"
+       "old_str": "        # Kaiming-normal first layer; small uniform second layer.\n        nn.init.kaiming_normal_(net.fc1.weight, nonlinearity=\"relu\")\n        nn.init.zeros_(net.fc1.bias)",
+       "new_str": "        # Random first-layer rows on the unit sphere; biases sampled uniformly\n        # in [-1, 1] and FROZEN -- the key move.\n        with torch.no_grad():\n            W = torch.randn_like(net.fc1.weight)\n            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)\n            net.fc1.weight.copy_(W)\n            net.fc1.bias.uniform_(-1.0, 1.0)\n        net.fc1.bias.requires_grad_(False)\n"
       }
      }
     }
@@ -190,8 +190,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_strategy.py",
-       "old_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 1: vanilla SGD MLP\nclass Strategy:\n    \"\"\"Vanilla SGD on a two-layer ReLU MLP (reference baseline).\"\"\"\n",
-       "new_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 2: frozen-bias shallow net\nclass Strategy:\n    \"\"\"Frozen-bias shallow network: biases sampled once and never trained.\"\"\"\n"
+       "old_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 1: vanilla SGD MLP\nclass Strategy:\n    \"\"\"Vanilla SGD on a two-layer ReLU MLP (reference baseline).\"\"\"",
+       "new_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 2: frozen-bias shallow net\nclass Strategy:\n    \"\"\"Frozen-bias shallow network: biases sampled once and never trained.\"\"\""
       }
      }
     }
@@ -231,8 +231,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/custom_strategy.py",
-       "old_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 2: frozen-bias shallow net\nclass Strategy:\n    \"\"\"Frozen-bias shallow network: biases sampled once and never trained.\"\"\"\n\n    def __init__(self, config: TaskConfig) -> None:\n        self.config = config\n\n    def init_two_layer(self, net: TwoLayerMLP, config: TaskConfig) -> None:\n        # Random first-layer rows on the unit sphere; biases sampled uniformly\n        # in [-1, 1] and FROZEN -- the key move.\n        with torch.no_grad():\n            W = torch.randn_like(net.fc1.weight)\n            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)\n            net.fc1.weight.copy_(W)\n            net.fc1.bias.uniform_(-1.0, 1.0)\n        net.fc1.bias.requires_grad_(False)\n\n        bound = 1.0 / math.sqrt(config.width)\n        nn.init.uniform_(net.fc2.weight, -bound, bound)\n        nn.init.zeros_(net.fc2.bias)\n\n    def make_optimizer(\n        self,\n        net: TwoLayerMLP,\n        config: TaskConfig,\n    ) -> torch.optim.Optimizer:\n        params = [p for p in net.parameters() if p.requires_grad]\n        return torch.optim.SGD(\n            params,\n            lr=config.base_lr,\n            momentum=config.momentum,\n            weight_decay=config.weight_decay,\n        )\n\n    def training_step(\n        self,\n        net: TwoLayerMLP,\n        optimizer: torch.optim.Optimizer,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        step: int,\n        config: TaskConfig,\n    ) -> StepMetrics:\n        net.train()\n        optimizer.zero_grad(set_to_none=True)\n        preds = net(x)\n        loss = torch.mean((preds - y) ** 2)\n        loss.backward()\n        optimizer.step()\n        return StepMetrics(loss=float(loss.item()), extra={})\n\n    def finalize(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n        config: TaskConfig,\n    ) -> None:\n        return\n",
-       "new_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 3: giant step + ridge readout\nclass Strategy:\n    \"\"\"One giant gradient step on the first layer, then fit the readout.\"\"\"\n\n    def __init__(self, config: TaskConfig) -> None:\n        self.config = config\n        # Information exponent k of the link. The scaffold scales readout weights\n        # by 1/sqrt(width), so multiply by sqrt(width) to keep the theory's\n        # effective first-layer step size.\n        info_exponent = 3 if config.link == \"hermite\" else 1\n        self._giant_lr = math.sqrt(max(config.width, 1)) * (\n            float(config.dim) ** max(0.0, 0.5 * (info_exponent - 1))\n        )\n\n    def init_two_layer(self, net: TwoLayerMLP, config: TaskConfig) -> None:\n        # Random probes on the sphere; constant 1/sqrt(W) readout; zero biases.\n        with torch.no_grad():\n            W = torch.randn_like(net.fc1.weight)\n            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)\n            net.fc1.weight.copy_(W)\n            nn.init.zeros_(net.fc1.bias)\n            net.fc2.weight.fill_(1.0 / math.sqrt(config.width))\n            nn.init.zeros_(net.fc2.bias)\n\n    def make_optimizer(\n        self,\n        net: TwoLayerMLP,\n        config: TaskConfig,\n    ) -> torch.optim.Optimizer:\n        # No mini-batch updates; the giant step is full-batch, done in finalize().\n        return torch.optim.SGD(net.parameters(), lr=0.0)\n\n    def training_step(\n        self,\n        net: TwoLayerMLP,\n        optimizer: torch.optim.Optimizer,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        step: int,\n        config: TaskConfig,\n    ) -> StepMetrics:\n        return StepMetrics(loss=float(torch.mean(y * y).item()), extra={})\n\n    @staticmethod\n    def _normalize(v: torch.Tensor) -> torch.Tensor:\n        return v / v.norm().clamp_min(1e-12)\n\n    def _first_order_direction(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:\n        # k=1 links (ReLU/sign): the first Hermite moment E[y x] = mu_1 theta* is nonzero.\n        return self._normalize((y[:, None] * x).mean(dim=0))\n\n    def _hermite_contract(\n        self,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        v: torch.Tensor,\n    ) -> torch.Tensor:\n        # Third-Hermite contraction E[y (x<x,v>^2 - x||v||^2 - 2 v<x,v>)].\n        z = x @ v\n        contracted = (\n            y[:, None]\n            * (x * z.square()[:, None] - x - 2.0 * v[None, :] * z[:, None])\n        ).mean(dim=0)\n        return self._normalize(contracted)\n\n    def _hermite_direction(\n        self,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        probes: torch.Tensor,\n    ) -> torch.Tensor:\n        # Average probe contractions, then refine with tensor power iteration.\n        probes = probes / probes.norm(dim=1, keepdim=True).clamp_min(1e-12)\n        z = x @ probes.t()\n        y_col = y[:, None]\n        first = (y_col * x).mean(dim=0)\n        yz = (y_col * z).mean(dim=0)\n        term = (y_col * z.square()).t() @ x / float(x.shape[0])\n        term = term - first[None, :] - 2.0 * probes * yz[:, None]\n        direction = self._normalize(term.mean(dim=0))\n        for _ in range(2):\n            direction = self._hermite_contract(x, y, direction)\n        return direction\n\n    def _estimate_direction(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n    ) -> torch.Tensor:\n        if self.config.link == \"hermite\":\n            return self._hermite_direction(x_train, y_train, net.fc1.weight.detach())\n        return self._first_order_direction(x_train, y_train)\n\n    def _apply_giant_step(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n        config: TaskConfig,\n    ) -> None:\n        direction = self._estimate_direction(net, x_train, y_train)\n        probes = net.fc1.weight.detach()\n        jitter = torch.randn_like(probes)\n        jitter = jitter - (jitter @ direction)[:, None] * direction[None, :]\n        jitter = jitter / jitter.norm(dim=1, keepdim=True).clamp_min(1e-12)\n\n        # Dimension-scaled giant step: larger eta -> probe rows overwritten by signal.\n        mix = self._giant_lr / (self._giant_lr + 1.0)\n        rows = (1.0 - mix) * probes + mix * direction[None, :] + 0.05 * jitter\n        rows = rows / rows.norm(dim=1, keepdim=True).clamp_min(1e-12)\n        with torch.no_grad():\n            net.fc1.weight.copy_(rows)\n            # Re-sample biases to a spread of thresholds: a usable 1-D link basis.\n            net.fc1.bias.copy_(\n                torch.linspace(-2.5, 2.5, config.width, device=rows.device)\n            )\n\n    def finalize(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n        config: TaskConfig,\n    ) -> None:\n        # Closed-form ridge regression on the (now frozen) features.\n        device = next(net.parameters()).device\n        with torch.no_grad():\n            x_device = x_train.to(device)\n            y_device = y_train.to(device)\n            self._apply_giant_step(net, x_device, y_device, config)\n            feats = torch.relu(\n                x_device @ net.fc1.weight.t() + net.fc1.bias\n            )  # [N, W]\n            feats = torch.cat(\n                [feats, torch.ones(feats.shape[0], 1, device=device)], dim=1\n            )\n            target = y_device.view(-1, 1)\n            lam = max(config.weight_decay, 1e-4)\n            gram = feats.t() @ feats + lam * torch.eye(\n                feats.shape[1], device=device\n            )\n            rhs = feats.t() @ target\n            beta = torch.linalg.solve(gram, rhs).view(-1)\n            net.fc2.weight.copy_(beta[:-1].view(1, -1))\n            net.fc2.bias.fill_(float(beta[-1]))\n"
+       "old_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 2: frozen-bias shallow net\nclass Strategy:\n    \"\"\"Frozen-bias shallow network: biases sampled once and never trained.\"\"\"\n\n    def __init__(self, config: TaskConfig) -> None:\n        self.config = config\n\n    def init_two_layer(self, net: TwoLayerMLP, config: TaskConfig) -> None:\n        # Random first-layer rows on the unit sphere; biases sampled uniformly\n        # in [-1, 1] and FROZEN -- the key move.\n        with torch.no_grad():\n            W = torch.randn_like(net.fc1.weight)\n            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)\n            net.fc1.weight.copy_(W)\n            net.fc1.bias.uniform_(-1.0, 1.0)\n        net.fc1.bias.requires_grad_(False)\n\n        bound = 1.0 / math.sqrt(config.width)\n        nn.init.uniform_(net.fc2.weight, -bound, bound)\n        nn.init.zeros_(net.fc2.bias)\n\n    def make_optimizer(\n        self,\n        net: TwoLayerMLP,\n        config: TaskConfig,\n    ) -> torch.optim.Optimizer:\n        params = [p for p in net.parameters() if p.requires_grad]\n        return torch.optim.SGD(\n            params,\n            lr=config.base_lr,\n            momentum=config.momentum,\n            weight_decay=config.weight_decay,\n        )\n\n    def training_step(\n        self,\n        net: TwoLayerMLP,\n        optimizer: torch.optim.Optimizer,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        step: int,\n        config: TaskConfig,\n    ) -> StepMetrics:\n        net.train()\n        optimizer.zero_grad(set_to_none=True)\n        preds = net(x)\n        loss = torch.mean((preds - y) ** 2)\n        loss.backward()\n        optimizer.step()\n        return StepMetrics(loss=float(loss.item()), extra={})\n\n    def finalize(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n        config: TaskConfig,\n    ) -> None:\n        return",
+       "new_str": "# EDITABLE region of custom_strategy.py (lines 176-239) — step 3: giant step + ridge readout\nclass Strategy:\n    \"\"\"One giant gradient step on the first layer, then fit the readout.\"\"\"\n\n    def __init__(self, config: TaskConfig) -> None:\n        self.config = config\n        # Information exponent k of the link. The scaffold scales readout weights\n        # by 1/sqrt(width), so multiply by sqrt(width) to keep the theory's\n        # effective first-layer step size.\n        info_exponent = 3 if config.link == \"hermite\" else 1\n        self._giant_lr = math.sqrt(max(config.width, 1)) * (\n            float(config.dim) ** max(0.0, 0.5 * (info_exponent - 1))\n        )\n\n    def init_two_layer(self, net: TwoLayerMLP, config: TaskConfig) -> None:\n        # Random probes on the sphere; constant 1/sqrt(W) readout; zero biases.\n        with torch.no_grad():\n            W = torch.randn_like(net.fc1.weight)\n            W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)\n            net.fc1.weight.copy_(W)\n            nn.init.zeros_(net.fc1.bias)\n            net.fc2.weight.fill_(1.0 / math.sqrt(config.width))\n            nn.init.zeros_(net.fc2.bias)\n\n    def make_optimizer(\n        self,\n        net: TwoLayerMLP,\n        config: TaskConfig,\n    ) -> torch.optim.Optimizer:\n        # No mini-batch updates; the giant step is full-batch, done in finalize().\n        return torch.optim.SGD(net.parameters(), lr=0.0)\n\n    def training_step(\n        self,\n        net: TwoLayerMLP,\n        optimizer: torch.optim.Optimizer,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        step: int,\n        config: TaskConfig,\n    ) -> StepMetrics:\n        return StepMetrics(loss=float(torch.mean(y * y).item()), extra={})\n\n    @staticmethod\n    def _normalize(v: torch.Tensor) -> torch.Tensor:\n        return v / v.norm().clamp_min(1e-12)\n\n    def _first_order_direction(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:\n        # k=1 links (ReLU/sign): the first Hermite moment E[y x] = mu_1 theta* is nonzero.\n        return self._normalize((y[:, None] * x).mean(dim=0))\n\n    def _hermite_contract(\n        self,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        v: torch.Tensor,\n    ) -> torch.Tensor:\n        # Third-Hermite contraction E[y (x<x,v>^2 - x||v||^2 - 2 v<x,v>)].\n        z = x @ v\n        contracted = (\n            y[:, None]\n            * (x * z.square()[:, None] - x - 2.0 * v[None, :] * z[:, None])\n        ).mean(dim=0)\n        return self._normalize(contracted)\n\n    def _hermite_direction(\n        self,\n        x: torch.Tensor,\n        y: torch.Tensor,\n        probes: torch.Tensor,\n    ) -> torch.Tensor:\n        # Average probe contractions, then refine with tensor power iteration.\n        probes = probes / probes.norm(dim=1, keepdim=True).clamp_min(1e-12)\n        z = x @ probes.t()\n        y_col = y[:, None]\n        first = (y_col * x).mean(dim=0)\n        yz = (y_col * z).mean(dim=0)\n        term = (y_col * z.square()).t() @ x / float(x.shape[0])\n        term = term - first[None, :] - 2.0 * probes * yz[:, None]\n        direction = self._normalize(term.mean(dim=0))\n        for _ in range(2):\n            direction = self._hermite_contract(x, y, direction)\n        return direction\n\n    def _estimate_direction(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n    ) -> torch.Tensor:\n        if self.config.link == \"hermite\":\n            return self._hermite_direction(x_train, y_train, net.fc1.weight.detach())\n        return self._first_order_direction(x_train, y_train)\n\n    def _apply_giant_step(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n        config: TaskConfig,\n    ) -> None:\n        direction = self._estimate_direction(net, x_train, y_train)\n        probes = net.fc1.weight.detach()\n        jitter = torch.randn_like(probes)\n        jitter = jitter - (jitter @ direction)[:, None] * direction[None, :]\n        jitter = jitter / jitter.norm(dim=1, keepdim=True).clamp_min(1e-12)\n\n        # Dimension-scaled giant step: larger eta -> probe rows overwritten by signal.\n        mix = self._giant_lr / (self._giant_lr + 1.0)\n        rows = (1.0 - mix) * probes + mix * direction[None, :] + 0.05 * jitter\n        rows = rows / rows.norm(dim=1, keepdim=True).clamp_min(1e-12)\n        with torch.no_grad():\n            net.fc1.weight.copy_(rows)\n            # Re-sample biases to a spread of thresholds: a usable 1-D link basis.\n            net.fc1.bias.copy_(\n                torch.linspace(-2.5, 2.5, config.width, device=rows.device)\n            )\n\n    def finalize(\n        self,\n        net: TwoLayerMLP,\n        x_train: torch.Tensor,\n        y_train: torch.Tensor,\n        config: TaskConfig,\n    ) -> None:\n        # Closed-form ridge regression on the (now frozen) features.\n        device = next(net.parameters()).device\n        with torch.no_grad():\n            x_device = x_train.to(device)\n            y_device = y_train.to(device)\n            self._apply_giant_step(net, x_device, y_device, config)\n            feats = torch.relu(\n                x_device @ net.fc1.weight.t() + net.fc1.bias\n            )  # [N, W]\n            feats = torch.cat(\n                [feats, torch.ones(feats.shape[0], 1, device=device)], dim=1\n            )\n            target = y_device.view(-1, 1)\n            lam = max(config.weight_decay, 1e-4)\n            gram = feats.t() @ feats + lam * torch.eye(\n                feats.shape[1], device=device\n            )\n            rhs = feats.t() @ target\n            beta = torch.linalg.solve(gram, rhs).view(-1)\n            net.fc2.weight.copy_(beta[:-1].view(1, -1))\n            net.fc2.bias.fill_(float(beta[-1]))"
       }
      }
     }

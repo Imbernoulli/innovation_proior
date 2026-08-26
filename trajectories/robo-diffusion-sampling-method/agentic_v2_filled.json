@@ -56,33 +56,6 @@
   {
    "type": "function",
    "function": {
-    "name": "view",
-    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
-    "parameters": {
-     "type": "object",
-     "properties": {
-      "filename": {
-       "type": "string",
-       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
-      },
-      "start_line": {
-       "type": "integer",
-       "description": "First line to show (1-indexed, optional)."
-      },
-      "end_line": {
-       "type": "integer",
-       "description": "Last line to show (1-indexed, inclusive, optional)."
-      }
-     },
-     "required": [
-      "filename"
-     ]
-    }
-   }
-  },
-  {
-   "type": "function",
-   "function": {
     "name": "test",
     "description": "Run a new experiment. Executes training and evaluation, then returns metrics. Each run is numbered #1, #2, etc. All runs use all configured seeds. You have a limited test budget.",
     "parameters": {
@@ -125,6 +98,33 @@
      }
     }
    }
+  },
+  {
+   "type": "function",
+   "function": {
+    "name": "view",
+    "description": "Read the current contents of a file in the workspace. Call this before op='str_replace' whenever you are unsure of the exact text (especially after an edit, an undo, or when the initial prompt has gone stale) — old_str must reproduce the file's text, and this is how you check it.\nLine numbers in the output are a display prefix ('NNNNNN: ') and must NOT be included in old_str.\nWith no line range, shows the editable region of the file.",
+    "parameters": {
+     "type": "object",
+     "properties": {
+      "filename": {
+       "type": "string",
+       "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."
+      },
+      "start_line": {
+       "type": "integer",
+       "description": "First line to show (1-indexed, optional)."
+      },
+      "end_line": {
+       "type": "integer",
+       "description": "Last line to show (1-indexed, inclusive, optional)."
+      }
+     },
+     "required": [
+      "filename"
+     ]
+    }
+   }
   }
  ],
  "messages": [
@@ -144,8 +144,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/edit.py",
-       "old_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — default fill\n# (lines 15 and 17 are the only editable lines; everything else is fixed)\ndiffusion_steps: 100\nsolver: ddpm          # line 15 — reverse-process integrator passed to actor.sample(...)\npredict_noise: True\nsampling_steps: 100   # line 17 — NFE per inference call; also read by the score's NFE penalty\n",
-       "new_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 1: DDPM, 100 steps\n# Default template fill (no-op edit). Only lines 15 and 17 are editable.\ndiffusion_steps: 100\nsolver: ddpm          # line 15 — native ancestral sampler\npredict_noise: True\nsampling_steps: 100   # line 17 — full chain: one network call per trained level\n"
+       "old_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — default fill\n# (lines 15 and 17 are the only editable lines; everything else is fixed)\ndiffusion_steps: 100\nsolver: ddpm          # line 15 — reverse-process integrator passed to actor.sample(...)\npredict_noise: True\nsampling_steps: 100   # line 17 — NFE per inference call; also read by the score's NFE penalty",
+       "new_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 1: DDPM, 100 steps\n# Default template fill (no-op edit). Only lines 15 and 17 are editable.\ndiffusion_steps: 100\nsolver: ddpm          # line 15 — native ancestral sampler\npredict_noise: True\nsampling_steps: 100   # line 17 — full chain: one network call per trained level"
       }
      }
     }
@@ -185,8 +185,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/edit.py",
-       "old_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 1: DDPM, 100 steps\n# Default template fill (no-op edit). Only lines 15 and 17 are editable.\ndiffusion_steps: 100\nsolver: ddpm          # line 15 — native ancestral sampler\npredict_noise: True\nsampling_steps: 100   # line 17 — full chain: one network call per trained level\n",
-       "new_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 2: DDIM, 20 steps\ndiffusion_steps: 100\nsolver: ddim          # line 15 — deterministic (sigma=0) marginal-preserving sampler\npredict_noise: True\nsampling_steps: 20    # line 17 — 5x fewer steps than the DDPM floor\n"
+       "old_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 1: DDPM, 100 steps\n# Default template fill (no-op edit). Only lines 15 and 17 are editable.\ndiffusion_steps: 100\nsolver: ddpm          # line 15 — native ancestral sampler\npredict_noise: True\nsampling_steps: 100   # line 17 — full chain: one network call per trained level",
+       "new_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 2: DDIM, 20 steps\ndiffusion_steps: 100\nsolver: ddim          # line 15 — deterministic (sigma=0) marginal-preserving sampler\npredict_noise: True\nsampling_steps: 20    # line 17 — 5x fewer steps than the DDPM floor"
       }
      }
     }
@@ -226,8 +226,8 @@
       "arguments": {
        "op": "str_replace",
        "filename": "workspace/edit.py",
-       "old_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 2: DDIM, 20 steps\ndiffusion_steps: 100\nsolver: ddim          # line 15 — deterministic (sigma=0) marginal-preserving sampler\npredict_noise: True\nsampling_steps: 20    # line 17 — 5x fewer steps than the DDPM floor\n",
-       "new_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 3: DPM-Solver++ 2M, 10 steps\ndiffusion_steps: 100\nsolver: ode_dpmsolver++_2M   # line 15 — deterministic ODE, data-prediction (++), 2nd-order multistep (2M)\npredict_noise: True\nsampling_steps: 10           # line 17 — at the NFE floor: penalty = 1.0\n"
+       "old_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 2: DDIM, 20 steps\ndiffusion_steps: 100\nsolver: ddim          # line 15 — deterministic (sigma=0) marginal-preserving sampler\npredict_noise: True\nsampling_steps: 20    # line 17 — 5x fewer steps than the DDPM floor",
+       "new_str": "# EDITABLE region of CleanDiffuser/configs/custom/mujoco/mujoco.yaml — step 3: DPM-Solver++ 2M, 10 steps\ndiffusion_steps: 100\nsolver: ode_dpmsolver++_2M   # line 15 — deterministic ODE, data-prediction (++), 2nd-order multistep (2M)\npredict_noise: True\nsampling_steps: 10           # line 17 — at the NFE floor: penalty = 1.0"
       }
      }
     }
