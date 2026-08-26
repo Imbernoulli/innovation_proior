@@ -652,7 +652,8 @@
              #
 -            # Both unset = tolerant matcher + view, i.e. exactly what this
 -            # checkout did before these knobs existed.
-+            # All unset = tolerant matcher + view + rewrite, the recommended
++            # All unset = tolerant matcher + view, NO rewrite (Princeton protocol; 2026-08-26 ruling —
+            # rewrite stays an opt-in A/B arm via MLSBENCH_REWRITE_OP=1). Previously the recommended
 +            # contract.
              # ---------------------------------------------------------------
              _strict = os.environ.get("MLSBENCH_STRICT_STR_REPLACE", "").strip().lower() in (
@@ -662,7 +663,7 @@
                  "MLSBENCH_VIEW_TOOL", "1"
              ).strip().lower() not in ("0", "false", "no", "off")
 +            _rewrite_enabled = (not _strict) and os.environ.get(
-+                "MLSBENCH_REWRITE_OP", "1"
++                "MLSBENCH_REWRITE_OP", "0"
 +            ).strip().lower() not in ("0", "false", "no", "off")
 +
 +            if _rewrite_enabled:

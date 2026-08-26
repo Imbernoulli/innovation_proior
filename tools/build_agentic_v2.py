@@ -203,7 +203,9 @@ def largest_fence(text):
     for _lang, body in FENCE.findall(text):
         if len(body) > len(best):
             best = body
-    return best.rstrip('\n') + '\n' if best else ''
+    # keep the fence body byte-exact (a trailing blank line is part of the rung's code);
+    # only guarantee the file ends with a newline
+    return (best if best.endswith('\n') else best + '\n') if best else ''
 
 
 # ---------------------------------------------------------------------------

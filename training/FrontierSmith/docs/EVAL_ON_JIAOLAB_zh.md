@@ -207,7 +207,7 @@ content[:400]= 'The user is asking me to run a first experiment ... \n</think>\n
 #### 2.4.2 harness：**必须是打过补丁的那棵树**
 
 `.cache/mlsbench-eval` = fresh clone @805adf733 + FrontierSmith 补丁层
-（含 view+str_replace+rewrite edit contract）。**重新 clone 一份 MLS-Bench 不等价**，
+（含 view+str_replace edit contract；rewrite 自 2026-08-26 起默认关闭，只作 A/B 臂）。**重新 clone 一份 MLS-Bench 不等价**，
 分数不是一个口径。本机是从 gpublaze **rsync** 过来的同一棵树：
 
 ```
