@@ -58,9 +58,10 @@ TYPE1_FINALE = set(_rules.get('type1_finale_traj', []))
 # ---------------------------------------------------------------------------
 # Harness contract literals — the Princeton protocol (eval == RL == SFT).
 # Source of truth: .cache/mlsbench-eval (local commit 2861229a4) run with
-# MLSBENCH_REWRITE_OP=0 MLSBENCH_VIEW_TOOL=0: tolerant str_replace + create (NO view — 2026-08-26
-# user ruling: the corpus never demonstrates view, and offering an unused tool taught the
-# model to suppress it at eval; undo is kept), i.e. the shared harness's edit contract minus
+# MLSBENCH_REWRITE_OP=0 MLSBENCH_VIEW_TOOL=0: tolerant str_replace + create (NO view, NO undo —
+# 2026-08-26/27 user rulings: the corpus never demonstrates either, and offering an unused tool
+# taught the model to suppress it at eval; both are withheld from the SFT contract only and are
+# added back for eval and RL), i.e. the shared harness's edit contract minus
 # contract of the MLS-Bench-dev checkout used for the team's shared evals
 # (2026-08-26 user ruling: NO op='rewrite' — it is a FrontierSmith-only
 # experimental arm that the shared harness does not have). System prompt =
@@ -111,7 +112,6 @@ Available tools:
 - submit(n=N): Submit the result from test #N as your final answer (1-indexed).
   This does NOT re-run anything — it picks a previous result. Use n=-1 for the latest.
   You must call test() at least once before you can submit.
-- undo(n=1): Revert the last n edit operations.
 
 Constraints:
 - Each file shown in the prompt is labeled [READ-ONLY] or [EDITABLE — lines X–Y only].
@@ -170,12 +170,11 @@ TOOLS = [
             "n": {"type": "integer",
                   "description": "The test number to submit (1-indexed). e.g. n=1 submits the result from test #1."}},
             "required": ["n"]}}},
-    {"type": "function", "function": {
-        "name": "undo",
-        "description": ("Revert the last n file modification actions (create/insert/replace) by "
-                        "restoring pre-edit snapshots. Does not undo test calls."),
-        "parameters": {"type": "object", "properties": {
-            "n": {"type": "integer", "description": "Number of edit actions to undo (default: 1)."}}}}},
+    # NO undo — 2026-08-27 user ruling, same rule as view: the corpus never
+    # demonstrates undo (0 calls across all 164 tasks), and offering a tool the
+    # data never uses is exactly what taught the model to suppress view at eval.
+    # undo IS a real harness tool (mlsroot .../agent/tools.py:123); it is withheld
+    # from the SFT contract only, and is added back for eval and RL.
 ]
 
 
