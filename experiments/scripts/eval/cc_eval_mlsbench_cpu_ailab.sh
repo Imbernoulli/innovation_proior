@@ -77,6 +77,22 @@ export TMPDIR="${TMPDIR:-/tmp}"
 # Eval口径: researcher system prompt (year 2026) + thinking on.
 export EVAL_RESEARCHER_YEAR="${EVAL_RESEARCHER_YEAR:-2026}"
 
+# MLS-Bench does NOT read EVAL_RESEARCHER_YEAR. Its agent (mlsbench/agent/interactive.py)
+# prepends ONLY $MLSBENCH_SYS_PREFIX to SYSTEM_PROMPT_SCI, and nothing in this repo ever
+# set it -- so every MLS number produced before 2026-08-27 ran with NO time conditioning
+# at all, while FCS/ALE/Research did have it. The manifest field "researcher_year": 2026
+# was echoing an env var the MLS agent never consumes.
+# The prefix below is byte-identical to build_sft.py's METHOD_SYS/TRAJ_SYS (the
+# "It is now year Y. You are a good researcher." + delivery clause form), which is what
+# EVAL_SYS_PROMPT_MODE=full selects on the FCS/ALE/Research path. MLS's own
+# SYSTEM_PROMPT_SCI supplies the agentic mechanics, so we do not also prepend AGENT_SYS's
+# tool-use sentences -- that would duplicate instructions the harness already gives.
+# NOTE: this CHANGES the MLS eval口径. Numbers from here on are not comparable to the
+# pre-2026-08-27 MLS column; re-run the base anchor in the same wave.
+if [ -z "${MLSBENCH_SYS_PREFIX:-}" ] && [ -n "$EVAL_RESEARCHER_YEAR" ]; then
+  export MLSBENCH_SYS_PREFIX="It is now year ${EVAL_RESEARCHER_YEAR}. You are a good researcher. When you write code, deliver a single, self-contained, runnable implementation that respects any stated input/output contract; if an idea is not converging within the budget, fall back to the simplest correct approach and ship that."
+fi
+
 # Offline / no-nested-Slurm guards for MLS-Bench.
 export MLSBENCH_NO_PREBUILT="${MLSBENCH_NO_PREBUILT:-1}"   # never pull SIFs (no internet on compute)
 export MLSBENCH_SCHEDULER_MANAGED=1                        # force inline apptainer (no daemon)

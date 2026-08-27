@@ -140,7 +140,10 @@ def submit_sft(model_dir, dataset, out_dir, name):
 
 def submit_eval_fcsale(model_dir, tag, name):
     return sb([f"--job-name={name}",
-               f"--export=ALL,MODEL_PATH={model_dir},TAG={tag},FRONTIERCS_LIMIT={FCS_LIMIT},ALEBENCH_LIMIT={ALE_LIMIT},N_SAMPLES={NSAMP},EVAL_RESEARCHER_YEAR=2026",
+               # EVAL_SYS_PROMPT_MODE=full: the eval script defaults to "short", which drops
+               # build_sft.py's delivery clause from the system prompt. "full" is byte-identical
+               # to the trained string (verified 2026-08-27); without it eval and training差一句.
+               f"--export=ALL,MODEL_PATH={model_dir},TAG={tag},FRONTIERCS_LIMIT={FCS_LIMIT},ALEBENCH_LIMIT={ALE_LIMIT},N_SAMPLES={NSAMP},EVAL_RESEARCHER_YEAR=2026,EVAL_SYS_PROMPT_MODE=full",
                f"{FS}/slurm/cc_eval_thinking_both_ailab.sh"])
 
 def submit_eval_theta(model_dir, tag, name):

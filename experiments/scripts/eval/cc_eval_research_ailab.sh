@@ -66,6 +66,12 @@ exec > >(grep -avE 'real_accelerator|ds_accelerator|Setting ds_accelerator') \
     2> >(grep -avE 'real_accelerator|ds_accelerator|Setting ds_accelerator' >&2)
 
 export PYTHONUNBUFFERED=1
+# Time-conditioning口径, same as the other eval entry points. This script previously set
+# NEITHER, so a direct sbatch (not via cc_orchestrator) evaluated with no system prompt at
+# all. EVAL_SYS_PROMPT_MODE=full is byte-identical to build_sft.py's METHOD_SYS/TRAJ_SYS;
+# the script's default "short" silently drops the delivery clause.
+export EVAL_RESEARCHER_YEAR="${EVAL_RESEARCHER_YEAR:-2026}"
+export EVAL_SYS_PROMPT_MODE="${EVAL_SYS_PROMPT_MODE:-full}"
 export HF_HOME="$PROJECT_ROOT/.cache/huggingface"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
