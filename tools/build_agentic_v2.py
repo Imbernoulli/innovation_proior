@@ -38,6 +38,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import agentic_v2_mls as M  # real-template mode (MLS-Bench tasks)
+
 REPO = os.environ.get('INNOVATION_PRIOR_REPO') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO)
 
@@ -55,7 +58,9 @@ TYPE1_FINALE = set(_rules.get('type1_finale_traj', []))
 # ---------------------------------------------------------------------------
 # Harness contract literals — the Princeton protocol (eval == RL == SFT).
 # Source of truth: .cache/mlsbench-eval (local commit 2861229a4) run with
-# MLSBENCH_REWRITE_OP=0: tolerant str_replace + create + view, i.e. exactly the
+# MLSBENCH_REWRITE_OP=0 MLSBENCH_VIEW_TOOL=0: tolerant str_replace + create (NO view — 2026-08-26
+# user ruling: the corpus never demonstrates view, and offering an unused tool taught the
+# model to suppress it at eval; undo is kept), i.e. the shared harness's edit contract minus
 # contract of the MLS-Bench-dev checkout used for the team's shared evals
 # (2026-08-26 user ruling: NO op='rewrite' — it is a FrontierSmith-only
 # experimental arm that the shared harness does not have). System prompt =
@@ -99,10 +104,6 @@ Available tools:
     deletes it). Keep old_str SHORT — a few distinctive lines is enough, and
     short anchors are far more reliable than pasting a whole class or docstring.
   - op='create': create a new file (only if allow_create=true)
-- view(filename, start_line=None, end_line=None): Read the file back. The line
-  numbers shown in the prompt and in view() output are a display prefix
-  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace
-  whenever you are unsure of the exact text, and always after an undo().
 - test(): Run a new experiment. Executes training and evaluation. Each run is
   numbered #1, #2, etc. The first test runs all seeds; intermediate tests run one seed.
   You have a limited budget of test() calls, so make each one count by editing first.
@@ -175,22 +176,6 @@ TOOLS = [
                         "restoring pre-edit snapshots. Does not undo test calls."),
         "parameters": {"type": "object", "properties": {
             "n": {"type": "integer", "description": "Number of edit actions to undo (default: 1)."}}}}},
-    {"type": "function", "function": {
-        "name": "view",
-        "description": (
-            "Read the current contents of a file in the workspace. Call this before "
-            "op='str_replace' whenever you are unsure of the exact text (especially "
-            "after an edit, an undo, or when the initial prompt has gone stale) — "
-            "old_str must reproduce the file's text, and this is how you check it.\n"
-            "Line numbers in the output are a display prefix ('NNNNNN: ') and must "
-            "NOT be included in old_str.\n"
-            "With no line range, shows the editable region of the file."),
-        "parameters": {"type": "object", "properties": {
-            "filename": {"type": "string",
-                         "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py')."},
-            "start_line": {"type": "integer", "description": "First line to show (1-indexed, optional)."},
-            "end_line": {"type": "integer", "description": "Last line to show (1-indexed, inclusive, optional)."}},
-            "required": ["filename"]}}},
 ]
 
 
@@ -541,6 +526,163 @@ def tool(text):
     return {'role': 'tool', 'content': text}
 
 
+def strip_scaffold_fence(context_md):
+    """The trajectory context quotes an approximate scaffold; in real-template mode the
+    harness listing below is the file, so the quote is replaced by a pointer."""
+    best = None
+    for m in FENCE.finditer(context_md):
+        if best is None or len(m.group(2)) > len(best.group(2)):
+            best = m
+    if best is None or len(best.group(2)) < 80:
+        return context_md
+    return context_md[:best.start()] + '(the current file is listed in full below)' + context_md[best.end():]
+
+
+def budget_block(n_actions, n_tests):
+    budget = [
+        '- **Action budget**: %d total tool calls '
+        '(every edit / test / undo / web_search / web_extract counts; submit does not)' % n_actions,
+        '- **Test invocations**: at most %d '
+        '(each test() call also consumes one action from the budget above)' % n_tests,
+    ]
+    if n_tests >= 2:
+        budget.append('- You **must** iterate at least once '
+                      '(edit → test → review → edit → test) before submitting.')
+    return '\n## Your Budget\n' + '\n'.join(budget)
+
+
+def initial_prompt_mls(context_md, sim, n_actions, n_tests):
+    parts = [strip_scaffold_fence(context_md).rstrip()]
+    parts += sim.file_sections()
+    parts += sim.eval_sections()
+    parts.append(budget_block(n_actions, n_tests))
+    return '\n'.join(parts)
+
+
+def _pairs(prev, new):
+    return [(o['old_str'], o['new_str']) for o in plan_ops(prev, new)]
+
+
+def build_task_mls(task_dir, task, steps, fbs, context_md, answers):
+    """Episode on the REAL post-pre/mid-edit template, every edit executed by the
+    harness's own WorkspaceTools (see agentic_v2_mls.py)."""
+    n_tests = len(steps)
+    sim = M.Sim(task, n_tests)
+    try:
+        if sim.missing:
+            raise ValueError('workspace files missing: %s' % sim.missing[:3])
+        file_secs = sim.file_sections()
+        if not any('[EDITABLE' in x for x in file_secs):
+            raise ValueError('no editable file section in the harness prompt')
+        # cap chain length by the followup fills that already exist for this rung
+        caps = {}
+        sk = os.path.join(task_dir, OUT_NAME)
+        if os.path.isfile(sk):
+            try:
+                for m in json.load(open(sk, encoding='utf-8'))['messages']:
+                    if m['role'] != 'assistant' or m['tool_calls'][0]['function']['name'] != 'edit':
+                        continue
+                    mm = re.match(r'\[\[THINK kind=(design|followup) rung=(\d+) slug=(\S+)', m.get('reasoning_content') or '')
+                    if mm:
+                        key = (int(mm.group(2)), mm.group(3)); caps[key] = caps.get(key, 0) + 1
+            except Exception:
+                caps = {}
+        fp = os.path.join(task_dir, 'agentic_v2_fills.json')
+        if not caps and os.path.isfile(fp):
+            for k in json.load(open(fp, encoding='utf-8'))['fills']:
+                m = re.match(r'THINK kind=followup rung=(\d+) slug=(\S+)', k)
+                if m:
+                    caps[(int(m.group(1)), m.group(2))] = caps.get((int(m.group(1)), m.group(2)), 1) + 1
+                m = re.match(r'THINK kind=design rung=(\d+) slug=(\S+)', k)
+                if m:
+                    caps.setdefault((int(m.group(1)), m.group(2)), 1)
+        rung_ops = []
+        for ri, s in enumerate(steps):
+            slug = s.get('slug', 'rung%d' % (ri + 1))
+            targets = M.assign_regions(sim, M.fences_of(answers[ri]))
+            cap = caps.get((ri + 1, slug))
+            ops = []
+            for fn, reg_i, new_text in targets:
+                left = None if cap is None else max(1, cap - len(ops))
+                for o, n, r in M.apply_region_ops(sim, fn, reg_i, new_text, _pairs, max_ops=left):
+                    ops.append({'op': 'str_replace', 'filename': fn, 'old_str': o, 'new_str': n, 'result': r})
+            if not ops:
+                raise ValueError('rung %d (%s): code identical to the current workspace' % (ri + 1, slug))
+            rung_ops.append(ops)
+        n_edits = sum(len(o) for o in rung_ops)
+        n_actions = n_edits + n_tests
+        # prompt is built from the INITIAL workspace: rebuild a fresh sim for the listing
+        sim0 = M.Sim(task, n_tests)
+        try:
+            prompt = initial_prompt_mls(context_md, sim0, n_actions, n_tests)
+        finally:
+            sim0.close()
+        files = sim.editable_files()
+    finally:
+        sim.close()
+
+    msgs = [{'role': 'user', 'content': prompt}]
+    seq = 0
+
+    def next_seq():
+        nonlocal seq
+        seq += 1
+        return seq
+
+    for ri, (s, ops, fb) in enumerate(zip(steps, rung_ops, fbs)):
+        slug = s.get('slug', 'rung%d' % (ri + 1))
+        for oi, op in enumerate(ops):
+            kind = 'design' if oi == 0 else 'followup'
+            n = next_seq()
+            slot = '[[THINK kind=%s rung=%d slug=%s seq=%d]]' % (kind, ri + 1, slug, n)
+            say = '[[SAY rung=%d slug=%s seq=%d]]' % (ri + 1, slug, n) if oi == 0 else ''
+            msgs.append(asst(slot, say, 'edit', {'op': 'str_replace', 'filename': op['filename'],
+                                                 'old_str': op['old_str'], 'new_str': op['new_str']}))
+            msgs.append(tool(op['result']))
+        msgs.append(asst('[[THINK kind=pre_test rung=%d slug=%s seq=%d]]'
+                         % (ri + 1, slug, next_seq()), '', 'test', {}))
+        remaining = n_tests - (ri + 1)
+        header = ('[Test #%d] (%d test%s remaining; call submit(n=N) to choose which '
+                  'test result to submit as final)\n\n'
+                  % (ri + 1, remaining, 's' if remaining != 1 else ''))
+        if remaining == 0:
+            header += ('[NOTE] This was your last test. You MUST now call submit(n=X) '
+                       'to choose which test result to submit as your final answer.\n\n')
+        msgs.append(tool(header + fb))
+    best = n_tests
+    msgs.append(asst('[[THINK kind=submit best=%d seq=%d]]' % (best, next_seq()), '', 'submit', {'n': best}))
+    msgs.append(tool('[submit] Submitting result from test #%d as final.\n\n%s' % (best, fbs[best - 1])))
+    return {
+        'task': task, 'schema': 'agentic_v2', 'mode': 'mls-real',
+        'harness': 'mlsbench-princeton-strreplace-2026-08-26',
+        'file': files[0] if files else None, 'files': files, 'filename_source': 'config.json',
+        'year': None, 'scaffold_from_context': False, 'cumulative_stack': False,
+        'baseline_in_prompt': None, 'n_rungs': n_tests, 'n_edit_ops': n_edits, 'best_test': best,
+        'system': SYSTEM_PROMPT, 'tools': TOOLS, 'messages': msgs,
+    }
+
+
+def build_in_pkg_env(task):
+    import subprocess
+    cfg = json.load(open(f'{M.ROOT}/tasks/{task}/config.json'))
+    pkgs = sorted({e.get('package') for e in cfg.get('test_cmds', []) if e.get('package')})
+    for pk in pkgs:
+        for d in glob.glob(os.path.expanduser('~/miniconda3/envs/mlsbench-*')):
+            if M._norm(os.path.basename(d)[len('mlsbench-'):]) != M._norm(pk):
+                continue
+            py = os.path.join(d, 'bin', 'python')
+            r = subprocess.run([py, os.path.abspath(__file__), task],
+                               env={**os.environ, 'AGV2_NO_SUBPROCESS': '1'},
+                               capture_output=True, text=True, timeout=1200, cwd=REPO)
+            out = os.path.join('trajectories', task, OUT_NAME)
+            if r.returncode == 0 and os.path.isfile(out):
+                d2 = json.load(open(out, encoding='utf-8'))
+                if d2.get('mode') == 'mls-real':
+                    d2['built_in_env'] = os.path.basename(d)
+                    return d2
+    return None
+
+
 def build_task(task_dir, task):
     meta = json.load(open(os.path.join(task_dir, 'meta.json')))
     steps = [s for s in sorted(meta.get('steps', []), key=lambda s: s.get('n', 0))
@@ -571,6 +713,20 @@ def build_task(task_dir, task):
 
     init_f = meta.get('initial_context_file', '00-initial-context.md')
     context_md = read(os.path.join(task_dir, init_f)).strip()
+    fallback_reason = None
+    if task not in CUMULATIVE_TASKS and M.has_config(task):
+        answers = [read(os.path.join(task_dir, s['answer'])) for s in steps]
+        try:
+            return build_task_mls(task_dir, task, steps, fbs, context_md, answers)
+        except ModuleNotFoundError as e:
+            # the harness loads the task's parser, which may need the task package's own
+            # conda env: rebuild this one task in that interpreter (once, no recursion)
+            sub = None if os.environ.get('AGV2_NO_SUBPROCESS') else build_in_pkg_env(task)
+            if sub is not None:
+                return sub
+            fallback_reason = '%s: %s' % (type(e).__name__, str(e)[:160])
+        except Exception as e:      # no local package / unadaptable fence
+            fallback_reason = '%s: %s' % (type(e).__name__, str(e)[:160])
     scaffold = largest_fence(context_md)
     # scaffold must genuinely be a prior state of the same file, else start from create
     use_scaffold = bool(scaffold) and difflib.SequenceMatcher(
@@ -670,7 +826,8 @@ def build_task(task_dir, task):
 
     out = {
         'task': task,
-        'schema': 'agentic_v2',
+        'schema': 'agentic_v2', 'mode': 'legacy-fallback' if fallback_reason else 'legacy',
+        'fallback_reason': fallback_reason,
         'harness': 'mlsbench-princeton-strreplace-2026-08-26',
         'file': filename,
         'filename_source': fname_src,
@@ -726,6 +883,9 @@ def lint(paths):
     LINES = re.compile(r'\(lines (\d+)\.\.(\d+)\)')
     for p in paths:
         d = json.load(open(p))
+        if d.get('mode') == 'mls-real':
+            for pr in M.replay_check(d):
+                print('%s: %s' % (p, pr)); bad += 1
         replay = seed_replay(d.get('messages'))
         for i, m in enumerate(d['messages']):
             if m['role'] != 'assistant':
@@ -736,7 +896,7 @@ def lint(paths):
             if SENTINEL.search(rc) or SENTINEL.search(m.get('content') or ''):
                 print('%s: msg %d still carries a [[..]] sentinel' % (p, i)); bad += 1
             fn = m['tool_calls'][0]['function']
-            if fn['name'] == 'edit':
+            if fn['name'] == 'edit' and d.get('mode') != 'mls-real':
                 args = fn['arguments']
                 if args['op'] == 'rewrite':
                     print('%s: msg %d uses op=rewrite (retired contract)' % (p, i)); bad += 1

@@ -384,6 +384,9 @@ def agentic_round(actions, fold, is_current):
 # str_replace/create/run_experiment files. When no *_filled files exist yet, the legacy v1
 # path below keeps the build reproducible mid-transition (never mixed per task).
 _v2_files = sorted(glob.glob('trajectories/*/agentic_v2_filled.json'))
+AGENTIC_MAX_CHARS = 190_000   # fallback when no token table: ~50k Qwen tokens
+AGENTIC_MAX_TOKENS = 53_000   # cutoff_len is 53,760 (tools/agentic_v2_toklen.py measures the real count)
+_TOKLEN = json.load(open('tools/agentic_v2_toklen.json')) if os.path.isfile('tools/agentic_v2_toklen.json') else {}
 _v1_files = [] if _v2_files else sorted(glob.glob('trajectories/*/agentic_messages.json'))
 
 for ap in _v2_files:
@@ -392,6 +395,17 @@ for ap in _v2_files:
         continue
     yr = trajs[task]['year'] if task in trajs else None
     data = json.load(open(ap))
+    # real-template episodes carry the harness's real prompt; a few list huge read-only
+    # data files (llm-scaling-law-discovery: 3 JSONL dumps, ~650k chars). Such a row can
+    # only be truncated by cutoff_len (53,760 tok), which would cut the trained turns off —
+    # so it is excluded here rather than trained broken.
+    _ep_chars = sum(len(m.get('content') or '') + len(m.get('reasoning_content') or '')
+                    + len(json.dumps(m.get('tool_calls') or [])) for m in data['messages'])
+    _ep_tok = _TOKLEN.get(task)
+    if (_ep_tok is not None and _ep_tok > AGENTIC_MAX_TOKENS) or (_ep_tok is None and _ep_chars > AGENTIC_MAX_CHARS):
+        print(f"[agentic] SKIP {task}: episode {_ep_tok or '?'} tok / {_ep_chars} chars exceeds cutoff_len {AGENTIC_MAX_TOKENS}")
+        stats['agentic_oversized_skipped'] = stats.get('agentic_oversized_skipped', 0) + 1
+        continue
     tools_str = json.dumps(data.get('tools', []), ensure_ascii=False)
     year_pfx = f"It is now year {yr}. " if yr else ""
     sysp = year_pfx + neutralize(data['system'])   # no strip: harness prompt ends with '\n'

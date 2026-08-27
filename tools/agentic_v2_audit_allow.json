@@ -1,11 +1,41 @@
 {
  "_doc": "Manually reviewed audit hits that are NOT defects. C-i entries are numbers the audit flagged as 'first visible in a later tool result' but which the think derives on the spot from already-visible quantities (arithmetic shown in the text). Reviewed 2026-08-25.",
  "Ci": [
-  {"task": "llm-kv-structural-reduction", "msg": 1, "number": "4096", "why": "2*16*64*2 = 4096 bytes, computed in the sentence"},
-  {"task": "lm-nanochat-pipeline", "msg": 1, "number": "32768", "why": "2^15 = 32768, computed in the sentence"},
-  {"task": "marl-centralized-critic", "msg": 9, "number": "0.7812", "why": "best-to-worst spread of Test #2 2s3z seeds: 0.9062 - 0.1250"},
-  {"task": "optimization-convex-concave", "msg": 1, "number": "1.407", "why": "closed-form 10*sqrt(2)*lambda/sqrt(lambda^2+1) at lambda=0.1"},
-  {"task": "preact-identity-mappings", "msg": 27, "number": "1001", "why": "depth chosen by the engineer for the next experiment; later appears in that test's result"},
-  {"task": "sys-llamacpp-quantization", "msg": 23, "number": "6.5625", "why": "210 bytes / 256 weights * 8 = 6.5625 bits per weight, computed in the sentence"}
+  {
+   "task": "llm-kv-structural-reduction",
+   "msg": 1,
+   "number": "4096",
+   "why": "2*16*64*2 = 4096 bytes, computed in the sentence"
+  },
+  {
+   "task": "lm-nanochat-pipeline",
+   "msg": 1,
+   "number": "32768",
+   "why": "2^15 = 32768, computed in the sentence"
+  },
+  {
+   "task": "marl-centralized-critic",
+   "msg": 11,
+   "number": "0.7812",
+   "why": "best-to-worst spread of Test #2 2s3z seeds: 0.9062 - 0.1250"
+  },
+  {
+   "task": "optimization-convex-concave",
+   "msg": 1,
+   "number": "1.407",
+   "why": "closed-form 10*sqrt(2)*lambda/sqrt(lambda^2+1) at lambda=0.1"
+  },
+  {
+   "task": "preact-identity-mappings",
+   "msg": 27,
+   "number": "1001",
+   "why": "depth chosen by the engineer for the next experiment; later appears in that test's result"
+  },
+  {
+   "task": "sys-llamacpp-quantization",
+   "msg": 23,
+   "number": "6.5625",
+   "why": "210 bytes / 256 weights * 8 = 6.5625 bits per weight, computed in the sentence"
+  }
  ]
 }

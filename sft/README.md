@@ -101,21 +101,35 @@ Covers methods (single-turn), trajectories (Mode 1 feedback-as-observation + Mod
 agentic (assistant tool steps use the structured `function_call` role → LF renders qwen3 JSON /
 qwen3_5 XML). Literal structural tokens in content are neutralized to `⟨think⟩`/`⟨tool_call⟩`/….
 
-**Agentic v2 (2026-08-24)** — the June `agentic_messages.json` corpus was rebuilt from scratch
-(tag `agentic-v2-retires-v1`, generated data deleted; tools: `tools/build_agentic_v2.py` deterministic skeleton +
-Opus prose fills via `tools/apply_agentic_fills.py`, per-task `agentic_v2.json` /
-`agentic_v2_fills.json` / `agentic_v2_filled.json`). v2 = **164 tasks** (127 originals kept +
-37 new; 8 decontam tasks excluded), speaking the **live three-way harness contract** (SFT =
-RL = eval, Princeton protocol — no `rewrite` op): `edit(op='str_replace'|'create')` + `view` + `test()`/`submit(n)`, the
-post-edit current-file echo, real harness result strings, budgets, and line-numbered file
-dumps. Framing is **deduped folded-only**: one example per round c=0..n-1 (test result = user
-boundary) plus a trailing submit round — every action enters the loss **exactly once** across
-the 752 rows (v1 trained the same text up to 4×/epoch). Every trained turn carries a real
-think (v1 had 33.6% zero-think turns rendered as empty `<think>` in the loss); think shapes
-are calibrated on real rollouts (long design think per rung, short followups, pre-test
-expectations, submit comparison). Nine cumulative-stack ladders (airbench, nanoGPT chain,
-vLLM/llm.c stacks, RoBERTa) use a **create-chain** framing (one new module per rung) because
-their measured numbers stack techniques rather than replace them.
+**Agentic v2 (2026-08-24, real-template rebuild 2026-08-26)** — the June `agentic_messages.json`
+corpus was rebuilt from scratch (tag `agentic-v2-retires-v1`, generated data deleted; tools:
+`tools/build_agentic_v2.py` + `tools/agentic_v2_mls.py` deterministic skeleton, Opus prose fills via
+`tools/apply_agentic_fills.py`, per-task `agentic_v2.json` / `agentic_v2_fills.json` /
+`agentic_v2_filled.json`). v2 = **164 tasks** (8 decontam tasks excluded). The contract is the
+**Princeton protocol minus `view`** (SFT = RL = eval on gpublaze, where `MLSBENCH_REWRITE_OP` now
+defaults to 0): `edit(op='str_replace'|'create')` + `test()`/`submit(n)` + `undo`, the harness's
+own result strings and post-edit echo, budgets, line-numbered listings.
+
+*Real-template mode (139 MLS-Bench tasks)*: the episode's input is what the harness actually shows
+— the task's editable file(s) as they stand after `pre_edit` + `mid_edit` (full listing,
+`[EDITABLE — lines a–b only]`), plus the evaluation-command and compute-budget sections; the
+research context (`00-initial-context.md`, its scaffold quote replaced by a pointer) stays as the
+task description, and the baseline reference code / leaderboard the eval prompt would add are
+deliberately withheld. Rung 1 replaces the template's editable window with the rung-1 code, rung
+k+1 replaces the previous rung's window content (small diffs become ≤10-line `str_replace`
+chains). Every edit is executed through the real `WorkspaceTools` on a throw-away workspace, so
+tool results, echoes, shifting editable ranges and the syntax gate are the harness's own; the
+lint replays each episode through the harness again and demands byte-equality. Tasks whose
+packages/env are unavailable fall back to the legacy single-file framing (`mode` field). Episodes
+whose real prompt exceeds `cutoff_len` (4 tasks: `llm-scaling-law-discovery` and three `ts-*`
+tasks that list a dozen read-only model files) are excluded from the agentic rows by
+`build_sft.py` (`tools/agentic_v2_toklen.json`).
+
+Framing is **deduped folded-only**: one example per round c=0..n-1 (test result = user boundary)
+plus a trailing submit round — every action enters the loss **exactly once**. Every trained turn
+carries a real think; think shapes are calibrated on real rollouts (long design think per rung,
+short followups, pre-test expectations, submit comparison). Nine cumulative-stack ladders
+(airbench, nanoGPT chain, vLLM/llm.c stacks, RoBERTa; non-MLS) use a **create-chain** framing.
 
 ## 2. Capability-maintenance mix — DROPPED (2026-07)
 

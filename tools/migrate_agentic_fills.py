@@ -25,11 +25,15 @@ KEY = re.compile(r'^(THINK|SAY)\s+(.*?)\s*seq=\d+$')
 
 
 def norm(key):
-    """Strip the seq= tail: 'THINK kind=design rung=1 slug=gin seq=3' -> stable part."""
+    """Strip the seq= tail AND the rung number: 'THINK kind=design rung=1 slug=gin seq=3' ->
+    'THINK kind=design slug=gin'. Slugs are unique within a ladder, and rung numbers shift
+    whenever the episode's first rung changes (2026-08-26 real-template rebuild un-folded
+    the scaffold≈rung1 baselines), so the slug is the stable identity."""
     m = KEY.match(key.strip())
     if not m:
         return None
-    return (m.group(1) + ' ' + m.group(2)).strip()
+    body = re.sub(r'\brung=\d+\s*', '', m.group(2)).strip()
+    return (m.group(1) + ' ' + body).strip()
 
 
 def slots_of(skel):
@@ -76,11 +80,13 @@ def migrate(task):
             missing.append(slot)
     dropped = sum(len(v) - used.get(k, 0) for k, v in old_by_norm.items())
 
+    # always persist the re-keyed fills (missing slots stay absent) so a prose pass only
+    # has to ADD the missing keys instead of re-keying by hand
+    json.dump({'task': task, 'fills': new_fills}, open(fp, 'w', encoding='utf-8'),
+              ensure_ascii=False, indent=1)
     if missing:
         print(f'{task}: {len(missing)} slot(s) have NO source fill: {missing[:4]}')
         return False
-    json.dump({'task': task, 'fills': new_fills}, open(fp, 'w', encoding='utf-8'),
-              ensure_ascii=False, indent=1)
     r = subprocess.run([sys.executable, 'tools/apply_agentic_fills.py', task],
                        capture_output=True, text=True)
     ok = r.returncode == 0

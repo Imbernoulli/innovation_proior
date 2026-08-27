@@ -122,9 +122,9 @@ def contract_check():
     sys.path.insert(0, root)
     for k in ('MLSBENCH_STRICT_STR_REPLACE',): os.environ.pop(k, None)
     from mlsbench.agent import interactive as I
-    from mlsbench.agent.tools import TOOL_SCHEMAS, EDIT_REPLACE_SCHEMA, VIEW_SCHEMA
+    from mlsbench.agent.tools import TOOL_SCHEMAS, EDIT_REPLACE_SCHEMA
     src = open(f'{root}/mlsbench/agent/interactive.py').read()
-    # reproduce __init__ under MLSBENCH_REWRITE_OP=0 (use_replace, tolerant, view on, NO rewrite):
+    # reproduce __init__ under MLSBENCH_REWRITE_OP=0 MLSBENCH_VIEW_TOOL=0 (use_replace, tolerant, NO view, NO rewrite):
     # pull the literal blocks of the `else:` branch from source
     def lit(start_marker, end_marker, after=0):
         i = src.index(start_marker, after); j = src.index(end_marker, i)
@@ -132,16 +132,14 @@ def contract_check():
         return ''.join(re.findall(r'"((?:[^"\\]|\\.)*)"', block)).replace('\\n', '\n').replace("\\'", "'"), j
     edit_block, _ = lit('edit_block = (', ')\n')
     else_at = src.index('            else:\n                replace_block = (')
-    rb, k = lit('replace_block = (', 'if _view_enabled:', after=else_at)
-    rb2, _ = lit('replace_block += (', 'if edit_block in self.system_prompt', after=k)
-    rb += rb2
+    rb, k = lit('replace_block = (', 'if _view_enabled:', after=else_at)   # MLSBENCH_VIEW_TOOL=0: no view paragraph
     sp = I.SYSTEM_PROMPT_SCI.replace(edit_block, rb, 1)
     problems = []
     if sp != B.SYSTEM_PROMPT: problems.append('SYSTEM_PROMPT differs from checkout composition')
-    want = {'edit': EDIT_REPLACE_SCHEMA, 'view': VIEW_SCHEMA}
+    want = {'edit': EDIT_REPLACE_SCHEMA}   # view withheld (MLSBENCH_VIEW_TOOL=0)
     for s in TOOL_SCHEMAS:
         if s['name'] != 'edit': want[s['name']] = s
-    order = [s['name'] for s in TOOL_SCHEMAS] + ['view']    # interactive.py appends VIEW_SCHEMA last
+    order = [s['name'] for s in TOOL_SCHEMAS]
     if [t['function']['name'] for t in B.TOOLS] != order: problems.append(f'tools order {[t["function"]["name"] for t in B.TOOLS]} != harness {order}')
     for t in B.TOOLS:
         f = t['function']; w = want.get(f['name'])
