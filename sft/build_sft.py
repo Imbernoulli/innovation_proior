@@ -415,7 +415,10 @@ for ap in _v2_files:
         stats['agentic_oversized_skipped'] = stats.get('agentic_oversized_skipped', 0) + 1
         continue
     tools_str = json.dumps(data.get('tools', []), ensure_ascii=False)
-    year_pfx = f"It is now year {yr}. " if yr else ""
+    # "\n\n", not " ": mlsbench/agent/interactive.py joins as $MLSBENCH_SYS_PREFIX + "\n\n" +
+    # SYSTEM_PROMPT_SCI, so training must use the same separator or the trained string and the
+    # evaluated one differ by whitespace on every agentic row.
+    year_pfx = f"It is now year {yr}.\n\n" if yr else ""
     sysp = year_pfx + neutralize(data['system'])   # no strip: harness prompt ends with '\n'
     init, rounds = parse_rounds(data['messages'])
     if init is None or not rounds:
