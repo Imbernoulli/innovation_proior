@@ -7,7 +7,10 @@ cutoff guard. Run with the LF venv python (needs transformers):
 import glob, json, os
 from transformers import AutoTokenizer
 os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-tok = AutoTokenizer.from_pretrained('Qwen/Qwen3.5-4B', trust_remote_code=True)
+# della has no internet on compute nodes and no 3.5-4B in cache; point this at the
+# local 9B we actually train (same Qwen3.5 tokenizer) via AGENTIC_TOKLEN_MODEL.
+tok = AutoTokenizer.from_pretrained(
+    os.environ.get('AGENTIC_TOKLEN_MODEL', 'Qwen/Qwen3.5-4B'), trust_remote_code=True)
 out = {}
 for p in sorted(glob.glob('trajectories/*/agentic_v2_filled.json')):
     d = json.load(open(p, encoding='utf-8'))
