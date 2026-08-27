@@ -6,6 +6,8 @@
 > 背景：现有评测（FrontierCS / MLS-Bench / ALE-Bench / ThetaEvolve / TTT-Discover）全是执行落地型，成本高、对 4B 不友好、信号被截断与环境噪声吃掉。要补一批轻量的 model-judge 端到端评测。
 >
 > 整理时间：2026-08-25，第二轮补读 2026-08-26
+>
+> **人机直接对比**（AI 的方法 vs 人类的方法，以及用 reject/poster/spotlight/oral 当刻度）单独成文：[AI_VS_HUMAN_METHODS_zh.md](AI_VS_HUMAN_METHODS_zh.md)
 
 ---
 
