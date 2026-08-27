@@ -60,21 +60,29 @@ if DECON:
         DECON = False
 _decon_stats = {'methods_dropped': 0, 'trajs_dropped': 0, 'finale_rungs_dropped': 0}
 
-# NOTE (data remediation, see experiments/DATA_REMEDIATION_zh.md §1.3 / §3-A1):
-# the old system prompt was a pure "research-register" amplifier ("You are a good researcher.")
-# with no delivery discipline. It is augmented below to also carry the missing skill the FCS/ALE
-# regression traces to: ship a single self-contained runnable solution that respects the I/O
-# contract, and fall back to the simplest correct approach when an idea is not converging. This is
-# an *instruction* consistent with the existing targets (which do end on runnable code), not a
-# description of them, so it does not widen the SFT off-policy gap.
-_DELIVERY = (" When you write code, deliver a single, self-contained, runnable implementation that "
-             "respects any stated input/output contract; if an idea is not converging within the "
-             "budget, fall back to the simplest correct approach and ship that.")
-METHOD_SYS = "It is now year {year}. You are a good researcher." + _DELIVERY
-TRAJ_SYS = "It is now year {year}. You are a good researcher." + _DELIVERY
+# The system prompt is TIME + RESEARCHER ONLY (user decision 2026-08-27). We do not invent
+# instructions here; a slice keeps an instruction only when its own dataset carries one --
+# the agentic slice below reuses the MLS-Bench harness system prompt verbatim (year-prefixed),
+# and V4_SYS mirrors FrontierCS's official CPP_SYSTEM_PROMPT register.
+#
+# REMOVED (data remediation, experiments/DATA_REMEDIATION_zh.md §1.3 / §3-A1): a "_DELIVERY"
+# clause ("...deliver a single, self-contained, runnable implementation that respects any
+# stated input/output contract; if an idea is not converging within the budget, fall back to
+# the simplest correct approach and ship that."), added in 8953f4cb8 to inject the delivery
+# discipline the FCS/ALE regression was traced to. It was our own invention, not present in
+# any source dataset, and the corpus does not demonstrate it: audits put "landing" wording at
+# 2.2% of reasoning and "fall back to the simple solution" at 7.5%, with an independent trace
+# audit at ~2% of turns. So it was a prompt-conditional instruction with no supporting
+# demonstrations. The A/B at full size (n=850/arm) found no significant FCS effect and both
+# arms moved DOWN: 7.397 -> 6.751 (p=0.35) and 7.310 -> 6.975 (p=0.60).
+#
+# Consequence: eval's DEFAULT EVAL_SYS_PROMPT_MODE=short is now byte-identical to METHOD_SYS,
+# so training and evaluation match with no opt-in. Keep it that way.
+METHOD_SYS = "It is now year {year}. You are a good researcher."
+TRAJ_SYS = "It is now year {year}. You are a good researcher."
 AGENT_SYS = ("It is now year {year}. You are a good researcher. You work by editing the model "
             "code and running experiments. Make one tool call at a time. After editing, run an "
-            "experiment to measure your method." + _DELIVERY)
+            "experiment to measure your method.")
 
 # Output-format conditioning appended to the INPUT (human turn) of method/trajectory examples.
 # The target answer explains the analysis in a flowing first-person voice and then ends on the

@@ -58,12 +58,11 @@ cd "$THETA_ROOT"
 export PYTHONUNBUFFERED=1
 # innovation time-conditioning system prompt at eval (matches SFT); year = the present
 export EVAL_RESEARCHER_YEAR="${EVAL_RESEARCHER_YEAR:-2026}"
-# ...and match it EXACTLY. eval_qwen35_base_vllm_request.py defaults EVAL_SYS_PROMPT_MODE
-# to "short", which drops the delivery clause that build_sft.py puts in METHOD_SYS/TRAJ_SYS.
-# "full" is byte-identical to the trained string (verified 2026-08-27). The mode was added
-# precisely so eval could match training and then left opt-in with nobody opting in on this
-# path -- only training/FrontierSmith/slurm/cc_eval_cpu_client*.sh ever set it.
-export EVAL_SYS_PROMPT_MODE="${EVAL_SYS_PROMPT_MODE:-full}"
+# ...and match it EXACTLY. "short" == "It is now year Y. You are a good researcher." == the
+# METHOD_SYS/TRAJ_SYS the SFT data is built with. Set explicitly rather than relying on the
+# script's default: an unset default on this path is exactly how the mismatch went unnoticed.
+# Do NOT use "full" -- that adds a delivery clause build_sft.py no longer trains on.
+export EVAL_SYS_PROMPT_MODE="${EVAL_SYS_PROMPT_MODE:-short}"
 export HF_HOME="$FS_ROOT/.cache/huggingface"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
