@@ -1,0 +1,47 @@
+### innov v2b (della/ailab, 9B) — LoRA r32 WITHOUT maintenance (innovation-only).
+### Paired with lora_r32_maint.yaml: the ONLY difference between the two is the
+### `dataset:` line, so the pair isolates what the maintenance slice buys under LoRA.
+### Trainer/runtime settings copied from the proven della full-FT config; LoRA
+### hyper-params (r32 / alpha64 / dropout0 / lr1e-4 / wd0 / warmup0.05) from the
+### historical r32 recipe (experiments/v2_multisetting_4b/sft_lora_r32.yaml).
+model_name_or_path: /scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/models/Qwen3.5-9B-bf16
+trust_remote_code: true
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_rank: 32
+lora_alpha: 64
+lora_dropout: 0
+deepspeed: /scratch/gpfs/CHIJ/bohan/fs/LF-innov/examples/deepspeed/ds_z3_config.json
+dataset_dir: /scratch/gpfs/CHIJ/ziran/innov_v2_multi/data
+dataset: innov_v2
+template: qwen3_5
+mask_history: false
+cutoff_len: 53760
+max_samples: 1000000
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+output_dir: /scratch/gpfs/CHIJ/ziran/innov_v2_multi/models/lora_r32_nomaint
+logging_steps: 5
+save_strategy: epoch
+save_total_limit: 1
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+report_to: none
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 32
+learning_rate: 1.0e-4
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+weight_decay: 0
+bf16: true
+flash_attn: fa2
+enable_liger_kernel: true
+gradient_checkpointing: true
+use_reentrant_gc: false
+ddp_timeout: 180000000
+seed: 42
+val_size: 0.0
