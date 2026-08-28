@@ -82,6 +82,8 @@ def main():
     ap.add_argument("--eval-rows", type=int, default=32)
     ap.add_argument("--save-every", type=int, default=0)
     ap.add_argument("--state", default=".cache/tinker/inkling_run.json")
+    ap.add_argument("--ckpt-name", default=None,
+                    help="checkpoint label; defaults to a slug of --base-model")
     ap.add_argument("--seed", type=int, default=20260827)
     a = ap.parse_args()
 
@@ -142,10 +144,11 @@ def main():
     ev = evaluate(tc, hold, a.token_budget)
     print(f"[eval] final  holdout nll {ev:.4f}", flush=True)
     # durable pointer for the sampling stage: save_weights_for_sampler returns the path
-    sw = tc.save_weights_for_sampler(name="innovation-inkling-small").result()
+    ckpt = a.ckpt_name or ("innov-" + a.base_model.split("/")[-1].replace(".", "").lower())
+    sw = tc.save_weights_for_sampler(name=ckpt).result()
     model_path = getattr(sw, "path", None) or getattr(sw, "model_path", None) or str(sw)
     st = {"model_path": model_path, "base_model": a.base_model, "rank": a.rank,
-          "steps": step, "final_holdout_nll": ev,
+          "ckpt_name": ckpt, "steps": step, "final_holdout_nll": ev,
           "train_rows": len(train), "train_tokens": sum(r["n"] for r in train)}
     json.dump(st, open(a.state, "w"), indent=2)
     print(f"[done] {json.dumps(st)}", flush=True)
