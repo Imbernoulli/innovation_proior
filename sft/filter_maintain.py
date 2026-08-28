@@ -29,6 +29,27 @@ Two independent signals confirm the labelling rather than assuming it:
     generation split matters. Dropping pass_rate == 1.0 wholesale would have deleted
     1,934 Qwen3.8 rows that this policy keeps.
 
+VERIFIED against ground truth (2026-08-27, gpublaze). That machine still has
+sft/_wave3_tags.jsonl, which records the generator per row (`source`) as written at
+assembly time and is line-aligned with innovation_wave3_sft.jsonl (5291 == 5291).
+Labelling the same 5,291 rows both ways and comparing on the 5,166 where both give a
+q36/q38 verdict:
+
+    this script = q36, recorded = q36    2,095
+    this script = q38, recorded = q36        9   <- the only disagreement
+    this script = q38, recorded = q38    3,062
+
+99.83% agreement, and the q38 side is EXACT: all 3,062 recorded Qwen3.8 rows are
+labelled q38, none missed, none added. The "9 apart" predicted above is real and
+one-directional -- 9 Qwen3.6 rows entered the snapshot after 08-13 (dedup/re-roll
+reshuffling) and get treated as q38, i.e. 9 easy q36 rows survive the difficulty
+filter. Harmless.
+
+The recorded field additionally distinguishes 107 rows with an empty source, 12
+deepseek-v4-pro and 6 qwen3.7-max, which the git-history split necessarily folds into
+whichever side of 08-13 they landed on. That is the only capability this method lacks,
+and it does not matter for the q36/q38 policy above.
+
 Maintenance rows that are NOT in wave3 come from wave-2, whose raw keepers record
 `source: Qwen3.6-27B` for 715 of 741 and which is already filtered to round-0
 accuracy <= 0.5. They are kept (minus the thinking-process ones): already hard, and no
