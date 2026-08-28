@@ -1,0 +1,57 @@
+# Tinker distillation arm A (ANSWER-BLIND) — the teacher regenerated each trained
+# turn's <think> WITHOUT being shown the answer that turn lands on.
+#
+# Measured against arm B on 151 paired turns:
+#   more exploratory   doubt 29.8%, dead ends 29.8%, scientist voice 78.8%
+#                      (hand-written 20.5% / 23.8% / 72.2%)
+#   but disconnected   answer-term reach 0.449  (arm B 0.711, hand-written 0.782)
+# Arm A matches the surviving diagnosis (the corpus lacks doubt and abandoned
+# paths); arm B keeps the contract that reasoning must support the answer after
+# it. Both are trained so the eval decides rather than judgement.
+#
+# Otherwise IDENTICAL to experiments/v2_multisetting_4b/sft_full_wd01.yaml: only
+# `dataset` and `output_dir` differ.
+
+### model
+model_name_or_path: Qwen/Qwen3.5-4B
+trust_remote_code: true
+enable_liger_kernel: true   # fused linear CE — required: 53760 tok x 248K vocab logits would need ~75G/GPU in plain CE
+flash_attn: auto   # auto→fa2 when the low-pri compile lands, sdpa otherwise (all-accel ruling)
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: /srv/home/bohanlyu/innovation_proior/experiments/agentic_ablation_4b/ds_z3_offload_optimizer.json  # ZeRO-3 + optimizer CPU offload (Adam states ~25G/rank exceed 80G at cutoff 53760)
+
+### dataset
+dataset: innov_v2_distillA,maintain_w2w3
+template: qwen3_5
+enable_thinking: true
+mask_history: false            # per-turn `loss` flags in the data do the folding
+cutoff_len: 53760
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 2
+
+### output
+output_dir: /srv/home/bohanlyu/models_sft/tinker_distill_4b/full_wd01_distillA
+logging_steps: 1
+save_steps: 11                 # ~1/6 epoch (steps/epoch ~= 68 = (2622+6041)/128)
+save_strategy: steps
+save_only_model: true          # weight-only ckpts (for later RL-start selection); ZeRO-3 optim states would be ~48G/ckpt
+plot_loss: true
+report_to: none
+
+### train
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 64
+learning_rate: 5.0e-6
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+weight_decay: 0.1
+bf16: true
+gradient_checkpointing: true
+ddp_timeout: 180000000
+seed: 42
