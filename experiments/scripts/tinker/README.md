@@ -72,6 +72,19 @@ bash experiments/scripts/eval/taste/run_arm4b_redo.sh \
 而且真推到答案的推理本来就会用答案的词。手写语料在这个指标上是 0.254→0.828 的
 渐进曲线（只有 1.7% 的轮次首五分位就超 0.5），**是推导的形状，不是复述**。
 
+## 直通校验（改了 finalize 之后重跑一遍）
+
+空蒸馏文件跑 finalizer，输出必须和源语料**逐字节相同**——这证明两份语料之间
+唯一能不同的东西只有被重写的 `<think>`，没有任何别的东西被顺手改掉：
+
+```bash
+: > /tmp/empty.jsonl
+python3 experiments/scripts/tinker/finalize_distill.py \
+    --distill /tmp/empty.jsonl --out /tmp/passthrough.jsonl
+cmp experiments/v2_multisetting_4b/innovation_v2_timeonly.jsonl /tmp/passthrough.jsonl && echo OK
+```
+已验证通过（2901 行，byte-identical）。
+
 ## 报结果时必须一起报的数
 
 `finalize_distill.py` 打印的**重写覆盖率**。回落比例高的臂是个残缺的 ablation，
