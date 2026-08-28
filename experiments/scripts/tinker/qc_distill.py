@@ -24,6 +24,12 @@ Three things we actually care about, in priority order:
 
 3. HEDGING. The measured defect in wd01 is that "I cannot verify" collapsed
    93.3% -> 54.4%. If the distilled reasoning hedges even less, this arm cannot fix it.
+
+4. NO-OP. The turns we regenerate are turns the teacher was TRAINED on, so it can
+   simply reproduce the hand-written think it memorised. Then the "distilled"
+   corpus is the original corpus, the arm measures nothing, and every other metric
+   above would look perfectly healthy while saying so. Reported as 5-gram Jaccard
+   against the original think: near 1.0 means the run was a no-op.
 """
 import argparse, json, re, statistics as st, sys
 from collections import Counter
@@ -60,6 +66,17 @@ def answer_key_terms(answer, prompt):
     a = Counter(words(answer))
     key = {w for w, c in a.items() if c >= 2}
     return key - set(words(prompt))
+
+
+def five_gram_jaccard(a, b):
+    """How much of the regenerated think is literally the original one."""
+    wa, wb = words(a), words(b)
+    if len(wa) < 20 or len(wb) < 20:
+        return None
+    ga = {tuple(wa[i:i+5]) for i in range(len(wa) - 4)}
+    gb = {tuple(wb[i:i+5]) for i in range(len(wb) - 4)}
+    u = ga | gb
+    return len(ga & gb) / len(u) if u else None
 
 
 def leak_profile(think, answer, prompt):
@@ -148,11 +165,21 @@ def main():
     O = [(k, *orig_by_key[k]) for k in common]
     D = [(k, *dist[k]) for k in common]
     ro, rd = rates(O), rates(D)
+    sim = [x for x in (five_gram_jaccard(orig_by_key[k][0], dist[k][0]) for k in common)
+           if x is not None]
     print(f"{'metric':30s} {'hand-written':>14} {'distilled':>12}")
     for k in ro:
         vo, vd = ro[k], rd[k]
         fmt = (lambda v: f"{v:.3f}") if isinstance(vo, float) and vo < 5 else (lambda v: f"{v:,.1f}")
         print(f"{k:30s} {fmt(vo):>14} {fmt(vd):>12}")
+
+    if sim:
+        sim.sort()
+        hi = sum(x > 0.5 for x in sim) / len(sim) * 100
+        print(f"\n{'5-gram Jaccard vs original':30s} median {st.median(sim):.3f}  "
+              f"p90 {sim[int(.9*len(sim))]:.3f}  >0.5 in {hi:.1f}% of turns")
+        print("  (near 1.0 = the teacher reproduced the memorised hand-written think "
+              "and this arm is a no-op)")
 
     print("\n--- side-by-side openings ---")
     for k in common[: a.samples]:
