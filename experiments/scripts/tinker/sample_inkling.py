@@ -20,12 +20,32 @@ from build_data import to_oai, THINK
 STOP = ["<|end_message|>"]
 
 
-def prompt_for_turn(tok, msgs, i, tools, effort=0.9):
-    """Text prompt that ends exactly where the model should start thinking."""
+CONDITION_HINT = (
+    "You already know where this turn lands. Below is the conclusion you reached. "
+    "Write the reasoning that actually gets there — your own line of attack, in your "
+    "own voice. Do not announce the conclusion up front and do not summarise it; "
+    "think your way to it, including the parts you had to rule out.\n\n"
+    "--- the conclusion this reasoning must reach ---\n{answer}"
+)
+
+
+def prompt_for_turn(tok, msgs, i, tools, effort=0.9, answer=None):
+    """Text prompt that ends exactly where the model should start thinking.
+
+    With `answer`, an extra system turn shows the teacher where this turn lands
+    (arm B). Answer-blind sampling (arm A) produces reasoning that is honest but
+    systematically converges less onto the answer it precedes — measured at
+    0.751 -> 0.488 answer-term reach, a drop on 22 of 24 gate turns — which would
+    train the student on a non-sequitur. The conditioning turn exists only in the
+    prompt; it is never written back into the corpus.
+    """
     kw = dict(tokenize=False, reasoning_effort=effort)
     if tools:
         kw["tools"] = tools
-    head = tok.apply_chat_template(msgs[:i], add_generation_prompt=True, **kw)
+    seq = list(msgs[:i])
+    if answer:
+        seq = seq + [{"role": "system", "content": CONDITION_HINT.format(answer=answer)}]
+    head = tok.apply_chat_template(seq, add_generation_prompt=True, **kw)
     return head + "<|content_thinking|>"
 
 
@@ -43,6 +63,8 @@ def main():
     ap.add_argument("--concurrency", type=int, default=16)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-prompt", type=int, default=98304)
+    ap.add_argument("--condition-on-answer", action="store_true",
+                    help="arm B: show the teacher the answer this turn must reach")
     a = ap.parse_args()
 
     from transformers import AutoTokenizer
@@ -104,7 +126,11 @@ def main():
             if not THINK.search(src_val):
                 continue
             try:
-                ptxt = prompt_for_turn(tok, msgs, i, tools)
+                cond = None
+                if a.condition_on_answer:
+                    om = THINK.search(src_val)
+                    cond = src_val[om.end():].strip() if om else None
+                ptxt = prompt_for_turn(tok, msgs, i, tools, answer=cond)
                 pids = tok.encode(ptxt)
                 if len(pids) > a.max_prompt:
                     continue
