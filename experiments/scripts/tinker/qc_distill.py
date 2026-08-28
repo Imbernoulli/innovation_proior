@@ -9,9 +9,18 @@ Three things we actually care about, in priority order:
 
 2. HINDSIGHT LEAK. The teacher was trained on (prompt -> think + answer), so when
    it regenerates the think from the prompt alone it may simply restate the answer
-   it memorised. That would make the hindsight problem WORSE, not better. Measured
-   as content-word overlap between the regenerated think and the answer that was
-   NOT in its prompt.
+   it memorised. That would make the hindsight problem WORSE, not better.
+
+   Measured as FRONT-LOADING, not total overlap. Total overlap is uninformative:
+   a trace that genuinely derives the answer ends up using the answer's words, and
+   much of that vocabulary was in the prompt to begin with. What separates
+   derivation from restatement is WHEN the answer's prompt-absent terms appear -
+   derivation introduces them progressively, restatement has them from token 0.
+   On the hand-written corpus (n=2635) the median is 0.254 in the first fifth
+   rising to 0.828 overall, with only 1.7% of turns above 0.5 in the first fifth:
+   that is a derivation profile, so the hand-written reasoning does NOT restate
+   its answer. A distilled trace that front-loads much harder is the failure we
+   are watching for.
 
 3. HEDGING. The measured defect in wd01 is that "I cannot verify" collapsed
    93.3% -> 54.4%. If the distilled reasoning hedges even less, this arm cannot fix it.
@@ -46,46 +55,70 @@ def words(s):
     return [w for w in re.findall(r"[a-z]{3,}", s.lower()) if w not in STOP]
 
 
-def overlap(think, answer):
-    """Fraction of the answer's distinctive content words that the think already uses."""
-    a = Counter(words(answer)); t = set(words(think))
-    a = {w: c for w, c in a.items() if c >= 2}          # answer's own recurring terms
-    if not a:
+def answer_key_terms(answer, prompt):
+    """The answer's own recurring content words that the prompt did NOT supply."""
+    a = Counter(words(answer))
+    key = {w for w, c in a.items() if c >= 2}
+    return key - set(words(prompt))
+
+
+def leak_profile(think, answer, prompt):
+    """(front_loading, total) coverage of the answer's prompt-absent key terms.
+
+    front_loading = share already present in the think's first fifth. High total is
+    expected and fine (the reasoning reaches the answer); high front-loading is the
+    signature of restating a known answer instead of deriving it.
+    """
+    key = answer_key_terms(answer, prompt)
+    if len(key) < 8 or len(think) < 500:
         return None
-    return sum(1 for w in a if w in t) / len(a)
+    q1 = set(words(think[: len(think) // 5]))
+    allw = set(words(think))
+    return len(q1 & key) / len(key), len(allw & key) / len(key)
 
 
-def turns(path, key_id=None):
+def _prompt_of(r):
+    return " ".join([r.get("system") or ""] +
+                    [m["value"] for m in r["conversations"]
+                     if m["from"] in ("human", "observation")])
+
+
+def turns(path):
     for line in open(path):
         if not line.strip():
             continue
         r = json.loads(line)
         rid = r.get("_id")
+        pr = _prompt_of(r)
         for j, m in enumerate(r["conversations"]):
             if m["from"] not in ("gpt", "function_call") or not m.get("loss"):
                 continue
             mt = THINK.search(m["value"])
             if not mt:
                 continue
-            yield (rid, j), mt.group(1), m["value"][mt.end():]
+            yield (rid, j), mt.group(1), m["value"][mt.end():], pr
 
 
 def rates(items):
     n = len(items)
     if n == 0:
         return {}
-    L = [len(t) for _, t, _ in items]
-    ov = [o for o in (overlap(t, a) for _, t, a in items) if o is not None]
-    f = lambda rx: sum(1 for _, t, _ in items if rx.search(t)) / n * 100
-    return {
+    L = [len(t) for _, t, _, _ in items]
+    prof = [p for p in (leak_profile(t, a, pr) for _, t, a, pr in items) if p is not None]
+    f = lambda rx: sum(1 for _, t, _, _ in items if rx.search(t)) / n * 100
+    out = {
         "n": n,
         "chars_median": st.median(L),
         "assistant_voice_%": f(ASSISTANT_VOICE),
         "scientist_voice_%": f(SCIENTIST_VOICE),
         "hedges_%": f(HEDGE),
         "mentions_dead_end_%": f(DEADEND),
-        "answer_term_overlap_median": st.median(ov) if ov else float("nan"),
     }
+    if prof:
+        out["leak_front_loading_median"] = st.median([p[0] for p in prof])
+        out["leak_frontloaded_over_0.5_%"] = sum(p[0] > 0.5 for p in prof) / len(prof) * 100
+        out["answer_terms_reached_median"] = st.median([p[1] for p in prof])
+    return out
 
 
 def main():
@@ -95,7 +128,7 @@ def main():
     ap.add_argument("--samples", type=int, default=3)
     a = ap.parse_args()
 
-    dist = {k: (t, ans) for k, t, ans in turns(a.distill)}
+    dist = {k: (t, ans, pr) for k, t, ans, pr in turns(a.distill)}
     # compare only on the turns that were actually regenerated
     keep = set(dist)
     # the distilled file carries _id = source line index, so re-walk the source with it
@@ -108,7 +141,7 @@ def main():
                 continue
             mt = THINK.search(m["value"])
             if mt and (rid, j) in keep:
-                orig_by_key[(rid, j)] = (mt.group(1), m["value"][mt.end():])
+                orig_by_key[(rid, j)] = (mt.group(1), m["value"][mt.end():], _prompt_of(r))
 
     common = sorted(set(dist) & set(orig_by_key))
     print(f"[qc] {len(common)} regenerated turns matched to their originals\n")
