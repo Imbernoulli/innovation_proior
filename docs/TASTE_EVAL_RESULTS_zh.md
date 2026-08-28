@@ -13,6 +13,12 @@ harness 见 `experiments/scripts/eval/taste/README.md`。
 唯一扛过多重比较校正的差异是**负向**的。但这**不推翻**执行类评测上的既有结论
 ——那是另一个轴（见 §5）。
 
+那条负向拆开之后：**训练没有让模型对论文变笨**（两序一致时的准确率 0.800 vs base 0.793），
+它做的是**拆掉认知刹车**——「我无法核实」从 93.3% 掉到 54.4%，断言具体引用数字从
+41.3% 涨到 56.5%，位置粘滞率配对上升 +5.6～+7.2pt。而「先锁答案、再编规则圆场」
+这个失败模式**是 base 自带的**（反向筛的 24 个控制 case，24/24 base 也这么干），
+我们只是提高了它的触发率。根因是体裁：2,901 条轨迹里落地时带保留的只有 4 条（§3.1–3.3）。
+
 ## 1. 协议
 
 - **采样**：Qwen3.5 官方 thinking 配置，也是本仓 `EVAL_ON_JIAOLAB_zh.md` §4.2「不可动」的那套：
@@ -66,6 +72,77 @@ SciJudge main 11/1000、SoundnessBench 1/1099。SciPredict 和 PAIR-IQ 结构性
 **不是难题上判错**（一致时的准确率四个难度档全部持平或更高）；
 **不是学会吹新颖性**（novelty 措辞密度 base 0.25 / wd01 0.23，反而是 base 更依赖
 「这看起来像综述/会议论文」这类表面线索：25.8% vs 15.7%）。
+
+### 3.1 读了 121 个 case：这个失败模式是 base 自带的，我们只是提高了触发率
+
+先说一个方法论坑，因为它差点让我们得出反向结论。
+
+**第一批（97 例，有偏）**：按「base 两序都对、wd01 两序答同一个字母」筛样，
+16 个独立子代理按同一份 rubric 盲读。结果 mirror 92/96、空泛规则 93/96、
+base 两序锚定同一线索 96/96。
+
+**这三个数全是选样条件蕴含的，不是发现。** 按「base 对、SFT 错」筛出来的样本，
+base 当然一致、SFT 当然自相矛盾。单独看这批数据，会得出「decide-then-justify
+是我们训出来的」这个错误结论。
+
+**控制组（24 例，反向筛）**：从 58 对「wd01 两序都对、base 答同一个字母」里抽 24 例，
+同一份 rubric，4 个子代理盲读。
+
+| | 第一批（SFT 失败） | **控制组（base 失败）** |
+|---|---:|---:|
+| 前后矛盾地描述同一篇论文 | 92/96 | **24/24** |
+| 论据是空泛规则 | 93/96 | **24/24** |
+| 同一条规则在两序里被反向使用 | — | **24/24** |
+| 首次表态位置（占思考比例）中位 | 0.30 | **~0.28** |
+
+base 的原话，同一个模型、同两篇摘要、两个顺序：
+
+> "Surveys > Specific Technique Papers in citation volume"
+> "**Method Papers** beat **Survey Papers** in raw citation count"
+
+出版日期这个顺序无关的事实被两边同样地机会主义使用——指向想要的字母时是
+"an earlier publication gives Paper B a slight advantage"，指向反面时是
+"recency is not a differentiating factor"。base 甚至会伪造对**评测答案本身**的记忆：
+"I found a memory trace... In similar examples, the one concerning Dark Matter tends to be ranked higher"。
+
+**结论修正：先锁字母、再编规则圆场，是 Qwen3.5 自带的行为。我们的数据没有创造它，
+只是把触发率推高了。**
+
+### 3.2 那么我们到底改变了什么（配对 + soup 对照）
+
+soup 一列是 α_eff=0.023 的近-base 对照（见 §6），它在每一行都贴着 base，
+所以下面的差异确实来自 SFT 方向而非噪声：
+
+| SciJudge，1000 对配对 | base | **wd01** | soup |
+|---|---:|---:|---:|
+| 位置粘滞率 | 17.1% | **22.7%** | 18.5% |
+| 配对差 vs base（think） | — | **+5.6pt [+2.6,+8.6]** | +1.4pt ns |
+| 配对差 vs base（no-think） | — | **+7.2pt [+3.8,+10.7]** | +0.1pt ns |
+| 说「我无法核实 / 查不到」 | **93.3%** | **54.4%** | 91.9% |
+| 断言一个具体引用数字 | 41.3% | **56.5%** | 41.2% |
+| 固定开场 "Here's a thinking process" | 0% | **77%** | 0% |
+
+一句话：**训练没让模型对论文变笨（一致时准确率 0.800 vs 0.793），
+它让模型不再说「我不知道」，并且更早停下。** base 本来就有那个毛病，
+我们把它的刹车——认知对冲——拆掉了 93%→54%。
+
+**一个被证伪的猜想（记录下来免得被再次引用）**：我原以为是「想得短 → 位置偏见」。
+不成立：no-think 模式下两个模型几乎都不对冲（1.1% / 0.2%），wd01 仍然 +7.2pt 粘滞。
+「少对冲」和「更粘位置」是两个独立后果，不是一条因果链。
+
+### 3.3 在 v2 训练语料上复核落点统计
+
+`innovation_v2_timeonly.jsonl`（2,901 行，wd01 实际训练用的那份）最后一个计损助手轮：
+
+| | |
+|---|---:|
+| 最终答案里提到走过死路 / 失败 | **11 / 2901 = 0.4%** |
+| 最终答案带 caveat 或 limitation | **4 / 2901 = 0.1%** |
+| 整条 trace 出现过一次「我不确定」 | 211 = 7.3% |
+
+**2,901 条轨迹，落地时带保留的有 4 条。** 这不是数据质量问题，是**体裁问题**：
+我们写的是已知答案的发现的事后复盘，照着 answer.md 往回写，所以每条必然落地。
+模型学到的是科学家**汇报成果时的语气**，不是科学家**做决定时的过程**。
 
 ## 4. 数据审计：为什么会这样
 
@@ -171,13 +248,22 @@ bf16 里要让中位数权重动一下需要 **α ≥ 0.38**。
    ICLR 2022–2026 的 35,209 投稿 / 137,940 评审。这批同时是 RL 判别式 reward 的现成信号。
 3. **innovation 语料微操**（按性价比）：只改结尾（加「什么观测会证伪」）→ 把已有备选搬到落点
    → 点名具体前作。第一条改动量只有全文的 1/15，且 RINoBench/SoundnessBench 直接读它的效果。
+   §3.2 给了更锐的靶子：**把认知对冲加回去**，2,901 条里只有 4 条落地带保留是可直接干预的量。
 4. **做一个纯 innovation 臂**，否则永远分不清测的是 innovation prior 还是蒸馏切片。
+5. **Tinker 蒸馏臂（进行中）**：用 Tinker API 在同一份 innovation 语料上 LoRA 微调
+   Inkling-Small，再让它 teacher-forced 重写每个计损轮的 `<think>`（answer / tool call
+   原样保留，因为 observation 只对记录下来的 action 有效），用重写后的语料训 Qwen3.5-4B。
+   对照配置与 wd01 **只差两行**（dataset / output_dir）。脚本见
+   `experiments/scripts/tinker/`，配置见 `experiments/tinker_distill_4b/sft_full_distill.yaml`。
+   验的是「手写 reasoning 太 off-policy」这个假设；要盯的风险是模型口吻会不会把
+   语料里唯一的优点（第一人称科学家视角）一起蒸掉。
 
 ## 8. 产物
 
 ```
-experiments/scripts/eval/taste/     harness（11 个 bench 的 prompt/解析/判分/打分/报表）
-tools/label_maintain_provenance.py  蒸馏语料的教师来源回接
-docs/TASTE_EVAL_RESULTS_zh.md       本文
+experiments/scripts/eval/taste/          harness（11 个 bench 的 prompt/解析/判分/打分/报表）
+experiments/scripts/tinker/              Tinker 蒸馏臂（build_data / train_inkling / sample_inkling）
+experiments/tinker_distill_4b/           蒸馏臂的 4B 训练配置（与 wd01 只差 dataset/output_dir）
+docs/TASTE_EVAL_RESULTS_zh.md            本文
 ```
 数据 `.cache/taste_eval/`、产物 `outputs_taste/`，均 gitignored。
