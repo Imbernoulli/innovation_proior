@@ -42,8 +42,19 @@ python3 experiments/scripts/tinker/finalize_distill.py      # -> LF-innov/data/i
 python3 experiments/scripts/tinker/qc_distill.py
 ```
 
-然后本地训 4B：`experiments/tinker_distill_4b/sft_full_distill.yaml`
-（与 `experiments/v2_multisetting_4b/sft_full_wd01.yaml` **只差两行**：dataset / output_dir）。
+```bash
+# 5. 本地训 4B（与 sft_full_wd01.yaml 只差两行：dataset / output_dir）
+llamafactory-cli train experiments/tinker_distill_4b/sft_full_distill.yaml
+
+# 6. 评测：runner 已参数化为 TAG / MODEL / GPU，且写进和 base/wd01/soup 同一个目录，
+#    同节点同协议，score.py --intersect 可以直接配对比较
+bash experiments/scripts/eval/taste/run_arm4b_redo.sh \
+     pp_distill /srv/home/bohanlyu/models_sft/tinker_distill_4b/full_wd01_distill 3
+```
+
+对照臂已有的产物（同目录、同协议）：`cc_eval_pp_base_*` / `cc_eval_pp_wd01_*` / `cc_eval_pp_soup_a10_*`。
+**判据看配对差，不看绝对分**；关键那档是 SciJudge 的换序一致性
+（base 65.7% / wd01 60.7%，位置粘滞率 17.1% vs 22.7%）。
 
 ## 读 QC 的时候看什么
 
