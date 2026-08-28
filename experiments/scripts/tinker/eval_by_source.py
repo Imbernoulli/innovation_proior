@@ -16,15 +16,11 @@ import numpy as np
 import tinker
 from tinker import types as tt
 
-
-def datum(row):
-    ids, w = row["ids"], row["w"]
-    return tt.Datum(
-        model_input=tt.ModelInput.from_ints(ids[:-1]),
-        loss_fn_inputs={
-            "target_tokens": tt.TensorData.from_numpy(np.array(ids[1:], dtype=np.int64)),
-            "weights": tt.TensorData.from_numpy(np.array(w[1:], dtype=np.float32)),
-        })
+# Scored through the SAMPLING client, not a training client: what the run persists
+# is a sampler_weights path, and create_training_client_from_state wants a state
+# written by save_state, which this run never called. compute_logprobs takes the
+# full sequence and returns a per-token logprob, so the per-turn weight mask can
+# be applied on our side exactly as the trainer does.
 
 
 def main():
@@ -38,33 +34,30 @@ def main():
     rows = [json.loads(l) for l in open(a.holdout) if l.strip()]
     sc = tinker.ServiceClient()
     if a.base_model:
-        tc = sc.create_lora_training_client(base_model=a.base_model, rank=32)
+        cl = sc.create_sampling_client(base_model=a.base_model)
         label = f"base {a.base_model}"
     else:
         st = json.load(open(a.state))
-        tc = sc.create_training_client_from_state(st["model_path"])
+        cl = sc.create_sampling_client(model_path=st["model_path"])
         label = f"trained ({st.get('steps')} steps)"
 
-    order = sorted(range(len(rows)), key=lambda i: rows[i]["n"])
-    groups, cur, cmax = [], [], 0
-    for i in order:
-        n = rows[i]["n"]
-        if cur and max(cmax, n) * (len(cur) + 1) > a.budget:
-            groups.append(cur); cur, cmax = [], 0
-        cur.append(i); cmax = max(cmax, n)
-    if cur:
-        groups.append(cur)
-
+    from concurrent.futures import ThreadPoolExecutor
     acc = collections.defaultdict(lambda: [0.0, 0.0])
-    for g in groups:
-        out = tc.forward([datum(rows[i]) for i in g], "cross_entropy").result()
-        for i, o in zip(g, out.loss_fn_outputs):
-            lp = o["logprobs"]
-            lp = lp.to_numpy() if hasattr(lp, "to_numpy") else np.array(lp)
-            w = np.array(rows[i]["w"][1:], dtype=np.float64)
-            m = min(len(lp), len(w))
-            s = acc[rows[i]["src"]]
+    lock = __import__("threading").Lock()
+
+    def score(row):
+        lp = cl.compute_logprobs(tt.ModelInput.from_ints(row["ids"])).result()
+        lp = np.array([0.0 if x is None else x for x in lp], dtype=np.float64)
+        w = np.array(row["w"], dtype=np.float64)
+        # compute_logprobs gives the logprob of each token given its prefix, so
+        # position i is the prediction of ids[i]; the mask lines up directly.
+        m = min(len(lp), len(w))
+        with lock:
+            s = acc[row["src"]]
             s[0] += float(-(lp[:m] * w[:m]).sum()); s[1] += float(w[:m].sum())
+
+    with ThreadPoolExecutor(max_workers=16) as ex:
+        list(ex.map(score, rows))
 
     print(f"=== holdout NLL by source — {label}")
     tot = [0.0, 0.0]
