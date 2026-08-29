@@ -74,7 +74,14 @@ def main():
     ap.add_argument("--holdout", default=".cache/tinker/inkling_innov.holdout.jsonl")
     ap.add_argument("--base-model", default="thinkingmachines/Inkling-Small")
     ap.add_argument("--rank", type=int, default=32)
+    ap.add_argument("--no-train-mlp", dest="train_mlp", action="store_false", default=True)
+    ap.add_argument("--no-train-attn", dest="train_attn", action="store_false", default=True)
+    ap.add_argument("--no-train-unembed", dest="train_unembed", action="store_false", default=True,
+                    help="leave the output head untouched: a strong base model's head is already "
+                         "well calibrated and a 2.8k-row corpus can mostly only degrade it")
     ap.add_argument("--lr", type=float, default=1e-4)
+    ap.add_argument("--weight-decay", type=float, default=0.0)
+    ap.add_argument("--lr-floor-frac", type=float, default=0.1)
     ap.add_argument("--epochs", type=float, default=1.0)
     ap.add_argument("--token-budget", type=int, default=32768, help="tokens per forward_backward")
     ap.add_argument("--accum", type=int, default=4, help="fwd_bwd calls per optim_step")
@@ -93,8 +100,12 @@ def main():
           f"{sum(r['n_train'] for r in train)/1e6:.2f}M trained", flush=True)
 
     sc = tinker.ServiceClient()
-    tc = sc.create_lora_training_client(base_model=a.base_model, rank=a.rank,
-                                        user_metadata={"run": "innovation-inkling-small"})
+    tc = sc.create_lora_training_client(
+        base_model=a.base_model, rank=a.rank,
+        train_mlp=a.train_mlp, train_attn=a.train_attn, train_unembed=a.train_unembed,
+        user_metadata={"run": "innovation-distill"})
+    print(f"[train] lora rank={a.rank} mlp={a.train_mlp} attn={a.train_attn} "
+          f"unembed={a.train_unembed} lr={a.lr} wd={a.weight_decay}", flush=True)
     print(f"[train] model_id={tc.get_info().model_id}", flush=True)
 
     groups = batches(train, a.token_budget, a.seed)
@@ -123,9 +134,9 @@ def main():
                 lp = lp.to_numpy() if hasattr(lp, "to_numpy") else np.array(lp)
                 losses.append(float(-np.mean(lp)))
         pending = []
-        lr = lr_at(step, total_steps, a.lr)
+        lr = lr_at(step, total_steps, a.lr, floor_frac=a.lr_floor_frac)
         tc.optim_step(tt.AdamParams(learning_rate=lr, beta1=0.9, beta2=0.95,
-                                    eps=1e-8, weight_decay=0.0)).result()
+                                    eps=1e-8, weight_decay=a.weight_decay)).result()
         step += 1
         if step % 5 == 0 or step == 1:
             print(f"[train] step {step}/{total_steps} lr {lr:.2e} "
@@ -148,6 +159,9 @@ def main():
     sw = tc.save_weights_for_sampler(name=ckpt).result()
     model_path = getattr(sw, "path", None) or getattr(sw, "model_path", None) or str(sw)
     st = {"model_path": model_path, "base_model": a.base_model, "rank": a.rank,
+          "lr": a.lr, "weight_decay": a.weight_decay,
+          "train_mlp": a.train_mlp, "train_attn": a.train_attn,
+          "train_unembed": a.train_unembed,
           "ckpt_name": ckpt, "steps": step, "final_holdout_nll": ev,
           "train_rows": len(train), "train_tokens": sum(r["n"] for r in train)}
     json.dump(st, open(a.state, "w"), indent=2)

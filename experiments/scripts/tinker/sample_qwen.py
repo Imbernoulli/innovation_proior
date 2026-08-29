@@ -56,6 +56,9 @@ def main():
     ap.add_argument("--src", default="experiments/v2_multisetting_4b/innovation_v2_timeonly.jsonl")
     ap.add_argument("--state", default=".cache/tinker/qwen38_run.json")
     ap.add_argument("--model-path", default=None)
+    ap.add_argument("--base-model", default=None,
+                    help="sample from the UNTRAINED base instead of a checkpoint; this is the "
+                         "control that says what the tuning actually changed")
     ap.add_argument("--tokenizer", default="Qwen/Qwen3.8-27B")
     ap.add_argument("--out", default=".cache/tinker/innovation_distilled_q38.jsonl")
     ap.add_argument("--max-tokens", type=int, default=16384)
@@ -73,10 +76,14 @@ def main():
     from transformers import AutoTokenizer
     tok = AutoTokenizer.from_pretrained(a.tokenizer)
 
-    model_path = a.model_path or json.load(open(a.state)).get("model_path")
-    print(f"[sample] model {model_path}", flush=True)
     sc = tinker.ServiceClient()
-    cl = sc.create_sampling_client(model_path=model_path)
+    if a.base_model:
+        print(f"[sample] UNTRAINED base {a.base_model}", flush=True)
+        cl = sc.create_sampling_client(base_model=a.base_model)
+    else:
+        model_path = a.model_path or json.load(open(a.state)).get("model_path")
+        print(f"[sample] model {model_path}", flush=True)
+        cl = sc.create_sampling_client(model_path=model_path)
 
     names = json.load(open(a.method_name_field)) if a.method_name_field else {}
     rows = [json.loads(l) for l in open(a.src) if l.strip()]
