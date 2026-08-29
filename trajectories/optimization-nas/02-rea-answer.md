@@ -32,7 +32,7 @@ class NASOptimizer:
     """REA — Regularized Evolution Algorithm for NAS (low-budget variant).
 
     Population size 10 and tournament size 3, tuned for K=30 queries
-    following NAS-Bench-Suite (White et al., 2022) low-budget recipes.
+    under the low-budget regime this search operates in.
     """
 
     def __init__(self, api, num_epochs, seed):
