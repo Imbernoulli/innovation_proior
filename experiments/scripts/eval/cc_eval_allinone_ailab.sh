@@ -126,20 +126,29 @@ export SERVED_MODEL_NAME="$TAG"
 # NOTE: sacct's Reason column reports QOSMaxGRESPerUser for 13359987; that is the
 # stale last-pending reason, not the cancel cause -- the End timestamps line up with
 # the sweeper, not with any submission of ours.
-# One 1-token completion a minute is enough to keep utilisation off the floor. It
-# goes to the same server on a throwaway request and never touches the sample records.
-( while sleep 60; do
-    curl -fsS -m 20 -X POST "http://127.0.0.1:${VLLM_PORT}/v1/completions" \
-      -H 'Content-Type: application/json' \
-      -d "{\"model\":\"$TAG\",\"prompt\":\"ping\",\"max_tokens\":1,\"temperature\":0}" \
-      >/dev/null 2>&1 || true
-  done ) &
-KEEPALIVE_PID=$!
+# FAILED ATTEMPT, kept as a warning: one 1-token completion a minute was NOT enough.
+# 13379794 ran that pinger (the POSTs are in its log, all 200 OK) and was still killed
+# at SAMPLE 528/530 -- vLLM reported "Avg generation throughput: 0.1 tokens/s,
+# Running: 0 reqs" for 218 consecutive ticks, because a 20 ms request once a minute is
+# a 0.03% duty cycle and nvidia-smi rounds that to 0%. Last real generation 04:58:17,
+# kill at 06:45:06 = 1 h 47 m idle, straight through the 90 min threshold.
+# What works is actual compute: gpu_hold bursts ~2 s of matmul every 20 s, so every
+# utilisation sample has a decent chance of landing on a burst. Tiny (4096^2 fp32
+# ~200 MB x3) next to what vLLM already holds, and it shares the card we were given.
+GPU_HOLD_PY="${GPU_HOLD_PY:-$HOME/gpu_hold/run.py}"
+if [ -f "$GPU_HOLD_PY" ]; then
+  HOLD_SIZE=4096 HOLD_SLEEP=20 HOLD_BURST=2 \
+    "$D/envs/vllm023/bin/python" "$GPU_HOLD_PY" >/dev/null 2>&1 &
+  KEEPALIVE_PID=$!
+else
+  echo "[allinone] WARNING: $GPU_HOLD_PY missing; the idle sweep will kill this job during ALE" >&2
+  KEEPALIVE_PID=""
+fi
 cleanup() {
   [ -n "${KEEPALIVE_PID:-}" ] && kill "$KEEPALIVE_PID" >/dev/null 2>&1 || true
   [ -n "${VLLM_PID:-}" ] && kill "$VLLM_PID" >/dev/null 2>&1 || true
 }
-echo "[allinone] keep-alive pinger started (pid $KEEPALIVE_PID, 1 tok/60 s)"
+echo "[allinone] gpu_hold keep-alive started (pid ${KEEPALIVE_PID:-none}, 2 s burst / 20 s idle)"
 
 bash "$D/slurm_overlay/cc_eval_cpu_client_pinned.sh"
 rc=$?
