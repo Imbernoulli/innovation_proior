@@ -54,6 +54,23 @@ export EVAL_RESEARCHER_YEAR="${EVAL_RESEARCHER_YEAR:-2026}"
 export EVAL_SYS_PROMPT_MODE="${EVAL_SYS_PROMPT_MODE:-short}"
 export MLSBENCH_SYS_PREFIX="${MLSBENCH_SYS_PREFIX:-It is now year 2026.}"
 
+# --- research: julia/pysr must write into OUR tree, not bohan's ---------------
+# The research evaluators run under bohan's research_overlay interpreter, whose
+# defaults (frontiercs_research_cpu_eval.py:437, DEFAULT_OVERLAY) put the juliapkg
+# project in HIS tree. zy7019 cannot write it, so every symbolic_regression sample
+# came back as an infra error rather than a score:
+#   ResearchInfraError("symbolic_regression/<prob>: evaluator produced no result
+#     (rc=1): [Errno 13] Permission denied:
+#     '/scratch/gpfs/CHIJ/bohan/fs/envs/research_overlay/julia_env/lock.pid'")
+# That was 25-50 rows PER ARM (50 in the base9b_v2c anchor) -- the single largest
+# error class on the research track, and it is pure infrastructure, not the model.
+# cc_eval_all_selfc.sh already redirected these; the all-in-one path did not, which
+# is why its research runs kept the same 25-50 hole. Same override, same copy.
+export FRONTIERCS_RESEARCH_PYTHON="${FRONTIERCS_RESEARCH_PYTHON:-/scratch/gpfs/CHIJ/bohan/fs/envs/research_overlay/bin/python}"
+export JULIA_DEPOT_PATH="${JULIA_DEPOT_PATH:-$D/envs/research_julia/julia_depot}"
+export PYTHON_JULIAPKG_PROJECT="${PYTHON_JULIAPKG_PROJECT:-$D/envs/research_julia/julia_env}"
+export JULIA_NUM_THREADS="${JULIA_NUM_THREADS:-4}"
+
 # --- one card, shared: vLLM keeps it busy so the idle-GPU sweep never sees 0% ---
 NGPU=$(nvidia-smi -L 2>/dev/null | grep -c '^GPU ' || echo 1)
 [ "$NGPU" -ge 2 ] && echo "[allinone] WARNING: $NGPU GPUs allocated; the idle one will get this job swept. Submit with --gres=gpu:1." >&2
