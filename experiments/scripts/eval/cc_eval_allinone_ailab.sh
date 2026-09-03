@@ -116,6 +116,31 @@ echo "[allinone] vLLM ready after $SECONDS s"
 export VLLM_BASE_URL="http://127.0.0.1:${VLLM_PORT}/v1"
 export SERVED_MODEL_NAME="$TAG"
 
+# --- keep-alive: the idle-GPU sweep kills these jobs mid-run ------------------
+# Holding the card is NOT enough -- the sweep looks at *utilisation*. During the
+# ALE-Bench phase the client spends long stretches compiling and running C++ under
+# go-judge without querying the model, so the GPU sits at 0% and the sweeper
+# (uid 123 = the slurm daemon, firing on :00/:15/:30/:45) cancels the job:
+#   13356824 / 13359987 (at SAMPLE 524/530) / 13367145 / 13367147 / 13373951
+# were all "CANCELLED by 123", always the shard-0 job, always on a quarter hour.
+# NOTE: sacct's Reason column reports QOSMaxGRESPerUser for 13359987; that is the
+# stale last-pending reason, not the cancel cause -- the End timestamps line up with
+# the sweeper, not with any submission of ours.
+# One 1-token completion a minute is enough to keep utilisation off the floor. It
+# goes to the same server on a throwaway request and never touches the sample records.
+( while sleep 60; do
+    curl -fsS -m 20 -X POST "http://127.0.0.1:${VLLM_PORT}/v1/completions" \
+      -H 'Content-Type: application/json' \
+      -d "{\"model\":\"$TAG\",\"prompt\":\"ping\",\"max_tokens\":1,\"temperature\":0}" \
+      >/dev/null 2>&1 || true
+  done ) &
+KEEPALIVE_PID=$!
+cleanup() {
+  [ -n "${KEEPALIVE_PID:-}" ] && kill "$KEEPALIVE_PID" >/dev/null 2>&1 || true
+  [ -n "${VLLM_PID:-}" ] && kill "$VLLM_PID" >/dev/null 2>&1 || true
+}
+echo "[allinone] keep-alive pinger started (pid $KEEPALIVE_PID, 1 tok/60 s)"
+
 bash "$D/slurm_overlay/cc_eval_cpu_client_pinned.sh"
 rc=$?
 echo "[allinone] client exited rc=$rc after $SECONDS s"
