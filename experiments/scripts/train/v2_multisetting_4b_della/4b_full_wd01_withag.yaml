@@ -1,0 +1,53 @@
+### innov v2 — 4B replication of full_wd01_withag_v2b (the arm that fed rlv5_ft01mix_a10).
+### The RECIPE is byte-identical to configs/full_wd01_withag_v2b.yaml except for the four
+### lines that MUST change (model, output, and the batch split that keeps the effective
+### batch at 128). Everything that could move the science -- data, template, cutoff, lr,
+### schedule, wd, epochs -- is copied verbatim, because the point of this run is a
+### controlled 9B-vs-4B comparison, not a new recipe.
+###
+### Efficiency deltas (these do NOT change the maths):
+###   deepspeed z3 -> z2 (no offload). 4B on a 141G H200: params 9.3G bf16, grads 9.3G,
+###     Adam fp32 master+m+v ~56G. Sharded over 4 ranks under ZeRO-2 that is ~9.3 + 2.3
+###     + 14 = ~26G/rank, leaving ~110G for activations -- so the per-layer all-gather
+###     traffic ZeRO-3 pays for is bought for nothing here. (For the 9B it was needed.)
+###   per_device 1x32 -> 2x16. Same effective batch (2 x 16 x 4 GPUs = 128), same number
+###     of optimizer steps, half the kernel launches. group_by_length keeps the padding
+###     waste of a 2-row micro-batch small; if the probe says otherwise, revert to 1x32.
+model_name_or_path: /scratch/gpfs/CHIJ/ziran/innov_v2_multi/models/Qwen3.5-4B
+trust_remote_code: true
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: /scratch/gpfs/CHIJ/ziran/innov_v2_multi/configs/ds/ds_z2_nooffload.json
+dataset_dir: /scratch/gpfs/CHIJ/ziran/innov_v2_multi/data
+dataset: innov_v2,maintain_w2w3
+template: qwen3_5
+mask_history: false
+cutoff_len: 53760
+max_samples: 1000000
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+output_dir: /scratch/gpfs/CHIJ/ziran/innov_v2_multi/models/4b_full_wd01_withag
+logging_steps: 5
+save_strategy: epoch
+save_total_limit: 1
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: true
+report_to: none
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 16
+group_by_length: true
+learning_rate: 5.0e-6
+num_train_epochs: 1.0
+lr_scheduler_type: cosine
+warmup_ratio: 0.1
+weight_decay: 0.1
+bf16: true
+flash_attn: fa2
+enable_liger_kernel: true
+gradient_checkpointing: true
+use_reentrant_gc: false
+ddp_timeout: 180000000
+val_size: 0.0
