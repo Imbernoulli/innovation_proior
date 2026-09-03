@@ -1,0 +1,58 @@
+{
+  "rigorous_codebase": true,
+  "allow_create": false,
+  "test_cmds": [
+    {
+      "cmd": "scripts/train.sh",
+      "label": "train",
+      "group": 1,
+      "compute": 2,
+      "mem": 200,
+      "time": "06:00:00",
+      "package": "trl"
+    },
+    {
+      "cmd": "scripts/eval_all.sh",
+      "label": "eval",
+      "group": 2,
+      "compute": 1,
+      "mem": 60,
+      "time": "01:00:00",
+      "package": "trl"
+    }
+  ],
+  "baselines": {
+    "gkd": {
+      "edit_ops": "baselines/gkd.edit.py"
+    },
+    "opd": {
+      "edit_ops": "baselines/opd.edit.py"
+    },
+    "taid": {
+      "edit_ops": "baselines/taid.edit.py"
+    },
+    "rs_kd": {
+      "edit_ops": "baselines/rs_kd.edit.py"
+    },
+    "dagger": {
+      "edit_ops": "baselines/dagger.edit.py"
+    }
+  },
+  "files": [
+    {
+      "filename": "trl/trl/experimental/gkd/custom_distill_loss.py",
+      "read": [{"start": -1, "end": -1}],
+      "edit": [{"start": 42, "end": 65}]
+    },
+    {
+      "filename": "trl/trl/experimental/gkd/gkd_trainer.py",
+      "read": [{"start": -1, "end": -1}]
+    },
+    {
+      "filename": "trl/trl/experimental/gkd/gkd_config.py",
+      "read": [{"start": -1, "end": -1}]
+    }
+  ],
+  "seeds": [42],
+  "hidden_metrics": []
+}
