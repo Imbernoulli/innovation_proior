@@ -10,9 +10,9 @@
 ###     Adam fp32 master+m+v ~56G. Sharded over 4 ranks under ZeRO-2 that is ~9.3 + 2.3
 ###     + 14 = ~26G/rank, leaving ~110G for activations -- so the per-layer all-gather
 ###     traffic ZeRO-3 pays for is bought for nothing here. (For the 9B it was needed.)
-###   per_device 1x32 -> 2x16. Same effective batch (2 x 16 x 4 GPUs = 128), same number
-###     of optimizer steps, half the kernel launches. group_by_length keeps the padding
-###     waste of a 2-row micro-batch small; if the probe says otherwise, revert to 1x32.
+###   per_device stays 1x32, same as 9B. The 2x16 variant is NOT available: transformers
+###     2-row micro-batch would pad every pair up to the longer row with nothing to sort
+###     lengths first -- at cutoff 53760 that is a lot of wasted compute. ZeRO-2 alone it is.
 model_name_or_path: /scratch/gpfs/CHIJ/ziran/innov_v2_multi/models/Qwen3.5-4B
 trust_remote_code: true
 stage: sft
@@ -36,9 +36,8 @@ plot_loss: true
 overwrite_output_dir: true
 save_only_model: true
 report_to: none
-per_device_train_batch_size: 2
-gradient_accumulation_steps: 16
-group_by_length: true
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 32
 learning_rate: 5.0e-6
 num_train_epochs: 1.0
 lr_scheduler_type: cosine
