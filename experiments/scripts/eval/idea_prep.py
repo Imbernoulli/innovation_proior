@@ -26,7 +26,34 @@ Pairs are only kept when the ground-truth gap is wide enough to be a real prefer
 rather than tie-breaking noise, and A/B order is randomised so "always answer A"
 scores 50%.
 
-  python3 idea_prep.py [--out FILE] [--n-per-task 120] [--seed 0]
+--v2 FIXES THREE SAMPLING DEFECTS AN ADVERSARIAL REVIEW FOUND IN THE FIRST BUILD.
+The default path is left exactly as it was so the numbers already reported stay
+reproducible; --v2 is a separate task file, not an edit of the old one.
+
+  aaar_equation      v1 presented options_list in its stored order, and the stored
+                     order is not uniform -- "always answer the modal position" scored
+                     30.8%, not 25%. v2 shuffles the four candidates per item and
+                     remaps the answer letter, restoring a true 25% floor.
+  openreview_pair    v1 drew i and j with rng.randrange on every attempt, i.e. WITH
+                     replacement across attempts: 4 of 120 pairs were exact duplicates
+                     and 25 papers appeared in more than one pair. Correlated items
+                     break the item-level bootstrap, which assumes items are
+                     exchangeable. v2 draws each paper at most once.
+  openreview_decide  v1 put the venue in the prompt ("submitted to ICLR 2023"). Venue
+                     acceptance rates differ a lot, so a model can score by recalling
+                     the venue's base rate without reading the paper. That shortcut is
+                     open to every arm equally, so it does not bias the RANKING -- but
+                     it means the task may not measure research judgement at all, and
+                     openreview_decide is the one task where our RL arms beat the
+                     control. v2 removes the venue. The 50/50 balance is unchanged, so
+                     the chance floor stays 50%.
+
+  liveidea_pair is NOT built in v2: its labels average originality over every idea
+  sharing a (keyword, idea_model) key while the prompt shows only the first idea, and
+  47133 of 48131 groups contain more than one distinct text. It needs a label rebuild,
+  not a resample.
+
+  python3 idea_prep.py [--out FILE] [--n-per-task 120] [--seed 0] [--v2]
 """
 import argparse, json, glob, random, os, re
 
@@ -40,7 +67,7 @@ CTX_BEFORE = 6000
 CTX_AFTER = 2000
 
 
-def aaar_equation(n, rng):
+def aaar_equation(n, rng, v2=False):
     p = f"{IB}/aaar/Equation_Inference/equation.1049.json"
     rows = json.load(open(p))
     rng.shuffle(rows)
@@ -53,6 +80,14 @@ def aaar_equation(n, rng):
         before = (r.get("context_before") or "")[-CTX_BEFORE:]
         after = (r.get("context_after") or "")[:CTX_AFTER]
         letters = "ABCD"
+        if v2:
+            # v1 showed options_list in its stored order and that order is not uniform,
+            # so the majority position scored 30.8% instead of 25%. Shuffle, then find
+            # where the true answer landed.
+            true_opt = opts[letters.index(ans)]
+            opts = list(opts)
+            rng.shuffle(opts)
+            ans = letters[opts.index(true_opt)]
         body = "\n".join(f"({letters[j]}) {o}" for j, o in enumerate(opts))
         prompt = (
             "You are reading the LaTeX source of a machine-learning paper. One equation "
@@ -80,20 +115,24 @@ def _openreview():
     return pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
 
 
-def openreview_pair(df, n, rng, min_gap=0.25):
+def openreview_pair(df, n, rng, min_gap=0.25, v2=False):
     d = df.dropna(subset=["mean_score", "abstract", "title", "venue"])
     by_venue = {}
     for v, g in d.groupby("venue"):
         if len(g) >= 2:
             by_venue[v] = g.reset_index(drop=True)
     venues = sorted(by_venue)
+    used = set()          # v2 only: (venue, row index) already spent on some pair
     out, tries = [], 0
     while len(out) < n and tries < n * 400:
         tries += 1
-        g = by_venue[venues[rng.randrange(len(venues))]]
+        v = venues[rng.randrange(len(venues))]
+        g = by_venue[v]
         i, j = rng.randrange(len(g)), rng.randrange(len(g))
         if i == j:
             continue
+        if v2 and ((v, i) in used or (v, j) in used):
+            continue     # each paper appears in at most one pair, so items stay independent
         a, b = g.iloc[i], g.iloc[j]
         if abs(float(a.mean_score) - float(b.mean_score)) < min_gap:
             continue
@@ -108,6 +147,8 @@ def openreview_pair(df, n, rng, min_gap=0.25):
             "Which paper received the higher average review score? Answer on the last "
             "line in the form: ANSWER: A  or  ANSWER: B"
         )
+        if v2:
+            used.add((v, i)); used.add((v, j))
         out.append({"task": "openreview_pair", "id": f"orp{len(out)}", "prompt": prompt,
                     "answer": "A" if hi_is_a else "B", "choices": ["A", "B"],
                     "meta": {"venue": str(a.venue),
@@ -115,7 +156,7 @@ def openreview_pair(df, n, rng, min_gap=0.25):
     return out
 
 
-def openreview_decide(df, n, rng):
+def openreview_decide(df, n, rng, v2=False):
     d = df.dropna(subset=["decision", "abstract", "title"])
     acc = d[d.decision == True].reset_index(drop=True)      # noqa: E712
     rej = d[d.decision == False].reset_index(drop=True)     # noqa: E712
@@ -126,9 +167,15 @@ def openreview_decide(df, n, rng):
     rng.shuffle(rows)
     out = []
     for k, (r, lab) in enumerate(rows):
+        if v2:
+            # No venue: the model has to read the paper instead of recalling a base rate.
+            lead = ("The following paper was submitted to a machine-learning conference. "
+                    "Decide whether the programme committee accepted or rejected it.")
+        else:
+            lead = (f"The following paper was submitted to {r.venue}. Decide whether the "
+                    "programme committee accepted or rejected it.")
         prompt = (
-            f"The following paper was submitted to {r.venue}. Decide whether the "
-            "programme committee accepted or rejected it.\n\n"
+            f"{lead}\n\n"
             f"Title: {r.title}\nAbstract: {r.abstract}\n\n"
             "Answer on the last line in the form: ANSWER: ACCEPT  or  ANSWER: REJECT"
         )
@@ -186,14 +233,17 @@ def main():
     ap.add_argument("--out", default=f"{IB}/tasks.jsonl")
     ap.add_argument("--n-per-task", type=int, default=120)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--v2", action="store_true",
+                    help="apply the three sampling fixes described in the header")
     a = ap.parse_args()
     rng = random.Random(a.seed)
 
-    rows = aaar_equation(a.n_per_task, rng)
+    rows = aaar_equation(a.n_per_task, rng, v2=a.v2)
     df = _openreview()
-    rows += openreview_pair(df, a.n_per_task, rng)
-    rows += openreview_decide(df, a.n_per_task, rng)
-    rows += liveidea_pair(a.n_per_task, rng)
+    rows += openreview_pair(df, a.n_per_task, rng, v2=a.v2)
+    rows += openreview_decide(df, a.n_per_task, rng, v2=a.v2)
+    if not a.v2:
+        rows += liveidea_pair(a.n_per_task, rng)   # voided in v2, see header
 
     with open(a.out, "w") as f:
         for r in rows:
