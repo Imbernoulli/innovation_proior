@@ -27,7 +27,11 @@ ALE-10 is free:
 """
 import json, glob, sys, random, statistics, os
 
-ROOT = "/scratch/gpfs/CHIJ/ziran/innov_v2_multi/outputs"
+# Where the eval clients wrote their samples. Hardcoding one absolute path made this
+# script unrunnable by anyone else, so the default is only a default -- set INNOV_OUTPUTS
+# to point it at another campaign's outputs.
+ROOT = os.environ.get("INNOV_OUTPUTS",
+                      "/scratch/gpfs/CHIJ/ziran/innov_v2_multi/outputs")
 
 ALE_LITE = {"ahc008", "ahc011", "ahc015", "ahc016", "ahc024",
             "ahc025", "ahc026", "ahc027", "ahc039", "ahc046"}
