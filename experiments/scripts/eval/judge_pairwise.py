@@ -160,9 +160,14 @@ def main():
     ap.add_argument("--a-tag", default="A")
     ap.add_argument("--b-tag", default="B")
     ap.add_argument("--n-pairs", type=int, default=4, help="samples per item to judge")
+    ap.add_argument("--only-task", default=None)
     ap.add_argument("--concurrency", type=int, default=32)
     ap.add_argument("--temperature", type=float, default=0.3)
-    ap.add_argument("--max-tokens", type=int, default=4096)
+    # The judge is a thinking model, so this budget binds exactly the way the eval
+    # budget did. At 4096 it never reached a VERDICT on 15-17% of review_weakness
+    # calls -- long prompt, long deliberation, cut off mid-sentence. liveidea_gen was
+    # unaffected (0% unparsed), which is why only the long task needed a re-run.
+    ap.add_argument("--max-tokens", type=int, default=16384)
     ap.add_argument("--timeout", type=float, default=1200)
     a = ap.parse_args()
 
@@ -189,6 +194,8 @@ def main():
 
     jobs = []
     for task in sorted(set(A) & set(B)):
+        if a.only_task and task != a.only_task:
+            continue
         for iid in sorted(set(A[task]) & set(B[task])):
             for k in range(a.n_pairs):
                 if k in A[task][iid] and k in B[task][iid] \

@@ -93,8 +93,9 @@ for pair in $PAIRS; do
   echo "[judge] === $ours vs $ctrl ==="
   "$D/envs/client/bin/python" "$D/scripts/judge_pairwise.py" \
     --a-dir "$ad" --b-dir "$bd" --a-tag "$ours" --b-tag "$ctrl" \
-    --tasks "$TASKS" --out "$D/outputs/cc_judge_${ours}__vs__${ctrl}" \
+    --tasks "$TASKS" --out "$D/outputs/cc_judge${OUT_SUFFIX:-}_${ours}__vs__${ctrl}" \
     --base-url "http://127.0.0.1:${VLLM_PORT}/v1" --model "$JUDGE_TAG" \
+    --max-tokens "${MAX_TOKENS:-16384}" ${ONLY_TASK:+--only-task "$ONLY_TASK"} \
     --n-pairs "${N_PAIRS:-4}" --concurrency "${CONCURRENCY:-32}" || rc=$?
 done
 

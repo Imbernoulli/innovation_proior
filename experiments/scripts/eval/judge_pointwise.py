@@ -2,17 +2,22 @@
 
 WHY THIS EXISTS
 judge_pairwise.py showed both candidates at once and asked which was better. On
-liveidea_gen that works (58.8% of pairs got a consistent verdict across the two
-orders). On review_weakness it collapsed: the judge picked the SECOND-shown candidate
-in 87% of calls regardless of which arm produced it -- 12.7% "A" in one order and
-13.3% "A" in the flipped order -- so only 23.1% of pairs got a consistent verdict and
-the resulting 50.0% win rate measured nothing but presentation order. The likely cause
-is prompt length: with the title plus three real reviews ahead of them, the two
-candidates sit far from the question and the last one dominates.
+liveidea_gen that works (0% unparsed, ~58-62% of pairs decided consistently across the
+two orders). On review_weakness it collapsed: only ~22% of pairs got a consistent
+verdict, and among the calls that did answer, the judge named the SECOND-shown
+candidate about 87% of the time in BOTH orders.
 
-Showing one candidate at a time removes the failure mode by construction -- there is no
-"second position" to prefer. The cost is that absolute scores are less sensitive than a
-direct comparison, so this is the right tool only where pairwise demonstrably breaks.
+CAVEAT ON THAT DIAGNOSIS -- it is confounded, and the confound is mine. The judge ran
+at max_tokens=4096 and never reached a VERDICT on 15-17% of review_weakness calls, all
+cut off mid-deliberation. So "severe position bias" and "the judge was truncated on the
+hardest items and guessed" are not yet separated. Both judges now default to 16384 and
+review_weakness is being re-run; until that lands, treat the position-bias number as
+provisional rather than established.
+
+Showing one candidate at a time removes the position failure mode by construction --
+there is no "second position" to prefer. The cost is that absolute scores are less
+sensitive than a direct comparison, so this is the right tool only where pairwise
+demonstrably breaks.
 
 The comparison is still paired: both arms answer the same items, and the bootstrap
 resamples items, scoring both arms on each draw (see genstats.py for why).
@@ -140,7 +145,11 @@ def main():
     ap.add_argument("--n-pairs", type=int, default=4)
     ap.add_argument("--concurrency", type=int, default=32)
     ap.add_argument("--temperature", type=float, default=0.3)
-    ap.add_argument("--max-tokens", type=int, default=3072)
+    # Thinking-model budget: at 3072 this judge failed to emit a SCORE on 66% of
+    # review_weakness calls (315/480), all cut off mid-deliberation, which left the
+    # comparison resting on a third of the items. Same class of error as the 8192 eval
+    # budget -- a binding budget silently changes what is being measured.
+    ap.add_argument("--max-tokens", type=int, default=16384)
     ap.add_argument("--timeout", type=float, default=1200)
     a = ap.parse_args()
 
