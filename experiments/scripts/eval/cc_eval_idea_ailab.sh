@@ -74,9 +74,17 @@ else
   echo "[idea] WARNING: $GPU_HOLD_PY missing; the idle sweep may kill this job" >&2
 fi
 
+# MAX_TOKENS is a knob because the default 8192 turned out to be BINDING on
+# aaar_equation, and that quietly changed what the benchmark measures. At 8192 the
+# median completion is 6073-7660 tokens, 20-43% of draws never reach an "ANSWER:"
+# line at all, and those count as wrong -- so a model that thinks shorter scores
+# higher without judging better. Re-running the same items at a larger budget is the
+# only way to tell the two apart. ONLY_TASK narrows the re-run to the task in question.
 "$D/envs/client/bin/python" "$D/scripts/idea_client.py" \
   --tasks "$TASKS" --out "$OUT" \
   --base-url "http://127.0.0.1:${VLLM_PORT}/v1" --model "$TAG" \
+  --max-tokens "${MAX_TOKENS:-8192}" \
+  ${ONLY_TASK:+--only-task "$ONLY_TASK"} \
   --n-samples "${N_SAMPLES:-5}" --concurrency "${CONCURRENCY:-48}"
 rc=$?
 echo "[idea] client exited rc=$rc after $SECONDS s"
