@@ -53,7 +53,21 @@ reproducible; --v2 is a separate task file, not an edit of the old one.
   47133 of 48131 groups contain more than one distinct text. It needs a label rebuild,
   not a resample.
 
+--venue-ablation IS THE CONTROLLED VERSION OF THE openreview_decide FIX.
+--v2 shuffles AAAR's options from the same rng that later feeds the OpenReview
+builders, so the rng state diverges and --v2 draws a DIFFERENT 120 papers for
+openreview_decide -- zero overlap with the v1 set. That makes "score dropped after
+removing the venue" uninterpretable: removing the venue and swapping the papers are
+confounded. (aaar_equation is unaffected: its 120 items are chosen before any option
+shuffle, so v1 and v2 share all 120 and that contrast IS clean.)
+
+--venue-ablation sidesteps the rng entirely: it reads an existing task file and
+re-emits its openreview_decide items with the venue sentence replaced, keeping the id,
+the label and the paper. Same papers, same order, one word changed -- so the
+difference is the venue and nothing else.
+
   python3 idea_prep.py [--out FILE] [--n-per-task 120] [--seed 0] [--v2]
+  python3 idea_prep.py --venue-ablation --from-tasks tasks.jsonl --out tasks_v2b.jsonl
 """
 import argparse, json, glob, random, os, re
 
@@ -228,6 +242,30 @@ def liveidea_pair(n, rng, min_gap=1.5, max_words=400):
     return out[:n]
 
 
+VENUE_LEAD = ("The following paper was submitted to a machine-learning conference. "
+              "Decide whether the programme committee accepted or rejected it.")
+
+
+def venue_ablation(src):
+    """Re-emit an existing file's openreview_decide items with the venue removed.
+
+    Paired by construction: same papers, same labels, same ids as the source file, so
+    the only thing that differs between the two runs is the venue sentence.
+    """
+    out = []
+    for line in open(src):
+        r = json.loads(line)
+        if r.get("task") != "openreview_decide":
+            continue
+        body = r["prompt"].split("\n\n", 1)[1]      # drop the venue-bearing lead only
+        r = dict(r, prompt=f"{VENUE_LEAD}\n\n{body}")
+        r.setdefault("meta", {})["venue_removed"] = True
+        out.append(r)
+    if not out:
+        raise SystemExit(f"no openreview_decide items in {src}")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=f"{IB}/tasks.jsonl")
@@ -235,8 +273,20 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--v2", action="store_true",
                     help="apply the three sampling fixes described in the header")
+    ap.add_argument("--venue-ablation", action="store_true",
+                    help="re-emit --from-tasks' openreview_decide items without the venue")
+    ap.add_argument("--from-tasks", default=f"{IB}/tasks.jsonl")
     a = ap.parse_args()
     rng = random.Random(a.seed)
+
+    if a.venue_ablation:
+        rows = venue_ablation(a.from_tasks)
+        with open(a.out, "w") as f:
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+        print(f"wrote {a.out}: {len(rows)} venue-stripped openreview_decide items "
+              f"paired 1:1 with {a.from_tasks}")
+        return
 
     rows = aaar_equation(a.n_per_task, rng, v2=a.v2)
     df = _openreview()
