@@ -99,11 +99,29 @@
 | bench | 可用样本范围 | 未覆盖部分的原因 |
 |---|---|---|
 | FrontierCS | 836–860 / 860 | 零星超时 |
-| ALE-40 | 197–200 / 200 | **只差 `ahc003` 一题**,`OSError(39,'Directory not empty')`,瞬时故障 |
+| ALE-40 | 197–200 / 200 | **只差 `ahc003` 一题**,`OSError(39,'Directory not empty')` —— 不是瞬时故障,是 ALE-Bench 上游 bug,见下 |
 | research | 300–311 / 320 | 每臂 10–19 行不可恢复:`symbolic_regression` 的 `precision_tol` 是确定性报错;`grammar_fuzzing` 需要往只读目录写 `output_ans`;`vdb_pareto` 的 faiss 崩溃 |
 | MLS-21 | 17–21 / 21 | timeout / agent_failed |
 
 这些是**基础设施地板,不是模型表现**,而且同分母规则已经把它们从所有臂里一起剔除了。
+
+**`ahc003` 的更正(2026-09-07)。** 我先前把它记成"瞬时故障、补一次即可"。查过之后这是错的:
+
+- 缺口精确到 **3 个臂 × 3 个样本 = 9 个样本**:`rlv5_ft01mix_a10_s20` 缺 idx 2/3/4、`rlv5_lo32nm_a10_s15` 缺 idx 1/3/4、`rlv5_lo32nm_a10_s20` 缺 idx 0/3/4。这三个臂的其余 39 题全部齐全,别的 9 个臂 `ahc003` 都是满的。
+- **它已经自动重试过了**,三个臂上分别留下 8、8、13 条 error 记录换来 3 个成功样本 —— 也就是每个缺口重试三四次、次次失败。**反复失败的东西不叫瞬时故障。**
+- 根因在 ALE-Bench 上游 `src/ale_bench/data.py:543-544`:
+
+  ```python
+  data_root = Path(tempfile.mkdtemp())
+  zf.extractall(data_root)
+  shutil.copytree(data_root / problem_id, data_root,
+                  copy_function=shutil.move, dirs_exist_ok=True)
+  shutil.rmtree(data_root / problem_id)   # <-- 这里抛 ENOTEMPTY
+  ```
+
+  把子目录的内容 move 到它自己的父目录、再删原目录,40 题里只有 `ahc003` 触发。修它要动 `$FS/ALE-Bench`(bl3615 的树,只读)。
+
+**决定:不补。** 这 9 个样本只能把 ALE-40 的分母从 39/40 变成 40/40,而 ALE-40 上所有对比的 P 都在 0.27–0.77、CI 宽达 ±50~80 分 —— 多一道题不可能改变任何结论。花 3 个 GPU 作业去换一个纯粹好看的分母不值。**这一格是主动放弃,不是没做完。**
 
 ---
 
@@ -396,7 +414,7 @@ python3 $R/experiments/scripts/agg/judgestats.py liveidea_gen \
 
 - pointwise 的 5.2–7.1% 未解析需要再提一档预算或改 rubric(§12.1)。研究品味这一层的判官作业本身已全部跑满。
 - **Qwen3.5-4B 复制**(同三套 SFT 配方 → soup → RL)—— RL 三臂在跑,检查点落地后按同一套口径重评。
-- ALE 的 `ahc003` 补一次即可满分母。
+- ~~ALE 的 `ahc003` 补一次即可满分母。~~ **已查清并主动放弃**:缺 9 个样本、已重试三四次全败、根因是 ALE-Bench 上游 `data.py:543` 的 `rmtree` ENOTEMPTY(要改 bl3615 的只读树),而补上也只是 39/40→40/40,改不了任何结论。详见 §2.4。
 - `liveidea_pair` 需要重建标签(§13②)。`openreview_pair` 的无放回版已跑,两版都分不开(0.642–0.668)。
 - §11.3b 发现"RL 后模型对无关表面线索更敏感",目前只有会场名这一个例子。要立成结论,需要在别的任务上换一种无关线索复制一次。
 
