@@ -392,14 +392,50 @@ def novelty_pair(n, rng):
     return out
 
 
+def order_swap(rows):
+    """Emit every pair twice, A/B and B/A.
+
+    Measured on openreview_pair: every one of the 8 arms is 13.3 to 20.7 points more
+    accurate when the correct paper happens to sit in slot A. Randomising the side
+    (which these builders already do) does not remove that -- it just makes half the
+    items systematically harder and spends the power on a coin flip. Asking both
+    orders converts that dead mass into signal, doubles the item count with no new
+    ground truth, and yields a per-arm order-consistency rate for free: an arm that
+    answers "A" both times has told us it is reading the position, not the paper.
+
+    Items keep meta.pair_id so the two orders can be re-joined, and meta.order marks
+    which is which.
+    """
+    MA, MB = "=== PAPER A ===\n", "=== PAPER B ===\n"
+    out = []
+    for r in rows:
+        head, rest = r["prompt"].split(MA, 1)
+        a_body, b_body = rest.split(MB, 1)
+        # b_body still carries the trailing question; keep it attached to slot B so
+        # the two orders are byte-identical apart from which paper sits where.
+        tail_at = b_body.rindex("\n\nWhich ")
+        b_text, tail = b_body[:tail_at], b_body[tail_at:]
+        a_text = a_body.rstrip("\n")
+        swapped = f"{head}{MA}{b_text.rstrip()}\n\n{MB}{a_text}{tail}"
+        first = dict(r, id=f"{r['id']}o1",
+                     meta=dict(r["meta"], pair_id=r["id"], order=1))
+        second = dict(r, id=f"{r['id']}o2", prompt=swapped,
+                      answer=("B" if r["answer"] == "A" else "A"),
+                      meta=dict(r["meta"], pair_id=r["id"], order=2))
+        out.append(first)
+        out.append(second)
+    return out
+
+
 def judgement_suite(n, seed):
     """Each task gets its OWN rng. Sharing one rng across task builders is what
     silently re-sampled openreview_decide onto a different 120 papers when the AAAR
     option shuffle was added -- the confound that voided that whole comparison."""
     d = _impact_frame()
-    return (_impact_pairs(d, n, random.Random(seed + 101), contrarian=False)
+    rows = (_impact_pairs(d, n, random.Random(seed + 101), contrarian=False)
             + _impact_pairs(d, n, random.Random(seed + 202), contrarian=True)
-            + novelty_pair(n, random.Random(seed + 303)))
+            + novelty_pair(max(n * 3 // 5, 1), random.Random(seed + 303)))
+    return order_swap(rows)
 
 
 def main():
