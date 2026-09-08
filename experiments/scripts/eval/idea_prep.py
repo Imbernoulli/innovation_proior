@@ -266,6 +266,142 @@ def venue_ablation(src):
     return out
 
 
+# ---------------------------------------------------------------------------
+# v3: research JUDGEMENT against outcomes, not against reviewers.
+#
+# WHY THIS EXISTS. openreview_score / _pair / _decide all ask the model to predict
+# what the REVIEWERS said. Measured on this very corpus, within a single venue and
+# restricted to accepted papers, reviewer mean_score correlates with the paper's
+# eventual citation rate at Spearman +0.05 to +0.18. So those tasks have a target
+# that is nearly uncorrelated with research value: a model with perfect judgement
+# would still score near chance on them. That is a target-validity failure, not a
+# power failure, and no amount of extra items fixes it.
+#
+# These tasks use the OUTCOME as ground truth instead: log citations per month,
+# compared only within the same venue (same field norms, same citation window) and
+# only among ACCEPTED papers (so the accept/reject signal cannot leak in).
+#
+# impact_contrarian is the point of the whole exercise. It keeps only the pairs
+# where the reviewers preferred the paper that went on to be cited LESS. A model
+# that has merely learned to imitate reviewer taste scores BELOW 50% there, while a
+# model with independent judgement scores above it. No other task here separates
+# those two hypotheses.
+#
+# CONFOUND, stated up front: "which paper was cited more" is partly answerable by
+# recognising a famous paper rather than by judging it. meta.year is recorded on
+# every item precisely so the result can be split by publication year -- an effect
+# that lives only in older, more-memorisable papers is memory, not judgement.
+MIN_MONTHS = 12          # a paper needs a citation window before its rate means anything
+MIN_LC_GAP = 1.0         # |delta log1p(citations/month)|; ~e-fold, well clear of noise
+MIN_REV_FLIP = 0.15      # how wrong the reviewers must be to count as contrarian
+
+
+def _impact_frame():
+    import pandas as pd, numpy as np
+    df = _openreview()
+    d = df[df.decision == True].dropna(                       # noqa: E712
+        subset=["avg_citations_per_month", "mean_score", "abstract", "title", "venue"])
+    d = d[d.month_since_publication.astype(float) >= MIN_MONTHS]
+    return d.assign(lc=np.log1p(d.avg_citations_per_month.astype(float)),
+                    ms=d.mean_score.astype(float)).reset_index(drop=True)
+
+
+def _year(venue):
+    m = re.search(r"(20\d\d)", str(venue))
+    return int(m.group(1)) if m else None
+
+
+def _impact_pairs(d, n, rng, contrarian):
+    """Same venue, both accepted, big citation gap; optionally reviewer-inverted."""
+    import numpy as np
+    by_venue = {v: g.reset_index(drop=True) for v, g in d.groupby("venue") if len(g) >= 2}
+    venues = sorted(by_venue)
+    used, out, tries = set(), [], 0
+    while len(out) < n and tries < n * 3000:
+        tries += 1
+        v = venues[rng.randrange(len(venues))]
+        g = by_venue[v]
+        i, j = rng.randrange(len(g)), rng.randrange(len(g))
+        if i == j or (v, i) in used or (v, j) in used:
+            continue                      # each paper used once -> items stay independent
+        a, b = g.iloc[i], g.iloc[j]
+        dl = float(a.lc) - float(b.lc)
+        if abs(dl) < MIN_LC_GAP:
+            continue
+        hi, lo = (a, b) if dl > 0 else (b, a)
+        rev_edge = float(hi.ms) - float(lo.ms)     # >0: reviewers agreed with posterity
+        if contrarian and rev_edge > -MIN_REV_FLIP:
+            continue
+        if not contrarian and rev_edge < MIN_REV_FLIP:
+            continue
+        hi_is_a = rng.random() < 0.5               # randomise which side the winner sits on
+        pa, pb = (hi, lo) if hi_is_a else (lo, hi)
+        task = "impact_contrarian" if contrarian else "impact_pair"
+        prompt = (
+            "Two papers were accepted at the same machine-learning conference. Judge "
+            "which one turned out to matter more to the field.\n\n"
+            f"=== PAPER A ===\nTitle: {pa.title}\nAbstract: {pa.abstract}\n\n"
+            f"=== PAPER B ===\nTitle: {pb.title}\nAbstract: {pb.abstract}\n\n"
+            "Which paper went on to be cited more per month since publication? Answer "
+            "on the last line in the form: ANSWER: A  or  ANSWER: B"
+        )
+        used.add((v, i)); used.add((v, j))
+        out.append({"task": task, "id": f"{'ic' if contrarian else 'ip'}{len(out)}",
+                    "prompt": prompt, "answer": "A" if hi_is_a else "B",
+                    "choices": ["A", "B"],
+                    "meta": {"venue": str(v), "year": _year(v),
+                             "lc_gap": abs(dl), "reviewer_edge": rev_edge,
+                             "hi_cites": float(hi.avg_citations_per_month),
+                             "lo_cites": float(lo.avg_citations_per_month)}})
+    return out
+
+
+def novelty_pair(n, rng):
+    """Pairwise novelty instead of pointwise: pointwise predictions collapsed onto
+    7.0/7.5/8.0 for every arm, which caps the achievable Spearman by ties alone."""
+    df = _openreview()
+    d = df[df.decision == True].dropna(                       # noqa: E712
+        subset=["mean_novelty", "abstract", "title", "venue"]).reset_index(drop=True)
+    by_venue = {v: g.reset_index(drop=True) for v, g in d.groupby("venue") if len(g) >= 2}
+    venues = sorted(by_venue)
+    used, out, tries = set(), [], 0
+    while len(out) < n and tries < n * 3000:
+        tries += 1
+        v = venues[rng.randrange(len(venues))]
+        g = by_venue[v]
+        i, j = rng.randrange(len(g)), rng.randrange(len(g))
+        if i == j or (v, i) in used or (v, j) in used:
+            continue
+        a, b = g.iloc[i], g.iloc[j]
+        gap = float(a.mean_novelty) - float(b.mean_novelty)
+        if abs(gap) < 0.25:
+            continue
+        hi_is_a = rng.random() < 0.5
+        pa, pb = (a, b) if (gap > 0) == hi_is_a else (b, a)
+        prompt = (
+            "Two papers were accepted at the same machine-learning conference.\n\n"
+            f"=== PAPER A ===\nTitle: {pa.title}\nAbstract: {pa.abstract}\n\n"
+            f"=== PAPER B ===\nTitle: {pb.title}\nAbstract: {pb.abstract}\n\n"
+            "Which paper is more original -- further from what the field was already "
+            "doing? Answer on the last line in the form: ANSWER: A  or  ANSWER: B"
+        )
+        used.add((v, i)); used.add((v, j))
+        out.append({"task": "novelty_pair", "id": f"nv{len(out)}", "prompt": prompt,
+                    "answer": "A" if hi_is_a else "B", "choices": ["A", "B"],
+                    "meta": {"venue": str(v), "year": _year(v), "gap": abs(gap)}})
+    return out
+
+
+def judgement_suite(n, seed):
+    """Each task gets its OWN rng. Sharing one rng across task builders is what
+    silently re-sampled openreview_decide onto a different 120 papers when the AAAR
+    option shuffle was added -- the confound that voided that whole comparison."""
+    d = _impact_frame()
+    return (_impact_pairs(d, n, random.Random(seed + 101), contrarian=False)
+            + _impact_pairs(d, n, random.Random(seed + 202), contrarian=True)
+            + novelty_pair(n, random.Random(seed + 303)))
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=f"{IB}/tasks.jsonl")
@@ -275,9 +411,28 @@ def main():
                     help="apply the three sampling fixes described in the header")
     ap.add_argument("--venue-ablation", action="store_true",
                     help="re-emit --from-tasks' openreview_decide items without the venue")
+    ap.add_argument("--judgement", action="store_true",
+                    help="v3 research-judgement suite scored against citation outcomes "
+                         "rather than against reviewer scores (see header above)")
     ap.add_argument("--from-tasks", default=f"{IB}/tasks.jsonl")
     a = ap.parse_args()
     rng = random.Random(a.seed)
+
+    if a.judgement:
+        rows = judgement_suite(a.n_per_task, a.seed)
+        with open(a.out, "w") as f:
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+        from collections import Counter
+        c = Counter(r["task"] for r in rows)
+        print(f"wrote {a.out}: {len(rows)} items  {dict(c)}")
+        for t in sorted(c):
+            sub = [r for r in rows if r["task"] == t]
+            base = Counter(r["answer"] for r in sub)
+            print(f"  {t:20s} n={len(sub):4d}  majority-class={max(base.values())/len(sub):.1%}  "
+                  f"median chars={sorted(len(r['prompt']) for r in sub)[len(sub)//2]}  "
+                  f"years={sorted({r['meta'].get('year') for r in sub})}")
+        return
 
     if a.venue_ablation:
         rows = venue_ablation(a.from_tasks)
