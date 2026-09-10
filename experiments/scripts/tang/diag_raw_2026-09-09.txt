@@ -1,0 +1,86 @@
+====================================================================================================
+1. PAIRED between-arm differences (per seed set), distance then impact
+-- distance
+  ft01mix_a10 - base9b_v2c                                   n=270 diff=-0.0006 CI[-0.0041,+0.0029]    P(>0)=0.369
+  ft03nm_a20 - base9b_v2c                                    n=269 diff=-0.0044 CI[-0.0079,-0.0010] *  P(>0)=0.005
+  lo32nm_a10 - base9b_v2c                                    n=270 diff=-0.0005 CI[-0.0038,+0.0030]    P(>0)=0.405
+  rlv5_base_s20 - base9b_v2c                                 n=269 diff=+0.0060 CI[+0.0022,+0.0097] *  P(>0)=0.999
+  rlv5_ft01mix_a10_s20 - base9b_v2c                          n=270 diff=+0.0003 CI[-0.0034,+0.0039]    P(>0)=0.562
+  rlv5_ft03nm_a20_s20 - base9b_v2c                           n=270 diff=+0.0026 CI[-0.0011,+0.0063]    P(>0)=0.912
+  rlv5_lo32nm_a10_s20 - base9b_v2c                           n=270 diff=+0.0003 CI[-0.0034,+0.0040]    P(>0)=0.569
+  4b_ft01mix_a10 - base4b                                    n=269 diff=-0.0023 CI[-0.0060,+0.0013]    P(>0)=0.100
+  4b_lo32nm_a10 - base4b                                     n=269 diff=-0.0046 CI[-0.0084,-0.0008] *  P(>0)=0.011
+  rlv5_4b_base_s20 - base4b                                  n=262 diff=+0.0166 CI[+0.0112,+0.0226] *  P(>0)=1.000
+  rlv5_4b_ft01mix_a10_s20 - base4b                           n=270 diff=+0.0053 CI[+0.0012,+0.0092] *  P(>0)=0.996
+  rlv5_ft01mix_a10_s20 - ft01mix_a10 (RL effect, 9B)         n=270 diff=+0.0009 CI[-0.0028,+0.0048]    P(>0)=0.676
+  rlv5_lo32nm_a10_s20 - lo32nm_a10 (RL effect, 9B)           n=270 diff=+0.0008 CI[-0.0031,+0.0047]    P(>0)=0.631
+  rlv5_ft01mix_a10_s20 - rlv5_base_s20 (ours vs ctrl, 9B)    n=269 diff=-0.0061 CI[-0.0101,-0.0022] *  P(>0)=0.001
+  rlv5_4b_ft01mix_a10_s20 - 4b_ft01mix_a10 (RL effect, 4B)   n=269 diff=+0.0077 CI[+0.0037,+0.0119] *  P(>0)=1.000
+  rlv5_4b_ft01mix_a10_s20 - rlv5_4b_base_s20 (ours vs ctrl, 4B) n=262 diff=-0.0114 CI[-0.0172,-0.0060] *  P(>0)=0.000
+  -- sensitivity / noise floor
+  base4b - base9b_v2c (different base models)                n=270 diff=-0.0048 CI[-0.0086,-0.0011] *  P(>0)=0.005
+  base9b_v2c: sample0 - sample1 (same arm, noise floor)      n=264 diff=-0.0016 CI[-0.0068,+0.0033]    P(>0)=0.266
+  rlv5_ft01mix_a10_s20: sample0 - sample1 (same arm, noise floor) n=258 diff=+0.0036 CI[-0.0016,+0.0084]    P(>0)=0.913
+  base4b: sample0 - sample1 (same arm, noise floor)          n=266 diff=-0.0020 CI[-0.0066,+0.0027]    P(>0)=0.188
+  human follow-ons - base9b_v2c (scale reference)            n=270 diff=+0.0983 CI[+0.0899,+0.1067] *  P(>0)=1.000
+-- impact
+  ft01mix_a10 - base9b_v2c                                   n=270 diff=-0.0133 CI[-0.0296,+0.0038]    P(>0)=0.059
+  ft03nm_a20 - base9b_v2c                                    n=269 diff=-0.0030 CI[-0.0180,+0.0126]    P(>0)=0.341
+  lo32nm_a10 - base9b_v2c                                    n=270 diff=+0.0084 CI[-0.0086,+0.0254]    P(>0)=0.848
+  rlv5_base_s20 - base9b_v2c                                 n=269 diff=-0.0100 CI[-0.0259,+0.0062]    P(>0)=0.118
+  rlv5_ft01mix_a10_s20 - base9b_v2c                          n=270 diff=+0.0004 CI[-0.0152,+0.0162]    P(>0)=0.516
+  rlv5_ft03nm_a20_s20 - base9b_v2c                           n=270 diff=-0.0070 CI[-0.0223,+0.0090]    P(>0)=0.208
+  rlv5_lo32nm_a10_s20 - base9b_v2c                           n=270 diff=-0.0166 CI[-0.0320,-0.0011] *  P(>0)=0.019
+  4b_ft01mix_a10 - base4b                                    n=269 diff=+0.0058 CI[-0.0091,+0.0208]    P(>0)=0.774
+  4b_lo32nm_a10 - base4b                                     n=269 diff=+0.0067 CI[-0.0084,+0.0217]    P(>0)=0.807
+  rlv5_4b_base_s20 - base4b                                  n=262 diff=-0.0155 CI[-0.0330,+0.0019]    P(>0)=0.045
+  rlv5_4b_ft01mix_a10_s20 - base4b                           n=270 diff=-0.0038 CI[-0.0199,+0.0120]    P(>0)=0.322
+  rlv5_ft01mix_a10_s20 - ft01mix_a10 (RL effect, 9B)         n=270 diff=+0.0137 CI[-0.0012,+0.0291]    P(>0)=0.967
+  rlv5_lo32nm_a10_s20 - lo32nm_a10 (RL effect, 9B)           n=270 diff=-0.0250 CI[-0.0416,-0.0079] *  P(>0)=0.002
+  rlv5_ft01mix_a10_s20 - rlv5_base_s20 (ours vs ctrl, 9B)    n=269 diff=+0.0100 CI[-0.0045,+0.0247]    P(>0)=0.910
+  rlv5_4b_ft01mix_a10_s20 - 4b_ft01mix_a10 (RL effect, 4B)   n=269 diff=-0.0097 CI[-0.0268,+0.0071]    P(>0)=0.141
+  rlv5_4b_ft01mix_a10_s20 - rlv5_4b_base_s20 (ours vs ctrl, 4B) n=262 diff=+0.0113 CI[-0.0072,+0.0308]    P(>0)=0.876
+  -- sensitivity / noise floor
+  base4b - base9b_v2c (different base models)                n=270 diff=-0.0059 CI[-0.0221,+0.0102]    P(>0)=0.239
+  base9b_v2c: sample0 - sample1 (same arm, noise floor)      n=264 diff=+0.0110 CI[-0.0097,+0.0329]    P(>0)=0.842
+  rlv5_ft01mix_a10_s20: sample0 - sample1 (same arm, noise floor) n=258 diff=-0.0034 CI[-0.0250,+0.0187]    P(>0)=0.388
+  base4b: sample0 - sample1 (same arm, noise floor)          n=266 diff=-0.0139 CI[-0.0382,+0.0110]    P(>0)=0.136
+  human follow-ons - base9b_v2c (scale reference)            n=270 diff=-0.0599 CI[-0.0826,-0.0372] *  P(>0)=0.000
+====================================================================================================
+2. PAIRED breadth per area (45 areas)
+  breadth ft01mix_a10 - base9b_v2c                           n= 45 diff=-0.0031 CI[-0.0073,+0.0012]    P(>0)=0.078
+  breadth ft03nm_a20 - base9b_v2c                            n= 45 diff=+0.0007 CI[-0.0035,+0.0051]    P(>0)=0.611
+  breadth lo32nm_a10 - base9b_v2c                            n= 45 diff=+0.0021 CI[-0.0027,+0.0068]    P(>0)=0.807
+  breadth rlv5_base_s20 - base9b_v2c                         n= 45 diff=+0.0065 CI[+0.0012,+0.0118] *  P(>0)=0.992
+  breadth rlv5_ft01mix_a10_s20 - base9b_v2c                  n= 45 diff=+0.0017 CI[-0.0031,+0.0066]    P(>0)=0.754
+  breadth rlv5_ft03nm_a20_s20 - base9b_v2c                   n= 45 diff=+0.0071 CI[+0.0025,+0.0115] *  P(>0)=0.999
+  breadth rlv5_lo32nm_a10_s20 - base9b_v2c                   n= 45 diff=+0.0083 CI[+0.0045,+0.0117] *  P(>0)=1.000
+  breadth 4b_ft01mix_a10 - base4b                            n= 45 diff=+0.0020 CI[-0.0026,+0.0063]    P(>0)=0.800
+  breadth 4b_lo32nm_a10 - base4b                             n= 45 diff=+0.0043 CI[+0.0004,+0.0087] *  P(>0)=0.986
+  breadth rlv5_4b_base_s20 - base4b                          n= 45 diff=+0.0093 CI[+0.0010,+0.0183] *  P(>0)=0.986
+  breadth rlv5_4b_ft01mix_a10_s20 - base4b                   n= 45 diff=+0.0112 CI[+0.0050,+0.0172] *  P(>0)=1.000
+  breadth rlv5_ft01mix_a10_s20 - ft01mix_a10 (RL effect)     n= 45 diff=+0.0048 CI[+0.0009,+0.0087] *  P(>0)=0.993
+  breadth base4b - base9b_v2c                                n= 45 diff=+0.0054 CI[+0.0004,+0.0100] *  P(>0)=0.982
+====================================================================================================
+3. PROMPT DOMINANCE: cosine similarity between idea embeddings
+  same arm, same seed (two samples)        mean cos = 0.835  median = 0.840  (n=2070)
+  DIFFERENT arm, same seed                 mean cos = 0.836  median = 0.842  (n=7229)
+  same arm, different seed                 mean cos = 0.313  median = 0.304  (n=4640)
+  idea vs seed centroid (base9b): 0.681 sim;  follow-on vs centroid: see distance above
+====================================================================================================
+4. ARM IDENTIFIABILITY: nearest-centroid, leave-one-area-out, 9B arms (chance = 1/8 = 12.5%)
+  accuracy = 0.171 (n=4240)
+  ft01mix_a10                90   83   82   82   54   40   40   66
+  ft03nm_a20                 87  107   78   76   41   40   51   54
+  lo32nm_a10                 77   76  102   71   51   43   61   54
+  rlv5_base_s20              68   43   49  113   60   67   67   53
+  rlv5_ft01mix_a10_s20       74   54   57  107   76   49   58   53
+  rlv5_ft03nm_a20_s20        59   48   51   99   72   73   80   45
+  rlv5_lo32nm_a10_s20        72   53   59   93   53   64   83   48
+  base9b_v2c                 84   67   73   85   58   39   49   79
+  binary ft01mix_a10 vs base9b_v2c: acc = 0.504 (chance 0.5)
+  binary rlv5_ft01mix_a10_s20 vs base9b_v2c: acc = 0.551 (chance 0.5)
+  binary rlv5_ft01mix_a10_s20 vs rlv5_base_s20: acc = 0.531 (chance 0.5)
+  binary base4b vs base9b_v2c: acc = 0.568 (chance 0.5)
+  binary rlv5_4b_ft01mix_a10_s20 vs base4b: acc = 0.648 (chance 0.5)
+  binary rlv5_4b_base_s20 vs base4b: acc = 0.620 (chance 0.5)
