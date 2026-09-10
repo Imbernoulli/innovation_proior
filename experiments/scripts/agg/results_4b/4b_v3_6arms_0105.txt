@@ -1,0 +1,320 @@
+===== lens=strict control=rlv5_4b_base_s20
+=== v3 judgement | lens=strict | control=rlv5_4b_base_s20 | 10000 paired bootstrap reps ===
+TRUNCATION (share of samples with no VERDICT, all tasks pooled):
+  base4b                       17/6500 = 0.26%
+  4b_ft01mix_a10               40/6500 = 0.62%
+  4b_lo32nm_a10                22/6500 = 0.34%
+  rlv5_4b_base_s20             1754/6500 = 26.98%
+  rlv5_4b_ft01mix_a10_s20      867/6500 = 13.34%
+  rlv5_4b_lo32nm_a10_s20       521/6500 = 8.02%
+PAIRS KEPT (identical set for every arm):
+  impact_pair          30
+  impact_contrarian    22
+  novelty_pair         142
+
+[ACC] impact_pair  (n=30 pairs)
+  base4b                        86.00%   vs control +0.33% CI[-3.00%,+3.67%] P(>0)=0.544
+  4b_ft01mix_a10                89.00%   vs control +3.33% CI[+0.33%,+6.67%] P(>0)=0.982
+  4b_lo32nm_a10                 87.33%   vs control +1.67% CI[-0.33%,+4.67%] P(>0)=0.898
+  rlv5_4b_base_s20              85.67%
+  rlv5_4b_ft01mix_a10_s20       86.00%   vs control +0.33% CI[-3.00%,+3.67%] P(>0)=0.545
+  rlv5_4b_lo32nm_a10_s20        86.67%   vs control +1.00% CI[-1.67%,+3.67%] P(>0)=0.763
+
+[ACC] impact_contrarian  (n=22 pairs)
+  base4b                        84.09%   vs control +0.00% CI[-5.00%,+4.55%] P(>0)=0.520
+  4b_ft01mix_a10                82.73%   vs control -1.36% CI[-5.45%,+2.73%] P(>0)=0.290
+  4b_lo32nm_a10                 84.55%   vs control +0.45% CI[-5.00%,+5.91%] P(>0)=0.559
+  rlv5_4b_base_s20              84.09%
+  rlv5_4b_ft01mix_a10_s20       78.64%   vs control -5.45% CI[-11.82%,-0.00%] P(>0)=0.020
+  rlv5_4b_lo32nm_a10_s20        82.27%   vs control -1.82% CI[-7.73%,+4.09%] P(>0)=0.278
+
+[ACC] novelty_pair  (n=142 pairs)
+  base4b                        48.87%   vs control +0.99% CI[-1.48%,+3.45%] P(>0)=0.792
+  4b_ft01mix_a10                48.73%   vs control +0.85% CI[-1.62%,+3.38%] P(>0)=0.752
+  4b_lo32nm_a10                 48.31%   vs control +0.42% CI[-2.04%,+2.82%] P(>0)=0.634
+  rlv5_4b_base_s20              47.89%
+  rlv5_4b_ft01mix_a10_s20       48.52%   vs control +0.63% CI[-1.76%,+3.03%] P(>0)=0.700
+  rlv5_4b_lo32nm_a10_s20        49.51%   vs control +1.62% CI[-0.77%,+4.01%] P(>0)=0.911
+
+[MIMICRY] acc(impact_pair) - acc(impact_contrarian)   (n=30/22 pairs)
+  base4b                       gap= +1.91%   excess +0.33% CI[-5.52%,+6.39%] P(>0)=0.537
+  4b_ft01mix_a10               gap= +6.27%   excess +4.70% CI[-0.27%,+9.97%] P(>0)=0.964
+  4b_lo32nm_a10                gap= +2.79%   excess +1.21% CI[-4.73%,+7.21%] P(>0)=0.646
+  rlv5_4b_base_s20             gap= +1.58%
+  rlv5_4b_ft01mix_a10_s20      gap= +7.36%   excess +5.79% CI[-0.67%,+12.85%] P(>0)=0.960
+  rlv5_4b_lo32nm_a10_s20       gap= +4.39%   excess +2.82% CI[-3.67%,+9.39%] P(>0)=0.797
+
+[ORDER] two orders of the same pair name the same paper
+  impact_pair
+    base4b                     majority-agree= 93.3% mean|acc1-acc2|=0.067
+    4b_ft01mix_a10             majority-agree= 93.3% mean|acc1-acc2|=0.073
+    4b_lo32nm_a10              majority-agree= 90.0% mean|acc1-acc2|=0.093
+    rlv5_4b_base_s20           majority-agree= 86.7% mean|acc1-acc2|=0.087
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 96.7% mean|acc1-acc2|=0.093
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 96.7% mean|acc1-acc2|=0.080
+  impact_contrarian
+    base4b                     majority-agree= 90.9% mean|acc1-acc2|=0.064
+    4b_ft01mix_a10             majority-agree= 86.4% mean|acc1-acc2|=0.073
+    4b_lo32nm_a10              majority-agree= 90.9% mean|acc1-acc2|=0.109
+    rlv5_4b_base_s20           majority-agree= 95.5% mean|acc1-acc2|=0.100
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 86.4% mean|acc1-acc2|=0.173
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 86.4% mean|acc1-acc2|=0.082
+  novelty_pair
+    base4b                     majority-agree= 83.8% mean|acc1-acc2|=0.166
+    4b_ft01mix_a10             majority-agree= 85.2% mean|acc1-acc2|=0.163
+    4b_lo32nm_a10              majority-agree= 86.6% mean|acc1-acc2|=0.152
+    rlv5_4b_base_s20           majority-agree= 88.7% mean|acc1-acc2|=0.155
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 81.7% mean|acc1-acc2|=0.165
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 88.7% mean|acc1-acc2|=0.142
+
+[RECOGNISE] lc_gap held in [1.0,1.7], split at median hi_cites
+  impact_pair: only 13 pairs in band -- skipped
+  impact_contrarian: only 15 pairs in band -- skipped
+
+wrote /scratch/gpfs/CHIJ/ziran/.tmp/claude-374317/-scratch-gpfs-CHIJ-bohan-1-innovation-proior/20154e8e-f2e8-4272-a550-4f0c059fe5b0/scratchpad/doc/4b_v3_strict_rlv5_4b_base_s20_0105.json
+===== lens=strict control=base4b
+=== v3 judgement | lens=strict | control=base4b | 10000 paired bootstrap reps ===
+TRUNCATION (share of samples with no VERDICT, all tasks pooled):
+  base4b                       17/6500 = 0.26%
+  4b_ft01mix_a10               40/6500 = 0.62%
+  4b_lo32nm_a10                22/6500 = 0.34%
+  rlv5_4b_base_s20             1754/6500 = 26.98%
+  rlv5_4b_ft01mix_a10_s20      867/6500 = 13.34%
+  rlv5_4b_lo32nm_a10_s20       521/6500 = 8.02%
+PAIRS KEPT (identical set for every arm):
+  impact_pair          30
+  impact_contrarian    22
+  novelty_pair         142
+
+[ACC] impact_pair  (n=30 pairs)
+  base4b                        86.00%
+  4b_ft01mix_a10                89.00%   vs control +3.00% CI[+0.00%,+6.33%] P(>0)=0.976
+  4b_lo32nm_a10                 87.33%   vs control +1.33% CI[-2.33%,+5.33%] P(>0)=0.754
+  rlv5_4b_base_s20              85.67%   vs control -0.33% CI[-3.67%,+3.00%] P(>0)=0.451
+  rlv5_4b_ft01mix_a10_s20       86.00%   vs control -0.00% CI[-4.00%,+4.33%] P(>0)=0.462
+  rlv5_4b_lo32nm_a10_s20        86.67%   vs control +0.67% CI[-2.67%,+4.00%] P(>0)=0.663
+
+[ACC] impact_contrarian  (n=22 pairs)
+  base4b                        84.09%
+  4b_ft01mix_a10                82.73%   vs control -1.36% CI[-5.00%,+2.27%] P(>0)=0.240
+  4b_lo32nm_a10                 84.55%   vs control +0.45% CI[-3.64%,+5.00%] P(>0)=0.558
+  rlv5_4b_base_s20              84.09%   vs control -0.00% CI[-4.55%,+5.00%] P(>0)=0.465
+  rlv5_4b_ft01mix_a10_s20       78.64%   vs control -5.45% CI[-14.09%,+2.27%] P(>0)=0.086
+  rlv5_4b_lo32nm_a10_s20        82.27%   vs control -1.82% CI[-9.09%,+5.45%] P(>0)=0.282
+
+[ACC] novelty_pair  (n=142 pairs)
+  base4b                        48.87%
+  4b_ft01mix_a10                48.73%   vs control -0.14% CI[-1.90%,+1.62%] P(>0)=0.445
+  4b_lo32nm_a10                 48.31%   vs control -0.56% CI[-2.32%,+1.13%] P(>0)=0.252
+  rlv5_4b_base_s20              47.89%   vs control -0.99% CI[-3.45%,+1.48%] P(>0)=0.207
+  rlv5_4b_ft01mix_a10_s20       48.52%   vs control -0.35% CI[-2.96%,+2.18%] P(>0)=0.394
+  rlv5_4b_lo32nm_a10_s20        49.51%   vs control +0.63% CI[-1.41%,+2.68%] P(>0)=0.734
+
+[MIMICRY] acc(impact_pair) - acc(impact_contrarian)   (n=30/22 pairs)
+  base4b                       gap= +1.91%
+  4b_ft01mix_a10               gap= +6.27%   excess +4.36% CI[-0.42%,+9.30%] P(>0)=0.963
+  4b_lo32nm_a10                gap= +2.79%   excess +0.88% CI[-4.91%,+6.70%] P(>0)=0.614
+  rlv5_4b_base_s20             gap= +1.58%   excess -0.33% CI[-6.39%,+5.52%] P(>0)=0.463
+  rlv5_4b_ft01mix_a10_s20      gap= +7.36%   excess +5.45% CI[-3.48%,+15.03%] P(>0)=0.877
+  rlv5_4b_lo32nm_a10_s20       gap= +4.39%   excess +2.48% CI[-5.61%,+10.55%] P(>0)=0.729
+
+[ORDER] two orders of the same pair name the same paper
+  impact_pair
+    base4b                     majority-agree= 93.3% mean|acc1-acc2|=0.067
+    4b_ft01mix_a10             majority-agree= 93.3% mean|acc1-acc2|=0.073
+    4b_lo32nm_a10              majority-agree= 90.0% mean|acc1-acc2|=0.093
+    rlv5_4b_base_s20           majority-agree= 86.7% mean|acc1-acc2|=0.087
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 96.7% mean|acc1-acc2|=0.093
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 96.7% mean|acc1-acc2|=0.080
+  impact_contrarian
+    base4b                     majority-agree= 90.9% mean|acc1-acc2|=0.064
+    4b_ft01mix_a10             majority-agree= 86.4% mean|acc1-acc2|=0.073
+    4b_lo32nm_a10              majority-agree= 90.9% mean|acc1-acc2|=0.109
+    rlv5_4b_base_s20           majority-agree= 95.5% mean|acc1-acc2|=0.100
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 86.4% mean|acc1-acc2|=0.173
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 86.4% mean|acc1-acc2|=0.082
+  novelty_pair
+    base4b                     majority-agree= 83.8% mean|acc1-acc2|=0.166
+    4b_ft01mix_a10             majority-agree= 85.2% mean|acc1-acc2|=0.163
+    4b_lo32nm_a10              majority-agree= 86.6% mean|acc1-acc2|=0.152
+    rlv5_4b_base_s20           majority-agree= 88.7% mean|acc1-acc2|=0.155
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 81.7% mean|acc1-acc2|=0.165
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 88.7% mean|acc1-acc2|=0.142
+
+[RECOGNISE] lc_gap held in [1.0,1.7], split at median hi_cites
+  impact_pair: only 13 pairs in band -- skipped
+  impact_contrarian: only 15 pairs in band -- skipped
+
+wrote /scratch/gpfs/CHIJ/ziran/.tmp/claude-374317/-scratch-gpfs-CHIJ-bohan-1-innovation-proior/20154e8e-f2e8-4272-a550-4f0c059fe5b0/scratchpad/doc/4b_v3_strict_base4b_0105.json
+===== lens=penalise control=rlv5_4b_base_s20
+=== v3 judgement | lens=penalise | control=rlv5_4b_base_s20 | 10000 paired bootstrap reps ===
+TRUNCATION (share of samples with no VERDICT, all tasks pooled):
+  base4b                       17/6500 = 0.26%
+  4b_ft01mix_a10               40/6500 = 0.62%
+  4b_lo32nm_a10                22/6500 = 0.34%
+  rlv5_4b_base_s20             1754/6500 = 26.98%
+  rlv5_4b_ft01mix_a10_s20      867/6500 = 13.34%
+  rlv5_4b_lo32nm_a10_s20       521/6500 = 8.02%
+PAIRS KEPT (identical set for every arm):
+  impact_pair          250
+  impact_contrarian    250
+  novelty_pair         150
+
+[ACC] impact_pair  (n=250 pairs)
+  base4b                        81.32%   vs control +25.48% CI[+22.36%,+28.60%] P(>0)=1.000
+  4b_ft01mix_a10                81.96%   vs control +26.12% CI[+23.08%,+29.16%] P(>0)=1.000
+  4b_lo32nm_a10                 82.20%   vs control +26.36% CI[+23.24%,+29.48%] P(>0)=1.000
+  rlv5_4b_base_s20              55.84%
+  rlv5_4b_ft01mix_a10_s20       68.28%   vs control +12.44% CI[+10.04%,+14.76%] P(>0)=1.000
+  rlv5_4b_lo32nm_a10_s20        73.60%   vs control +17.76% CI[+15.32%,+20.20%] P(>0)=1.000
+
+[ACC] impact_contrarian  (n=250 pairs)
+  base4b                        83.28%   vs control +29.36% CI[+26.20%,+32.52%] P(>0)=1.000
+  4b_ft01mix_a10                82.60%   vs control +28.68% CI[+25.64%,+31.80%] P(>0)=1.000
+  4b_lo32nm_a10                 83.40%   vs control +29.48% CI[+26.44%,+32.64%] P(>0)=1.000
+  rlv5_4b_base_s20              53.92%
+  rlv5_4b_ft01mix_a10_s20       67.64%   vs control +13.72% CI[+11.32%,+16.20%] P(>0)=1.000
+  rlv5_4b_lo32nm_a10_s20        74.56%   vs control +20.64% CI[+18.20%,+23.16%] P(>0)=1.000
+
+[ACC] novelty_pair  (n=150 pairs)
+  base4b                        48.27%   vs control +1.27% CI[-1.00%,+3.60%] P(>0)=0.862
+  4b_ft01mix_a10                48.27%   vs control +1.27% CI[-1.07%,+3.80%] P(>0)=0.857
+  4b_lo32nm_a10                 47.93%   vs control +0.93% CI[-1.40%,+3.20%] P(>0)=0.788
+  rlv5_4b_base_s20              47.00%
+  rlv5_4b_ft01mix_a10_s20       48.13%   vs control +1.13% CI[-1.13%,+3.47%] P(>0)=0.840
+  rlv5_4b_lo32nm_a10_s20        49.40%   vs control +2.40% CI[+0.07%,+4.73%] P(>0)=0.980
+
+[MIMICRY] acc(impact_pair) - acc(impact_contrarian)   (n=250/250 pairs)
+  base4b                       gap= -1.96%   excess -3.88% CI[-8.20%,+0.52%] P(>0)=0.040
+  4b_ft01mix_a10               gap= -0.64%   excess -2.56% CI[-6.76%,+1.72%] P(>0)=0.119
+  4b_lo32nm_a10                gap= -1.20%   excess -3.12% CI[-7.52%,+1.24%] P(>0)=0.080
+  rlv5_4b_base_s20             gap= +1.92%
+  rlv5_4b_ft01mix_a10_s20      gap= +0.64%   excess -1.28% CI[-4.64%,+2.08%] P(>0)=0.220
+  rlv5_4b_lo32nm_a10_s20       gap= -0.96%   excess -2.88% CI[-6.28%,+0.60%] P(>0)=0.052
+
+[ORDER] two orders of the same pair name the same paper
+  impact_pair
+    base4b                     majority-agree= 88.8% mean|acc1-acc2|=0.122
+    4b_ft01mix_a10             majority-agree= 88.4% mean|acc1-acc2|=0.110
+    4b_lo32nm_a10              majority-agree= 87.6% mean|acc1-acc2|=0.116
+    rlv5_4b_base_s20           majority-agree= 73.6% mean|acc1-acc2|=0.210
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 77.2% mean|acc1-acc2|=0.202
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 83.6% mean|acc1-acc2|=0.174
+  impact_contrarian
+    base4b                     majority-agree= 88.4% mean|acc1-acc2|=0.117
+    4b_ft01mix_a10             majority-agree= 86.4% mean|acc1-acc2|=0.122
+    4b_lo32nm_a10              majority-agree= 89.6% mean|acc1-acc2|=0.114
+    rlv5_4b_base_s20           majority-agree= 78.0% mean|acc1-acc2|=0.205
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 78.8% mean|acc1-acc2|=0.207
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 82.4% mean|acc1-acc2|=0.174
+  novelty_pair
+    base4b                     majority-agree= 84.7% mean|acc1-acc2|=0.163
+    4b_ft01mix_a10             majority-agree= 86.0% mean|acc1-acc2|=0.160
+    4b_lo32nm_a10              majority-agree= 87.3% mean|acc1-acc2|=0.151
+    rlv5_4b_base_s20           majority-agree= 89.3% mean|acc1-acc2|=0.156
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 81.3% mean|acc1-acc2|=0.171
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 88.0% mean|acc1-acc2|=0.145
+
+[RECOGNISE] lc_gap held in [1.0,1.7], split at median hi_cites
+  impact_pair  n=152 (famous 76 / obscure 76), mean lc_gap 1.41 vs 1.17
+    base4b                     famous= 74.7% obscure= 76.7% delta=-2.0pp
+    4b_ft01mix_a10             famous= 73.9% obscure= 78.9% delta=-5.0pp
+    4b_lo32nm_a10              famous= 73.7% obscure= 78.9% delta=-5.3pp
+    rlv5_4b_base_s20           famous= 47.1% obscure= 54.7% delta=-7.6pp
+    rlv5_4b_ft01mix_a10_s20    famous= 64.6% obscure= 64.5% delta=+0.1pp
+    rlv5_4b_lo32nm_a10_s20     famous= 68.0% obscure= 70.1% delta=-2.1pp
+  impact_contrarian  n=184 (famous 92 / obscure 92), mean lc_gap 1.34 vs 1.16
+    base4b                     famous= 80.5% obscure= 79.1% delta=+1.4pp
+    4b_ft01mix_a10             famous= 80.7% obscure= 77.3% delta=+3.4pp
+    4b_lo32nm_a10              famous= 81.1% obscure= 79.1% delta=+2.0pp
+    rlv5_4b_base_s20           famous= 48.0% obscure= 53.0% delta=-5.0pp
+    rlv5_4b_ft01mix_a10_s20    famous= 66.4% obscure= 65.0% delta=+1.4pp
+    rlv5_4b_lo32nm_a10_s20     famous= 67.4% obscure= 74.8% delta=-7.4pp
+
+wrote /scratch/gpfs/CHIJ/ziran/.tmp/claude-374317/-scratch-gpfs-CHIJ-bohan-1-innovation-proior/20154e8e-f2e8-4272-a550-4f0c059fe5b0/scratchpad/doc/4b_v3_penalise_rlv5_4b_base_s20_0105.json
+===== lens=penalise control=base4b
+=== v3 judgement | lens=penalise | control=base4b | 10000 paired bootstrap reps ===
+TRUNCATION (share of samples with no VERDICT, all tasks pooled):
+  base4b                       17/6500 = 0.26%
+  4b_ft01mix_a10               40/6500 = 0.62%
+  4b_lo32nm_a10                22/6500 = 0.34%
+  rlv5_4b_base_s20             1754/6500 = 26.98%
+  rlv5_4b_ft01mix_a10_s20      867/6500 = 13.34%
+  rlv5_4b_lo32nm_a10_s20       521/6500 = 8.02%
+PAIRS KEPT (identical set for every arm):
+  impact_pair          250
+  impact_contrarian    250
+  novelty_pair         150
+
+[ACC] impact_pair  (n=250 pairs)
+  base4b                        81.32%
+  4b_ft01mix_a10                81.96%   vs control +0.64% CI[-0.56%,+1.92%] P(>0)=0.844
+  4b_lo32nm_a10                 82.20%   vs control +0.88% CI[-0.56%,+2.32%] P(>0)=0.892
+  rlv5_4b_base_s20              55.84%   vs control -25.48% CI[-28.60%,-22.36%] P(>0)=0.000
+  rlv5_4b_ft01mix_a10_s20       68.28%   vs control -13.04% CI[-15.68%,-10.40%] P(>0)=0.000
+  rlv5_4b_lo32nm_a10_s20        73.60%   vs control -7.72% CI[-9.92%,-5.56%] P(>0)=0.000
+
+[ACC] impact_contrarian  (n=250 pairs)
+  base4b                        83.28%
+  4b_ft01mix_a10                82.60%   vs control -0.68% CI[-1.96%,+0.64%] P(>0)=0.161
+  4b_lo32nm_a10                 83.40%   vs control +0.12% CI[-1.24%,+1.44%] P(>0)=0.568
+  rlv5_4b_base_s20              53.92%   vs control -29.36% CI[-32.52%,-26.20%] P(>0)=0.000
+  rlv5_4b_ft01mix_a10_s20       67.64%   vs control -15.64% CI[-18.36%,-13.00%] P(>0)=0.000
+  rlv5_4b_lo32nm_a10_s20        74.56%   vs control -8.72% CI[-11.00%,-6.44%] P(>0)=0.000
+
+[ACC] novelty_pair  (n=150 pairs)
+  base4b                        48.27%
+  4b_ft01mix_a10                48.27%   vs control -0.00% CI[-1.73%,+1.67%] P(>0)=0.500
+  4b_lo32nm_a10                 47.93%   vs control -0.33% CI[-2.07%,+1.33%] P(>0)=0.338
+  rlv5_4b_base_s20              47.00%   vs control -1.27% CI[-3.60%,+1.00%] P(>0)=0.138
+  rlv5_4b_ft01mix_a10_s20       48.13%   vs control -0.13% CI[-2.60%,+2.33%] P(>0)=0.460
+  rlv5_4b_lo32nm_a10_s20        49.40%   vs control +1.13% CI[-0.93%,+3.13%] P(>0)=0.867
+
+[MIMICRY] acc(impact_pair) - acc(impact_contrarian)   (n=250/250 pairs)
+  base4b                       gap= -1.96%
+  4b_ft01mix_a10               gap= -0.64%   excess +1.32% CI[-0.56%,+3.12%] P(>0)=0.920
+  4b_lo32nm_a10                gap= -1.20%   excess +0.76% CI[-1.16%,+2.72%] P(>0)=0.776
+  rlv5_4b_base_s20             gap= +1.92%   excess +3.88% CI[-0.48%,+8.24%] P(>0)=0.958
+  rlv5_4b_ft01mix_a10_s20      gap= +0.64%   excess +2.60% CI[-1.12%,+6.32%] P(>0)=0.912
+  rlv5_4b_lo32nm_a10_s20       gap= -0.96%   excess +1.00% CI[-2.16%,+4.12%] P(>0)=0.729
+
+[ORDER] two orders of the same pair name the same paper
+  impact_pair
+    base4b                     majority-agree= 88.8% mean|acc1-acc2|=0.122
+    4b_ft01mix_a10             majority-agree= 88.4% mean|acc1-acc2|=0.110
+    4b_lo32nm_a10              majority-agree= 87.6% mean|acc1-acc2|=0.116
+    rlv5_4b_base_s20           majority-agree= 73.6% mean|acc1-acc2|=0.210
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 77.2% mean|acc1-acc2|=0.202
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 83.6% mean|acc1-acc2|=0.174
+  impact_contrarian
+    base4b                     majority-agree= 88.4% mean|acc1-acc2|=0.117
+    4b_ft01mix_a10             majority-agree= 86.4% mean|acc1-acc2|=0.122
+    4b_lo32nm_a10              majority-agree= 89.6% mean|acc1-acc2|=0.114
+    rlv5_4b_base_s20           majority-agree= 78.0% mean|acc1-acc2|=0.205
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 78.8% mean|acc1-acc2|=0.207
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 82.4% mean|acc1-acc2|=0.174
+  novelty_pair
+    base4b                     majority-agree= 84.7% mean|acc1-acc2|=0.163
+    4b_ft01mix_a10             majority-agree= 86.0% mean|acc1-acc2|=0.160
+    4b_lo32nm_a10              majority-agree= 87.3% mean|acc1-acc2|=0.151
+    rlv5_4b_base_s20           majority-agree= 89.3% mean|acc1-acc2|=0.156
+    rlv5_4b_ft01mix_a10_s20    majority-agree= 81.3% mean|acc1-acc2|=0.171
+    rlv5_4b_lo32nm_a10_s20     majority-agree= 88.0% mean|acc1-acc2|=0.145
+
+[RECOGNISE] lc_gap held in [1.0,1.7], split at median hi_cites
+  impact_pair  n=152 (famous 76 / obscure 76), mean lc_gap 1.41 vs 1.17
+    base4b                     famous= 74.7% obscure= 76.7% delta=-2.0pp
+    4b_ft01mix_a10             famous= 73.9% obscure= 78.9% delta=-5.0pp
+    4b_lo32nm_a10              famous= 73.7% obscure= 78.9% delta=-5.3pp
+    rlv5_4b_base_s20           famous= 47.1% obscure= 54.7% delta=-7.6pp
+    rlv5_4b_ft01mix_a10_s20    famous= 64.6% obscure= 64.5% delta=+0.1pp
+    rlv5_4b_lo32nm_a10_s20     famous= 68.0% obscure= 70.1% delta=-2.1pp
+  impact_contrarian  n=184 (famous 92 / obscure 92), mean lc_gap 1.34 vs 1.16
+    base4b                     famous= 80.5% obscure= 79.1% delta=+1.4pp
+    4b_ft01mix_a10             famous= 80.7% obscure= 77.3% delta=+3.4pp
+    4b_lo32nm_a10              famous= 81.1% obscure= 79.1% delta=+2.0pp
+    rlv5_4b_base_s20           famous= 48.0% obscure= 53.0% delta=-5.0pp
+    rlv5_4b_ft01mix_a10_s20    famous= 66.4% obscure= 65.0% delta=+1.4pp
+    rlv5_4b_lo32nm_a10_s20     famous= 67.4% obscure= 74.8% delta=-7.4pp
+
+wrote /scratch/gpfs/CHIJ/ziran/.tmp/claude-374317/-scratch-gpfs-CHIJ-bohan-1-innovation-proior/20154e8e-f2e8-4272-a550-4f0c059fe5b0/scratchpad/doc/4b_v3_penalise_base4b_0105.json

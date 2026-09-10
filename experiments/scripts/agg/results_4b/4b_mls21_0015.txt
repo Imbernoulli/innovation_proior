@@ -1,0 +1,54 @@
+base4b                       21 tasks  scored=21
+4b_ft01mix_a10               21 tasks  agent_failed+scored=1 scored=20
+4b_lo32nm_a10                21 tasks  scored=21
+rlv5_4b_base_s20             21 tasks  scored=21
+rlv5_4b_ft01mix_a10_s20      21 tasks  scored=21
+rlv5_4b_lo32nm_a10_s20       21 tasks  scored=21
+
+union=21  COMMON scored across all arms n=20
+  base4b                       scored=21  dropped_from_common= 1
+  4b_ft01mix_a10               scored=20  dropped_from_common= 0
+  4b_lo32nm_a10                scored=21  dropped_from_common= 1
+  rlv5_4b_base_s20             scored=21  dropped_from_common= 1
+  rlv5_4b_ft01mix_a10_s20      scored=21  dropped_from_common= 1
+  rlv5_4b_lo32nm_a10_s20       scored=21  dropped_from_common= 1
+
+=== mean over the 20 common tasks ===
+  rlv5_4b_base_s20             0.1285   nonzero 12/20
+  rlv5_4b_ft01mix_a10_s20      0.1142   nonzero 9/20
+  rlv5_4b_lo32nm_a10_s20       0.1113   nonzero 12/20
+  base4b                       0.0320   nonzero 3/20
+  4b_lo32nm_a10                0.0173   nonzero 4/20
+  4b_ft01mix_a10               0.0075   nonzero 4/20
+
+=== per-task (common set only) ===
+                                                        base4b  4b_ft01mix_a10   4b_lo32nm_a10  v5_4b_base_s20  t01mix_a10_s20  lo32nm_a10_s20
+  causal-discovery-discrete                              0.000           0.000           0.000           0.000           0.000           0.000
+  causal-observational-linear-gaussian                   0.000           0.018           0.018           0.026           0.000           0.000
+  causal-observational-linear-non-gaussian               0.000           0.000           0.000           0.550           0.000           0.019
+  causal-observational-nonlinear                         0.036           0.000           0.036           0.036           0.036           0.000
+  causal-treatment-effect                                0.000           0.045           0.261           0.261           0.000           0.261
+  ml-active-learning                                     0.362           0.000           0.000           0.362           0.362           0.000
+  ml-anomaly-detection                                   0.000           0.000           0.000           0.000           0.502           0.316
+  ml-calibration                                         0.000           0.000           0.000           0.000           0.000           0.052
+  ml-clustering-algorithm                                0.000           0.000           0.000           0.072           0.388           0.388
+  ml-dimensionality-reduction                            0.000           0.000           0.000           0.013           0.013           0.013
+  ml-ensemble-boosting                                   0.000           0.000           0.000           0.166           0.000           0.000
+  ml-missing-data-imputation                             0.000           0.053           0.000           0.053           0.053           0.053
+  ml-selective-deferral                                  0.242           0.000           0.000           0.242           0.242           0.000
+  ml-subgroup-calibration-shift                          0.000           0.000           0.000           0.000           0.000           0.000
+  ml-symbolic-regression                                 0.000           0.035           0.000           0.000           0.387           0.035
+  mlsys-moe-load-balance                                 0.000           0.000           0.000           0.000           0.000           0.255
+  optimization-evolution-strategy                        0.000           0.000           0.000           0.487           0.000           0.500
+  optimization-hyperparameter-search                     0.000           0.000           0.000           0.303           0.303           0.303
+  optimization-nas                                       0.000           0.000           0.032           0.000           0.000           0.032
+  optimization-online-bandit                             0.000           0.000           0.000           0.000           0.000           0.000
+
+=== excluded from the common set (1) ===
+  optimization-multi-objective
+      base4b                       scored           score=0.0
+      4b_ft01mix_a10               agent_failed+scored score=0.0
+      4b_lo32nm_a10                scored           score=0.0
+      rlv5_4b_base_s20             scored           score=0.0
+      rlv5_4b_ft01mix_a10_s20      scored           score=0.0
+      rlv5_4b_lo32nm_a10_s20       scored           score=0.0
