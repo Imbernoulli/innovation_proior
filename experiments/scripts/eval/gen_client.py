@@ -19,7 +19,7 @@ Two kinds of item:
 
   python3 gen_client.py --tasks gentasks.jsonl --out DIR --base-url URL --model TAG
 """
-import argparse, json, os, re, sys, time
+import hashlib, os, argparse, json, os, re, sys, time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
@@ -46,12 +46,21 @@ def parse_number(text):
     return None
 
 
+def _seed(item, k):
+    """Legacy: seed = 1000*k + 7 for every item (one shared random stream per sample index).
+    GEN_SEED_HASH=1: per-(task,id,k) seed so draws are independent across items."""
+    if os.environ.get("GEN_SEED_HASH", "0") == "1":
+        h = hashlib.sha1(f"{item['task']}|{item['id']}".encode()).hexdigest()
+        return (int(h[:8], 16) + k) % (2 ** 31)
+    return 1000 * k + 7
+
+
 def one(args, item, k):
     payload = {
         "model": args.model,
         "messages": [{"role": "user", "content": item["prompt"]}],
         "temperature": args.temperature, "top_p": args.top_p,
-        "max_tokens": args.max_tokens, "n": 1, "seed": 1000 * k + 7,
+        "max_tokens": args.max_tokens, "n": 1, "seed": _seed(item, k),
         "extra_body": {"top_k": args.top_k},
     }
     t0 = time.time()
