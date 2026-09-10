@@ -1,0 +1,42 @@
+== h0: model win vs held-out human review (human win = 1 - win)
+  base9b_v2c                   rows=240 items=59 win=65.3%* CI[54.7,75.1] P(>50)=0.997 agree=70.8% unparsed=1.2% chars=952/1117
+  ft01mix_a10                  rows=240 items=58 win=60.3%  CI[48.9,71.7] P(>50)=0.960 agree=69.6% unparsed=1.7% chars=893/1117
+  lo32nm_a10                   rows=240 items=57 win=59.8%  CI[48.1,71.1] P(>50)=0.951 agree=70.8% unparsed=0.4% chars=897/1117
+  rlv5_ft01mix_a10_s20         rows=240 items=60 win=61.5%* CI[50.4,71.9] P(>50)=0.979 agree=75.4% unparsed=1.7% chars=769/1117
+  rlv5_lo32nm_a10_s20          rows=240 items=57 win=62.4%* CI[50.9,73.7] P(>50)=0.981 agree=70.8% unparsed=1.7% chars=800/1117
+  base4b                       rows=240 items=58 win=58.2%  CI[46.4,69.3] P(>50)=0.919 agree=76.7% unparsed=3.3% chars=871/1117
+  4b_lo32nm_a10                rows=240 items=59 win=52.4%  CI[40.4,64.0] P(>50)=0.645 agree=68.8% unparsed=1.7% chars=846/1117
+  rlv5_4b_ft01mix_a10_s20      rows=240 items=60 win=53.6%  CI[42.1,64.7] P(>50)=0.727 agree=75.0% unparsed=2.1% chars=659/1117
+  rlv5_4b_lo32nm_a10_s20       rows=240 items=60 win=58.1%  CI[46.5,69.2] P(>50)=0.908 agree=71.7% unparsed=2.9% chars=668/1117
+== h1: model win vs held-out human review (human win = 1 - win)
+  base9b_v2c                   rows=240 items=59 win=63.3%* CI[51.8,74.0] P(>50)=0.989 agree=75.4% unparsed=0.8% chars=952/1136
+  ft01mix_a10                  MISSING/partial
+  lo32nm_a10                   MISSING/partial
+  rlv5_ft01mix_a10_s20         rows=240 items=59 win=60.3%  CI[49.0,71.5] P(>50)=0.962 agree=77.5% unparsed=1.2% chars=769/1136
+  rlv5_lo32nm_a10_s20          MISSING/partial
+  base4b                       rows=240 items=60 win=54.6%  CI[42.9,66.1] P(>50)=0.782 agree=75.0% unparsed=2.5% chars=871/1136
+  4b_lo32nm_a10                MISSING/partial
+  rlv5_4b_ft01mix_a10_s20      MISSING/partial
+  rlv5_4b_lo32nm_a10_s20       rows=240 items=60 win=59.0%  CI[47.8,70.1] P(>50)=0.938 agree=72.5% unparsed=2.1% chars=668/1136
+
+== paired arm differences (A - B, item-level, both vs same human; * = 95% CI excludes 0)
+  h0 ft01mix_a10                - base9b_v2c     n=58 diff=-4.3pp  CI[-12.6,+4.0] P(>0)=0.159 W/L=10/14
+  h0 lo32nm_a10                 - base9b_v2c     n=56 diff=-6.7pp* CI[-14.0,-0.0] P(>0)=0.024 W/L=7/12
+  h0 rlv5_ft01mix_a10_s20       - base9b_v2c     n=59 diff=-3.5pp  CI[-11.6,+4.0] P(>0)=0.192 W/L=10/13
+  h0 rlv5_lo32nm_a10_s20        - base9b_v2c     n=57 diff=-3.7pp  CI[-10.7,+3.2] P(>0)=0.150 W/L=8/12
+  h0 rlv5_ft01mix_a10_s20       - ft01mix_a10    n=58 diff=+0.7pp  CI[-6.8,+7.9] P(>0)=0.585 W/L=12/9
+  h0 rlv5_lo32nm_a10_s20        - lo32nm_a10     n=54 diff=+2.0pp  CI[-4.9,+9.0] P(>0)=0.709 W/L=10/8
+  h0 4b_lo32nm_a10              - base4b         n=57 diff=-3.7pp  CI[-10.8,+2.6] P(>0)=0.135 W/L=6/9
+  h0 rlv5_4b_ft01mix_a10_s20    - base4b         n=58 diff=-4.5pp  CI[-13.8,+4.3] P(>0)=0.164 W/L=11/12
+  h0 rlv5_4b_lo32nm_a10_s20     - base4b         n=58 diff=+0.1pp  CI[-8.0,+8.8] P(>0)=0.510 W/L=13/10
+  h0 rlv5_4b_lo32nm_a10_s20     - 4b_lo32nm_a10  n=59 diff=+5.8pp  CI[-1.1,+13.1] P(>0)=0.949 W/L=11/6
+  h0 base9b_v2c                 - base4b         n=57 diff=+6.0pp  CI[-1.3,+13.3] P(>0)=0.949 W/L=16/9
+  h1 rlv5_ft01mix_a10_s20       - base9b_v2c     n=58 diff=-2.2pp  CI[-10.5,+5.3] P(>0)=0.303 W/L=10/10
+  h1 rlv5_4b_lo32nm_a10_s20     - base4b         n=60 diff=+4.4pp  CI[-1.5,+11.0] P(>0)=0.931 W/L=11/6
+  h1 base9b_v2c                 - base4b         n=59 diff=+9.5pp* CI[+2.0,+17.7] P(>0)=0.994 W/L=15/7
+
+== h0 vs h1 stability (same arm, different held-out reviewer)
+  base9b_v2c                   h0=64.7% h1=64.4% (n=58 common items)
+  rlv5_ft01mix_a10_s20         h0=62.6% h1=60.3% (n=59 common items)
+  base4b                       h0=58.2% h1=53.6% (n=58 common items)
+  rlv5_4b_lo32nm_a10_s20       h0=58.1% h1=59.0% (n=60 common items)
