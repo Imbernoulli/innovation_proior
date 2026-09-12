@@ -42,5 +42,5 @@ for ARM in "$@"; do
     dual "ev-$TAG-r$s" 04:00:00 "MODEL=$M,TAG=$TAG,SOURCE=research,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
   done
   cd "$FS"   # mlsbench script takes PROJECT_ROOT from SLURM_SUBMIT_DIR
-  dual "mls21-$TAG" 12:00:00 "MODEL_PATH=$M,TAG=$TAG,OUTPUT_BASE=$D/outputs/cc_mls21_$TAG,MLSBENCH_ROOT=$D/mlsroot,HF_HOME=$D/.hf,VLLM_VENV=$D/envs/vllm023,VLLM_CACHE_DIR=$D/.cache/vllm,EVAL_RESEARCHER_YEAR=$YEAR,MLSBENCH_SYS_PREFIX=It is now year $YEAR.,CONCURRENCY=7,TASK_TIMEOUT=7200,VLLM_PORT=$((41000 + RANDOM % 20000)),TASKS=$TASKS21" "$FS/slurm/cc_eval_mlsbench_cpu_ailab.sh"
+  dual "mls21-$TAG" 12:00:00 "MODEL_PATH=$M,TAG=$TAG,OUTPUT_BASE=$D/outputs/cc_mls21_$TAG,MLSBENCH_ROOT=$D/mlsroot,MLSBENCH_DATA_ROOT=$D/mlsvendor/data,HF_HOME=$D/.hf,VLLM_VENV=$D/envs/vllm023,VLLM_CACHE_DIR=$D/.cache/vllm,EVAL_RESEARCHER_YEAR=$YEAR,MLSBENCH_SYS_PREFIX=It is now year $YEAR.,CONCURRENCY=7,TASK_TIMEOUT=7200,VLLM_PORT=$((41000 + RANDOM % 20000)),TASKS=$TASKS21" "$FS/slurm/cc_eval_mlsbench_cpu_ailab.sh"
 done

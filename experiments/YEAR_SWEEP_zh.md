@@ -43,3 +43,5 @@ python3 mls_merge.py base9b_v2c_y1900 lo32nm_a10_y1900 rlv5_lo32nm_a10_s20_y1900
 |---|---|
 | 2026-09-11 19:4x | 第一波投出:1900 / 2000 / 2100 × 9B 三臂,45 组(作业 13759476–13759568,`$D/logs/year_sweep_jobids.txt`) |
 | 2026-09-11 20:09 | 首个作业 `ev-base9b_v2c_y1900-f0` 起跑,日志打印的 system message 为 `It is now year 1900. You are a good researcher.`,与设计一致 |
+| 2026-09-11 21:0x | **MLS 全部 21 题在 1 s 内 `agent_failed`**(`mls21-base9b_v2c_y1900` 13759484)。根因不是年份:整个 `/scratch/gpfs/CHIJ/st3812/` 被删(磁盘空闲从 2.3T 跳到 18T),MLS-Bench 的 `vendor/{data,external_packages,images}` 在 della 上所有副本都是指向那里的软链。与模型无关,FCS/ALE/研究轨作业不受影响。已 scancel 其余 8 个未起跑的 mls21 作业 |
+| 2026-09-11 21:4x | **MLS 依赖重建于 `$D/mlsvendor/`**:9 个容器镜像从 HF `Bohan22/MLS-Bench-Tasks` 下回(≈23G);8 个外部包从工作区副本按 pinned commit 重新 clone(工作区里全部"脏文件"核实为 pre_edit/mid_edit 运行时生成物);`scikit-learn` 存根重建;数据用 `data_scripts.devstray.bak` 在登录节点重新准备(sklearn OpenML/AIF360、badge OpenML 6/44/46)。我自己 `mlsroot/vendor/` 下三个失效软链改指新位置;提交脚本加 `MLSBENCH_DATA_ROOT`。失败的输出目录与锁**改名保留**(`*.failed_20260911*`),未删。烟测:`mls21-base9b_v2c_y1900` 重投 13761801/13761802 |
