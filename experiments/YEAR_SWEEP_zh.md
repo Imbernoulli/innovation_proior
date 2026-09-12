@@ -66,6 +66,7 @@ python3 mls_merge.py base9b_v2c_y1900 lo32nm_a10_y1900 rlv5_lo32nm_a10_s20_y1900
 | 2026-09-12 10:08 | rlv5 y2025 f1 结束(gpu 分区 6.0h,199 条超时)→ purge 丢 194 → 13783411 只投 ailab 回填;8 片回填作业全在 ailab 排队(Priority,ailab 16 张卡被 4B 占满,慢慢排)。剩 3 片仍在 gpu 分区跑(base y2050 f0 5.7h、rlv5 y1950 f0 7.0h、rlv5 y2025 f0 6.5h)。rlv5 2026 复跑 f0 3.1h 在跑。**第一个 4B f 分片落地**:4b_lo32nm y1900 f1 干净(8 条超时,142 METRIC);rlv5_4b y2000 研究轨 r0 齐。108 个年份日志全对;MLS 无秒败;磁盘 18T。 |
 | 2026-09-12 10:36 | base y2050 f0 结束(gpu 分区 5.9h,157 条超时)→ purge → 只投 ailab 回填(见 jobids 文件);9 片回填作业排队中,剩 2 片在 gpu 分区跑(rlv5 y1950 f0 7.5h、rlv5 y2025 f0 7.0h)。rlv5 2026 复跑 f0 3.6h 在跑;rlv5 y2050 f0(ailab)5.9h 在跑。**4B 1900:4b_lo32nm f0/f1 都干净落地(11/8 条超时)→ 第一个 4B 算法轨/ALE 年份点齐**;base4b y1900 f1 落地(6 条),f0 3.3h 在跑;rlv5_4b y1900 f0/f1 在跑。4B 2000:4b_lo32nm MLS COMPLETED,rlv5_4b 研究轨齐、MLS 起跑;2100:base4b f0/r0 起跑。110 个年份日志全对;磁盘 18T。 |
 | 2026-09-12 11:03 | 本轮无新污染。**rlv5 y2050 f0(ailab)干净落地(8 条超时)→ rlv5 y2050 算法轨/ALE 齐且干净**。rlv5 2026 复跑 f0 4.0h 仍在跑;最后 2 片污染分片仍在 gpu 分区(rlv5 y1950 f0 8.0h、rlv5 y2025 f0 7.5h);9 片回填排队中。**4B 2000:base4b f0/f1 干净齐(10/5 条),4b_lo32nm f1 齐(2 条)f0 在跑,base4b MLS COMPLETED**;4B 2100:base4b 研究轨齐,三臂 f 分片与 MLS 陆续起跑。117 个年份日志全对;磁盘 18T。 |
+| 2026-09-12 11:30 | rlv5 y1950 f0 在 gpu 分区撞 8h 墙钟 TIMEOUT(527 行、193 条超时、无 METRIC 行)→ purge → 只投 ailab 回填(jobids 文件);最后 1 片 rlv5 y2025 f0 7.9h 也将撞墙钟。10 片回填排队中,ailab 16 张卡仍被 4B 占满。rlv5 2026 复跑 f0 4.5h 在跑。4B:rlv5_4b y1900 f1 干净落地(4 条);4b_lo32nm y2100 研究轨齐;base4b y2100 MLS COMPLETED(34 min,见本行后 mlszero 核对)。120 个年份日志全对;磁盘 18T。 |
 
 ## 5. 结果(只追加;每小节标注数据状态)
 
