@@ -37,10 +37,12 @@ for ARM in "$@"; do
   M="${MP[$ARM]:?unknown arm $ARM}"; [ -e "$M/config.json" ] || { echo "no model $M"; continue; }
   TAG="${ARM}_y${YEAR}"
   cd "$D/fsroot"
-  for s in 0 1; do
-    dual "ev-$TAG-f$s" 08:00:00 "MODEL=$M,TAG=$TAG,SOURCE=both,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
-    dual "ev-$TAG-r$s" 04:00:00 "MODEL=$M,TAG=$TAG,SOURCE=research,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
-  done
+  if [ "${MLS_ONLY:-0}" != "1" ]; then  # MLS_ONLY=1: only (re)submit the MLS run; pending ev-* have no lock and would double-submit
+    for s in 0 1; do
+      dual "ev-$TAG-f$s" 08:00:00 "MODEL=$M,TAG=$TAG,SOURCE=both,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
+      dual "ev-$TAG-r$s" 04:00:00 "MODEL=$M,TAG=$TAG,SOURCE=research,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
+    done
+  fi
   cd "$FS"   # mlsbench script takes PROJECT_ROOT from SLURM_SUBMIT_DIR
   dual "mls21-$TAG" 12:00:00 "MODEL_PATH=$M,TAG=$TAG,OUTPUT_BASE=$D/outputs/cc_mls21_$TAG,MLSBENCH_ROOT=$D/mlsroot,MLSBENCH_DATA_ROOT=$D/mlsvendor/data,HF_HOME=$D/.hf,VLLM_VENV=$D/envs/vllm023,VLLM_CACHE_DIR=$D/.cache/vllm,EVAL_RESEARCHER_YEAR=$YEAR,MLSBENCH_SYS_PREFIX=It is now year $YEAR.,CONCURRENCY=7,TASK_TIMEOUT=7200,VLLM_PORT=$((41000 + RANDOM % 20000)),TASKS=$TASKS21" "$FS/slurm/cc_eval_mlsbench_cpu_ailab.sh"
 done
