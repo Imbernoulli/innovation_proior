@@ -33,13 +33,24 @@ dual() {  # name walltime env-string real-script
   echo "$a $g" > "$D/logs/locks/$name.ids"
   echo "$name ailab=$a gpu=$g" | tee -a "$LOG"
 }
+ailab_only() {  # name walltime env-string real-script -- f-shards ONLY on ailab: on the `gpu` partition (della-l0x) the
+  # 9B serve is slow enough that CONCURRENCY=96 requests hit REQUEST_TIMEOUT and 120-200 of 530 samples per shard
+  # land as APITimeout pseudo-zeros (measured 2026-09-12, all six gpu-partition f runs; every ailab run had 1-12).
+  local name=$1 t=$2 env=$3 script=$4 a
+  [ -d "$D/logs/locks/$name.lock" ] && { echo "SKIP $name: lock exists (already ran)"; return; }
+  a=$(sbatch --parsable --partition=ailab --account=chij --qos=short --gres=gpu:1 -c 8 --mem=200G --time="$t" \
+      --job-name="$name" --output="$D/logs/%x-%j.out" --error="$D/logs/%x-%j.out" \
+      "--export=ALL,${env},DUAL_NAME=${name},REAL_SCRIPT=${script}" "$D/slurm_overlay/cc_dual_wrap.sh") || { echo "sbatch ailab failed: $name"; return; }
+  echo "$a none" > "$D/logs/locks/$name.ids"
+  echo "$name ailab=$a" | tee -a "$LOG"
+}
 for ARM in "$@"; do
   M="${MP[$ARM]:?unknown arm $ARM}"; [ -e "$M/config.json" ] || { echo "no model $M"; continue; }
   TAG="${ARM}_y${YEAR}"
   cd "$D/fsroot"
   if [ "${MLS_ONLY:-0}" != "1" ]; then  # MLS_ONLY=1: only (re)submit the MLS run; pending ev-* have no lock and would double-submit
     for s in 0 1; do
-      dual "ev-$TAG-f$s" 08:00:00 "MODEL=$M,TAG=$TAG,SOURCE=both,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
+      ailab_only "ev-$TAG-f$s" 08:00:00 "MODEL=$M,TAG=$TAG,SOURCE=both,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
       dual "ev-$TAG-r$s" 04:00:00 "MODEL=$M,TAG=$TAG,SOURCE=research,NUM_SHARDS=2,SHARD_IDX=$s,EVAL_RESEARCHER_YEAR=$YEAR" "$D/slurm_overlay/cc_eval_allinone_ailab.sh"
     done
   fi
