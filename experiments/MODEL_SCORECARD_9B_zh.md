@@ -624,6 +624,40 @@ ALE-10 上 `rlv5_ft03nm_s20` **输给**对照 `mean@5` −125.3 ★ 和 `best@5`
 **一句话**:MLS 的 0.11–0.19 不是"远不如人类",而是"**三分之二的设定胜过该题最弱的已发表人类方法、
 八分之一打平或胜过最强的**,但只要一个设定崩掉,几何均值就把整题压到 0.05 附近"。
 
+### 5.2 补注二:那些"没评出分"的题,原因全查清了,而且全是我们自己的配置(2026-09-13 19:10)
+
+用户:"要 20 多道题都测完啊""**分母必须一样啊,都是 21 题**"。照办之前先查了每一格 `task_logs/<task>.log`,
+**没有一格是模型不行,全部是两个可改的天花板**:
+
+| 根因 | 日志证据 | 命中的格子 |
+|---|---|---|
+| **上下文 40960 封顶** | `openai.BadRequestError: This model's maximum context length is 40960 tokens ... your prompt contains at least 40961 input tokens` | 多轮 agent 对话一超就死。`base9b_v2c` 的 `ml-symbolic-regression` / `optimization-multi-objective` / `optimization-hyperparameter-search`、`ft01mix_a10` 的 `causal-treatment-effect` / `mlsys-moe-load-balance` / `optimization-hyperparameter-search`、`4b_ft01mix_a10` 的 `optimization-multi-objective` 等 |
+| **驱动进程缺 `causallearn` / `deap`** | `ModuleNotFoundError: No module named 'causallearn'`,栈顶是 `agent/base.py:43 → tools.py:5124 load_mid_edit_ops → tasks/<t>/edits/mid_edit.py:24 → holdout/<t>/dgp.py:19`,**在驱动里,不在沙箱里** | `causal-observational-linear-gaussian`(RL 三臂)、`optimization-multi-objective`(`rlv5_ft01mix_a10_s20`) |
+| **`TASK_TIMEOUT=7200` 饿死** | `### TIMEOUT after 7200s` | `ft01mix_a10` 的 `optimization-evolution-strategy` |
+
+两个天花板都是我们自己传的默认值,不是 benchmark 的要求:
+
+- `cc_eval_mlsbench_cpu_ailab.sh:141` `MAX_MODEL_LEN="${MAX_MODEL_LEN:-40960}"`,而 **Qwen3.5 的
+  `text_config.max_position_embeddings = 262144`** —— 我们把模型能力砍到了 1/6.4。
+- `:232` `MLSBENCH_PY="${MLSBENCH_PY:-/home/bl3615/miniconda3/bin/python}"` —— 那个解释器**没有**
+  `causallearn` / `deap`(且不可写)。我自己的 `$D/envs/client/bin/python` **两个都有**,已实测用它
+  成功 import 了上面两个失败的 `holdout/<task>/dgp.py`。
+  这同时解释了记忆里那条"缺 causal-learn/deap **恒定**丢 2 题" —— 不是环境缺包,是**用错了解释器**。
+
+**处置(2026-09-13 19:05 提交)**:新脚本 `$D/scripts/mls21_rerun_submit.sh`,改动三处 ——
+`MAX_MODEL_LEN=98304`、`MLSBENCH_PY=$D/envs/client/bin/python`、`TASK_TIMEOUT=10800`;
+连带 `CONCURRENCY 7→5`(单序列 KV 从 5.0 GiB 涨到 12 GiB,80G 卡装不下 7 条)、墙钟 12h→20h。
+输出写到新 TAG `<arm>_r2`,**不覆盖任何旧运行**。
+
+**十四个臂全部重跑**,因为只补 ft01mix 会让它在更宽的上下文里跑、别的臂还在 40960 里 ——
+那样分母是齐了,条件反而不齐,比现在更糟。作业号 `13846810–13846837`(ailab / gpu 双投),
+ft01mix 四个臂排在最前(13846810–13846817)。为给它们让路,4B 年份扫描的 2025 / 2050 / 2075
+三批共 **72 个作业已 `scontrol hold` 挂起(可逆,不是取消)**,2010 那批继续跑。
+
+**在 `_r2` 全部落地之前,§5 与 §5.1 的数字都不要再引用。**
+重跑之后每个臂应当 21 题全 `scored`,届时公共题集 = 全集 = 21,§5 那三条口径缺陷里的
+"分母太小"一条会被消掉;另两条(stale `is_final`、33% 运行从不 `submit`)**不受这次修复影响,仍然成立**。
+
 ## 6. 覆盖率与已知的基础设施地板
 
 这些缺口是**基础设施地板,不是模型表现**,而且同分母规则已经把它们从所有臂里一起剔除了。
