@@ -742,3 +742,16 @@ python3 j3stats.py --lens penalise --control rlv5_4b_base_s20 rlv5_4b_base_s20 r
 | 4B 三条 RL 臂 | **全部训完、全部评完。** 主 bench 排序(s20):研究轨 ft01mix 17.3 > lo32nm 14.9 > 对照 4.1(崩);FCS lo32nm 8.08 > ft01mix 6.96 > 对照 0.69;ALE ft01mix 300 > lo32nm 273 > 对照 87。第 15 步三臂在研究轨上 15.8 / 14.6 / 13.4 分不出 |
 | `review_weakness` 人类参照盲判 | **已落地(05:4x)**:留一评审设计,4 臂 h0 + 2 臂 h1;写进 §6.3 追加段,口径与 9B 五臂在 `EXTRA_BENCH_SCORECARD_9B_zh.md` §10.3。配对差全部 ns;人类参照本身不是天花板 |
 | Tang & Yang | 14 臂、288 seed set 已出(`TANG_YANG_REPLICATION_zh.md` §3.4–§3.7);`rlv5_4b_lo32nm_a10_s20` 的位置见其 §3.6 |
+
+## 11. 2026-09-14 MLS-21 统一口径重跑(`_p1`):4B 四臂
+
+背景、配置、环境修复与口径同 9B 记分卡 §10(`MODEL_SCORECARD_9B_zh.md`);与本文件 §5 的“共同 20 题、只算 `status == scored`”口径不同,此处是 **21 题分母、缺题/崩溃 = 0**,两代同规则。逐题表见 `experiments/mls21_p1/eight_arm_p1_table.md`。
+
+| arm | old (21) | p1 (21) | diff | p1 非零题 |
+|---|---:|---:|---:|---:|
+| base4b | 0.0304 | 0.0431 | +0.0126 | 6 |
+| 4b_ft01mix_a10 | 0.0072 | 0.0612 | +0.0540 | 5 |
+| rlv5_4b_base_s20 | 0.1223 | 0.0973 | −0.0250 | 9 |
+| rlv5_4b_ft01mix_a10_s20 | 0.1088 | 0.1514 | +0.0426 | 12 |
+
+两代里两个 RL 臂都在两个非 RL 臂之上;RL 臂之间的名次两代相反(旧 base 起点高,p1 ft01mix 起点高)。4B 的 p1 没有上下文溢出崩溃(除 base4b 一题)、没有超时;分差同样来自单题“模板分 ↔ 0”的翻转(rlv5_4b_base 7 失 4 得,rlv5_4b_ft01mix 2 失 5 得),机制与 9B §10 相同。单次运行,不打 ★,不改 §5。
