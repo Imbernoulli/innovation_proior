@@ -968,3 +968,7 @@ FrontierCS-research 在四种消歧规则下的 mean@5(其余两个 bench 的重
 - **排除了系统性差异**:serve 配置相同;agent 对 vLLM 不传 temperature(两代都是 vLLM 默认采样);逐臂统计 SyntaxError / 编辑失败 / nudge / test 次数 / 上下文崩溃 / 完成 token 数,新旧同量级,没有 p1 全局劣化(base9b 的 p1 语法错误更少、分数略升;4B 四臂两升两降)。
 
 **结论**:同臂、同口径、同权重的两次 MLS-21 单次运行,在题目层面不可复现(与 09-12 同臂同年份复跑得到的 ~0.31× 均值的运行间波动一致);单次运行之间的 0.03–0.12 差都在这个尺度内,**不打 ★,不改 §1.1/§5 的任何数字**。两代数字并列保留;要在 MLS 上分辨臂,需要每臂 ≥3 次独立运行。
+
+### 10.1 追加(2026-09-14 晚):旧代 MLS 官方分数有排行榜串行污染
+
+在做定量 case study(`CASE_STUDY_MLS_QUANT_zh.md` §2.1)时复刻 `mlsbench/scoring/evaluate.py` 的选行规则逐条核对,发现:`mlsbench score --model vllm/<tag>` 读该 model 名在 `leaderboard.csv` 里**全部**的行,而旧跑里 base9b_v2c、lo32nm_a10、rlv5_base_s20 等 tag 都在两个作业里跑过(首跑部分失败后重投,tag 不变);“有效行优先”会在本次运行只留下空 final 行时,选到上一个作业那次运行的有效行。**27 条旧代运行选中的行不是本次运行写的,16 条分数因此不同**(逐条表在 case study §2.1)。按“只认本次运行时间窗内的行”重算,旧 9B 21 题均值:base 0.1141→0.1115、ft01mix 0.1425→0.1266、ft03nm 0.1430→0.1271、lo32nm 0.1525→0.1504、**rlv5_base 0.1513→0.1153**、rlv5_ft01mix 0.1572(不变)、**rlv5_ft03nm 0.1760→0.1521**、rlv5_lo32nm 0.1806(不变);4B 四臂 0 条污染;p1 代 model 名带 `_p1`,无此问题。§1.1 与 §10 表中的旧代数字按规则不改动,读旧代 MLS 一列时以本条修正值为准。修正后旧代排序:三个 RL(SFT 起点)臂仍高于全部四个非 RL 臂;rlv5_base 只比 base 高 0.004、低于三个 SFT 臂——与 p1 代方向一致。另:原 case study §3.4 点名的 `rlv5_ft03nm_a20_s20` ml-anomaly-detection 0.5016 既是污染行,也是模板自身的分。
