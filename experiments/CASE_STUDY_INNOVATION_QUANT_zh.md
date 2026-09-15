@@ -420,3 +420,65 @@ base 臂**自己重跑一次**就能做出 +0.062(p=0.012),与 lo32nm 的 +0.065
 3. 9B research 的 shard_0/shard_1 有重叠世代(同一 (题, sample_idx) 两次独立生成),当前规则取后者;42–43/140 个重复键分数不同。
 4. 4B 没有 ft03nm 这条 setting;MLS 的 4B 只有 base 与 ft01mix 两条线,没有任何 lo32nm。涉及 ft03nm / 4B-lo32nm 的跨 bench 结论只能是部分覆盖。
 5. 30–60% 的 RL 臂抽样在 32768 token 处被截断、没有 `</think>`;所有代码层面的分析只用完成的抽样。
+
+## 13. 修复 research 的判题环境之后:被当成「基础设施故障」丢掉的,其实是模型幻觉 API
+
+`frontiercs_research_cpu_eval.py:495` 的判定是 `if any(m in low for m in _INFRA_MARKERS) or proc.returncode != 0`。
+后半句意味着**模型自己的代码把求值器搞崩,也算基础设施故障**,于是这些格子被从分母里剔掉,而不是记 0。
+
+把只读树的两处写入权限问题修好(`julia_env/lock.pid`、`problems/.../sql/output_ans`,改指向 `$D/rejudge_env`
+下的可写副本)之后,求值器能完整跑完模型的代码了,这些格子回来长这样:
+
+```
+`accuracy_threshold` is not a valid keyword argument for PySRRegressor
+`symbolic_math`      is not a valid keyword argument for PySRRegressor
+`precision_type`     is not a valid keyword argument for PySRRegressor
+```
+
+模型在编 PySR 的 API。这是实打实的 0 分。
+
+**环境先自证**:拿同样那几道题上**已经判出 >0 分**的 8 个格子重判,8/8 全部复现非零
+(mccormick 99.99999999999997 → 100.0,peaks 100.0 → 100.0)。所以"求值器挂了就怪模型"不是假设。
+注意 PySR 是遗传算法、**分数不确定**(ripple 1.57 → 3.62),重判回来的 research 格子带求值器自身的随机性,
+不能当成与原跑同口径。
+
+### 13.1 幻觉 API 的分布:几乎完全是 RL 前的行为
+
+| 阶段 | 臂数 | `model_zero` 合计 | 平均每臂 |
+|---|---|---|---|
+| **RL 前**(base / SFT) | 11 | **106** | 9.6 |
+| **RL 后** | 9 | **1** | 0.1 |
+
+逐臂:base9b_v2c 13、ft01mix_a10 13、ft03nm_a20 15、lo32nm_a10 14(9B 非 RL);
+rlv5_base_s20 **0**、rlv5_ft01mix_a10_s20 **0**、rlv5_ft03nm_a20_s20 1、rlv5_lo32nm_a10_s20 **0**;
+4B 全部 RL 臂也都是 **0**。
+
+也就是说 **RL 基本上消灭了"瞎编库函数参数"这个行为**,而这一整类失败此前被判题口径吞掉了。
+
+### 13.2 对 research 均分的影响:方向是对 RL 有利,但不改变先验 vs base 的结论
+
+| 臂 | 阶段 | 旧 n | 新 n | 旧均值 | 新均值 | Δ |
+|---|---|---|---|---|---|---|
+| base9b_v2c | base | 305 | 320 | 10.22 | 10.37 | +0.15 |
+| ft01mix_a10 | sft | 302 | 317 | 11.48 | 11.57 | +0.09 |
+| ft03nm_a20 | sft | 301 | 320 | 9.54 | 10.23 | +0.68 |
+| lo32nm_a10 | sft | 304 | 320 | 10.09 | 9.90 | **−0.19** |
+| base9b_v2c_y2026 | rep | 298 | 319 | 9.42 | 9.11 | **−0.31** |
+| rlv5_base_s20 | rl_base | 310 | 315 | 15.25 | 16.59 | +1.35 |
+| rlv5_ft01mix_a10_s20 | rl_sft | 308 | 314 | 17.24 | 18.60 | +1.36 |
+| rlv5_lo32nm_a10_s20 | rl_sft | 301 | 311 | 17.58 | 18.95 | +1.37 |
+| rlv5_4b_base_s20 | rl_base | 313 | 318 | 7.99 | 9.13 | +1.14 |
+| rlv5_4b_ft01mix_a10_s20 | rl_sft | 310 | 319 | 20.17 | 21.21 | +1.04 |
+
+RL 臂补回来的几乎全是真分数(+1.0~+1.4),非 RL 臂补回来的一大半是 0(+0.09 ~ −0.31),
+所以这个修正**把 RL 与非 RL 的差距拉得更大**——是对我们有利的方向,但它是一次纠偏,不是调参。
+
+**关键是它不改变我们自己的那条结论**:9B SFT 阶段 ft01mix − base,旧口径 11.48 − 10.22 = **+1.26**,
+新口径 11.57 − 10.37 = **+1.20**;RL 阶段 rlv5_ft01mix − rlv5_base,旧 17.24 − 15.25 = **+1.99**,
+新 18.60 − 16.59 = **+2.01**。先验相对 base 的优势对这次修正是稳健的。
+
+### 13.3 覆盖率
+
+research 各臂从 298–313 / 320 提到 **311–320 / 320**。剩下的缺口是真·基础设施:
+`vdb_pareto/*` 的 faiss `SIGABRT`(C++ 层 abort,写不出 result.json)与 `imagenet_pareto` / `llm_sql`
+的 2400s 墙钟超时。这些没有被记 0,仍然留作 error 行。
