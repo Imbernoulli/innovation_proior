@@ -393,3 +393,30 @@ base 臂**自己重跑一次**就能做出 +0.062(p=0.012),与 lo32nm 的 +0.065
 > **§11 结论:没有任何跨领域词汇迁移的证据。** 不配对的汇总表之所以看着有差,
 > 一是被 “simulated annealing” 主导(FrontierCS 上 20.6% 里有 17 个百分点是它),
 > 二是没有噪声底做对照。加上复跑臂之后,SFT 的跨领域优势整条消失。
+
+## 12. 可交付性审计:20 个臂 x 3 个 bench 的格子是否都跑齐了
+
+完整表见 `innov_quant/coverage_audit.md`(由 `innov_quant/coverage_audit.py` 生成)。结论:
+
+- **没有任何一个臂少跑过 batch。** 20 个臂在三个 bench 上的 `keys_seen` 分别恒等于 860 / 320 / 200,
+  也就是 FCS 172 题 x5、research 64 题 x5、ALE 40 题 x5,一格不差。
+- **缺口全部来自判题侧报错,不是生成侧。** 丢失率 FCS 1.01%、ALE 1.50%、research 4.47%;
+  异常类只有三种:`RuntimeError: FrontierCS judge infrastructure failure`(230 行,集中在 143/148/153/160 这几题)、
+  `ResearchInfraError`(1061 行,绝大多数被重试补回,集中在 symbolic_regression/*)、
+  `AleInfraError: private_eval failed`(77 行,集中在 ahc003)。
+- **整题丢失是跨臂一致的系统性坏题,不是某条臂的问题**:`symbolic_regression/sincos` 在 19/20 个臂上 5 次全失败;
+  `ahc003` 在 10/20 个臂上全失败;FCS `153` 在 `ft01mix_a10` 与 `rlv5_ft03nm_a20_s20` 上全失败;
+  `grammar_fuzzing/fuzzer/sql` 在两个 lo32nm 相关臂上全失败。
+- **配对检验用的是公共键交集**,所以上述不平衡不会进入结论:FCS 9B 815 键 / 170 题、4B 827 键 / 172 题;
+  ALE 9B 196 / 40、4B 195 / 39;research 9B 279 / 59、4B 291 / 61。research 是三者里最薄的一块。
+- MLS 侧 12 个臂 x 21 题 x 两代(old / `_p1`)= 504 行全部有分,`_p1` 代无串行污染行(`stale_row` 0)、无缺轨迹行。
+
+**仍然存在、必须在论文里写明的口径限制**(这些不是覆盖问题,是设计问题):
+
+1. `rlv5_ft03nm_a20_s20` 的 FCS 与 ALE 是在 gpu-ee `della-i12g1`、speedFactor **0.556** 上判的,其余臂是 cpu 0.79–0.83 或 ailab 0.95–1.02。
+   ALE 按墙钟计分,**这条臂的 ALE 数字不能与别人直接比**;FCS 受影响小但同样不干净。
+2. 9B 的 base / 三个 SFT 臂在 cpu 分区(0.79–0.83)判,RL 臂在 ailab(~1.0)判。跨 RL 的 ALE 比较要用 `_y2026` 复跑臂
+   (全部 ailab)作 base/SFT 侧。
+3. 9B research 的 shard_0/shard_1 有重叠世代(同一 (题, sample_idx) 两次独立生成),当前规则取后者;42–43/140 个重复键分数不同。
+4. 4B 没有 ft03nm 这条 setting;MLS 的 4B 只有 base 与 ft01mix 两条线,没有任何 lo32nm。涉及 ft03nm / 4B-lo32nm 的跨 bench 结论只能是部分覆盖。
+5. 30–60% 的 RL 臂抽样在 32768 token 处被截断、没有 `</think>`;所有代码层面的分析只用完成的抽样。
