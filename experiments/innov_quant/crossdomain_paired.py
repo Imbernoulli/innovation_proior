@@ -22,12 +22,31 @@ TERMS = {
 UNION = re.compile("|".join(f"(?:{v})" for v in TERMS.values()), re.I)
 NOSA = re.compile("|".join(f"(?:{v})" for k, v in TERMS.items() if k != "simulated annealing"), re.I)
 hits = collections.defaultdict(lambda: [0, 0, 0])   # (bench, arm, problem) -> [n, hit_all, hit_nosa]
-for bench in BENCHES:
-    for arm in ARMS:
-        ok, _ = load(arm, bench)
-        for (prob, si), v in ok.items():
-            t = v["text"]; h = hits[(bench, arm, prob)]
-            h[0] += 1; h[1] += bool(UNION.search(t)); h[2] += bool(NOSA.search(t))
+import os, sys, csv as _csv
+HERE = os.path.dirname(os.path.abspath(__file__)); PARTS = os.path.join(HERE, "cd_parts")
+os.makedirs(PARTS, exist_ok=True)
+_JOBS = [(b, a) for b in BENCHES for a in ARMS]
+_r = int(os.environ.get("ROT", "0")) % max(1, len(_JOBS))
+_JOBS = _JOBS[_r:] + _JOBS[:_r]
+for bench, arm in _JOBS:
+        part = os.path.join(PARTS, "%s__%s.csv" % (bench, arm))
+        if not os.path.exists(part):
+            loc = collections.defaultdict(lambda: [0, 0, 0])
+            ok, _ = load(arm, bench)
+            for (prob, si), v in ok.items():
+                t = v["text"]; h = loc[prob]
+                h[0] += 1; h[1] += bool(UNION.search(t)); h[2] += bool(NOSA.search(t))
+            tmp = part + ".tmp"
+            with open(tmp, "w", newline="") as fh:
+                w = _csv.writer(fh); w.writerow(["problem","n","hit_all","hit_nosa"])
+                for prob, h in loc.items(): w.writerow([prob, h[0], h[1], h[2]])
+            os.replace(tmp, part)
+            sys.stderr.write("%s %s done\n" % (bench, arm))
+        with open(part) as fh:
+            for r in _csv.DictReader(fh):
+                h = hits[(bench, arm, r["problem"])]
+                h[0] += int(r["n"]); h[1] += int(r["hit_all"]); h[2] += int(r["hit_nosa"])
+sys.stderr.write("CD_ALLDONE\n")
 L = []
 for bench in BENCHES:
     L.append(f"# {bench}\n")
