@@ -46,7 +46,10 @@ for _ in range(2):
     x=socket.socket(); x.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,1); x.bind(("127.0.0.1",0)); s.append(x)
 print(*[y.getsockname()[1] for y in s])
 for y in s: y.close()')"
-    export PORT="$_P1" GJ_PORT="$_P2" GJ_BACKEND="${GJ_BACKEND:-auto}"
+    # shim, not auto: on ailab `auto` now picks the real go-judge, which puts itself in its own
+    # systemd scope outside the SLURM cgroup and gets SIGKILLed. The shim is also what the runs
+    # that produced the existing scores actually used, so it keeps the judge topology comparable.
+    export PORT="$_P1" GJ_PORT="$_P2" GJ_BACKEND="${GJ_BACKEND:-shim}"
     export GJ_CGROUP_PREFIX="gojudge-${SLURM_JOB_ID:-$$}"
     export RUNTIME_DIR="$D/.cache/frontiercs-judge-rejudge-${SLURM_JOB_ID:-manual}"
     export FRONTIERCS_JUDGE_URL="http://127.0.0.1:${PORT}"
@@ -89,11 +92,38 @@ for y in s: y.close()')"
   *) echo "unknown BENCH=$BENCH" >&2; exit 2;;
 esac
 
+# Record where the repaired cells were judged. ALE is wall-clock scored and FrontierCS TLE
+# verdicts are speed-sensitive, so a repaired shard whose topology is not written down is a
+# confound waiting to happen -- dump2's judge_meta() globs shard_*/judge_node_meta.json.
+write_meta() {
+  local arm="$1" sub="$2" dir="$D/outputs/cc_eval_${arm}_${sub}/shard_rejudge"
+  mkdir -p "$dir"
+  python3 - "$dir/judge_node_meta.json" <<'PY2'
+import json, os, socket, subprocess, sys
+speed = None
+try:
+    out = subprocess.run(["python3", os.environ["SHIM_BIN"], "-calibrate-only"],
+                         capture_output=True, text=True, timeout=90).stdout
+    speed = (json.loads(out[out.index("{"):]) or {}).get("speedFactor")
+except Exception:
+    pass
+json.dump({"node": socket.gethostname().split(".")[0],
+           "partition": os.environ.get("SLURM_JOB_PARTITION"),
+           "node_speed_calibration": {"speedFactor": speed},
+           "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
+           "rejudge": True}, open(sys.argv[1], "w"), indent=1)
+PY2
+}
+
 rc=0
 for ARM in $ARMS; do
   echo "=== [rejudge] $ARM / $BENCH"
+  case "$BENCH" in
+    frontiercs|alebench)     write_meta "$ARM" thinking_32k_both_vllm ;;
+    frontiercs_research)     write_meta "$ARM" research_thinking_32k_vllm ;;
+  esac
   python3 "$D/rejudge/rejudge_missing.py" --arm "$ARM" --bench "$BENCH" --keys "$KEYS" \
-      ${FRONTIERCS_JUDGE_URL:+--judge-url "$FRONTIERCS_JUDGE_URL"} ${REJUDGE_LIMIT:+--limit $REJUDGE_LIMIT} || rc=1
+      ${FRONTIERCS_JUDGE_URL:+--judge-url "$FRONTIERCS_JUDGE_URL"} ${REJUDGE_LIMIT:+--limit $REJUDGE_LIMIT} ${REJUDGE_CONTROL:+--control $REJUDGE_CONTROL} || rc=1
 done
 echo "[rejudge] ALLDONE rc=$rc"
 exit $rc

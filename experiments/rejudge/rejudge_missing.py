@@ -56,6 +56,36 @@ def _patch_research():
     print(f"[rejudge] research OFFICIAL_ROOT -> {root}", flush=True)
 
 
+_MODEL_SIDE_HINTS = (
+    "is not a valid keyword argument",      # model called PySRRegressor with a kwarg that does not exist
+    "unexpected keyword argument",
+    "did you mean",
+)
+
+
+def _is_model_side(bench, msg):
+    """True when the evaluator ran and the failure is the model's code, not the environment.
+
+    Conservative on purpose: the message must (a) show the evaluator actually executed, and
+    (b) match NONE of the harness's own infra markers, which we import rather than re-derive.
+    Off by default; set REJUDGE_MODEL_ERR_AS_ZERO=1 to enable.
+    """
+    if os.environ.get("REJUDGE_MODEL_ERR_AS_ZERO", "") != "1":
+        return False
+    if bench != "frontiercs_research":
+        return False
+    low = msg.lower()
+    try:
+        from frontiercs_research_cpu_eval import _INFRA_MARKERS
+    except Exception:
+        return False
+    if any(m in low for m in _INFRA_MARKERS):
+        return False
+    if "evaluation failed:" not in low and "evaluator produced no result" not in low:
+        return False
+    return any(h in low for h in _MODEL_SIDE_HINTS)
+
+
 def load_rows(arm, bench, want):
     """Last stored row per wanted key, preferring one that actually has text."""
     best = {}
@@ -86,6 +116,10 @@ def main():
     ap.add_argument("--workers", type=int, default=int(os.environ.get("REJUDGE_WORKERS", "4")))
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--out", default="")
+    ap.add_argument("--control", type=int, default=0,
+                    help="instead of repairing, re-judge N cells that ALREADY scored >0 on the same "
+                         "problems, and report old vs new. Proves the environment reproduces known-good "
+                         "scores before any failure here is blamed on the model.")
     a = ap.parse_args()
 
     sys.path.insert(0, f"{FS}/scripts")
@@ -103,13 +137,34 @@ def main():
     want = {(str(g), int(i)) for g, i in json.load(open(a.keys)).get(f"{a.arm}|{a.bench}", [])}
     if not want:
         print(f"[rejudge] nothing to do for {a.arm}|{a.bench}"); return 0
-    rows = load_rows(a.arm, a.bench, want)
-    todo = [(k, r) for k, r in rows.items() if (r.get("text") or "")]
+    if a.control:
+        probs = {g for g, _ in want}
+        scored = {}
+        for f in sorted(glob.glob(f"{D}/outputs/cc_eval_{a.arm}_{SUB[a.bench]}/shard_*/samples.jsonl")):
+            if "/shard_rejudge/" in f:
+                continue
+            for line in open(f):
+                try:
+                    r = json.loads(line)
+                except Exception:
+                    continue
+                if r.get("data_source") != a.bench or r.get("error") or not (r.get("text") or ""):
+                    continue
+                if str(r["ground_truth"]) not in probs:
+                    continue
+                if float((r.get("metrics") or {}).get("score") or 0) > 0:
+                    scored[(str(r["ground_truth"]), int(r.get("sample_idx", -1)))] = r
+        todo = list(scored.items())[: a.control]
+        print(f"[rejudge] CONTROL: {len(todo)} already-scored cells on the same problems", flush=True)
+    else:
+        rows = load_rows(a.arm, a.bench, want)
+        todo = [(k, r) for k, r in rows.items() if (r.get("text") or "")]
     if a.limit:
         todo = todo[: a.limit]
     print(f"[rejudge] {a.arm} {a.bench}: {len(want)} wanted, {len(todo)} have text", flush=True)
 
-    out = a.out or f"{D}/outputs/cc_eval_{a.arm}_{SUB[a.bench]}/shard_rejudge/samples.jsonl"
+    out = a.out or (f"{D}/rejudge/control_{a.arm}_{a.bench}.jsonl" if a.control else
+                    f"{D}/outputs/cc_eval_{a.arm}_{SUB[a.bench]}/shard_rejudge/samples.jsonl")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     done, lock, t0 = [0], threading.Lock(), time.time()
     tally = collections.Counter()
@@ -125,13 +180,29 @@ def main():
                        frontiercs_score_backend="official")
             rec["metrics"] = {kk: vv for kk, vv in m.items()}
             rec["error"] = None
+            rec["old_score"] = (r.get("metrics") or {}).get("score")
             tally["scored"] += 1
             tally["nonzero"] += 1 if (m.get("score") or 0) > 0 else 0
-        except Exception as exc:                      # still infra-broken -> keep it an error row
-            rec["metrics"] = {"reward": 0.0, "score": 0.0}
-            rec["error"] = repr(exc)[:400]
-            rec["prev_error"] = str(r.get("error"))[:200]
-            tally["still_failed"] += 1
+        except Exception as exc:
+            msg = repr(exc)
+            if _is_model_side(a.bench, msg):
+                # The evaluator RAN, in a known-good environment, and died on the model's own code
+                # (e.g. `accuracy_threshold` is not a valid keyword argument for PySRRegressor).
+                # frontiercs_research_cpu_eval.py:495 calls any rc!=0 "infra", which drops these
+                # from the denominator instead of scoring them -- and that biases each arm upward
+                # in proportion to how much broken code it writes. Score them 0, and flag the row
+                # so the reclassification stays auditable and reversible.
+                rec["metrics"] = {"reward": 0.0, "score": 0.0, "score_unbounded": 0.0}
+                rec["error"] = None
+                rec["model_error"] = True
+                rec["model_error_msg"] = msg[:300]
+                rec["prev_error"] = str(r.get("error"))[:200]
+                tally["model_zero"] += 1
+            else:
+                rec["metrics"] = {"reward": 0.0, "score": 0.0}
+                rec["error"] = msg[:400]
+                rec["prev_error"] = str(r.get("error"))[:200]
+                tally["still_failed"] += 1
         with lock:
             done[0] += 1
             if done[0] % 10 == 0 or done[0] == len(todo):
