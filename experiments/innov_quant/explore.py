@@ -20,9 +20,19 @@ ALT = re.compile(r"\balternativ|\banother (approach|idea|way|option|strategy)|\b
                  r"\bwhat if\b|\blet me (try|instead|reconsider|rethink)|\bon second thought\b|"
                  r"\bbetter (idea|approach)\b|\bdifferent (approach|idea|way)\b", re.I)
 
-rows = []
-for bench in BENCHES:
-    for arm in ARMS:
+import csv as _csv
+PARTS = os.path.join(HERE, "explore_parts")
+FIELDS = ["bench","fam","arm","stage","problem","sample_idx","score","rlen","n_reason","n_code",
+          "n_abandon","explore_ratio","n_alt","n_reason_10k","n_alt_10k","n_abandon_10k"]
+JOBS = [(b, a) for b in BENCHES for a in ARMS]
+_rot = int(os.environ.get("ROT", "0")) % max(1, len(JOBS))
+JOBS = JOBS[_rot:] + JOBS[:_rot]
+if os.environ.get("REV"): JOBS = JOBS[::-1]
+for bench, arm in JOBS:
+        part = os.path.join(PARTS, "%s__%s.csv" % (bench, arm))
+        if os.path.exists(part):
+            sys.stderr.write("skip %s %s (done)\n" % (bench, arm)); continue
+        rows = []
         try: ok, _seen = load(arm, bench)
         except Exception as e:
             sys.stderr.write("skip %s %s: %s\n" % (arm, bench, e)); continue
@@ -46,9 +56,17 @@ for bench in BENCHES:
                              n_alt=len(ALT.findall(reason)),
                              n_reason_10k=1e4*len(tr)/L, n_alt_10k=1e4*len(ALT.findall(reason))/L,
                              n_abandon_10k=1e4*len(tr - tc)/L))
+        tmp = part + ".tmp"
+        with open(tmp, "w", newline="") as fh:
+            w = _csv.DictWriter(fh, fieldnames=FIELDS); w.writeheader(); w.writerows(rows)
+        os.replace(tmp, part)
         sys.stderr.write("%s %s done (%d)\n" % (bench, arm, len(rows)))
 
-import csv
+import glob as _g
+allr = []
+for f in sorted(_g.glob(os.path.join(PARTS, "*.csv"))):
+    with open(f) as fh:
+        allr.extend(list(_csv.DictReader(fh)))
 with open(os.path.join(HERE, "explore_metrics.csv"), "w", newline="") as fh:
-    w = csv.DictWriter(fh, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
-sys.stderr.write("rows %d\n" % len(rows))
+    w = _csv.DictWriter(fh, fieldnames=FIELDS); w.writeheader(); w.writerows(allr)
+sys.stderr.write("ALLDONE rows %d\n" % len(allr))
