@@ -56,9 +56,16 @@ def _seed(item, k):
 
 
 def one(args, item, k):
+    # GEN_SYSTEM_PROMPT (year-sweep, 2026-09-11): optional system message prepended to every
+    # request. Unset/empty = historical behaviour (bare user prompt), so every number already
+    # produced is unchanged; the year sweep sets it to "It is now year {Y}. You are a good researcher."
+    msgs = [{"role": "user", "content": item["prompt"]}]
+    sysp = os.environ.get("GEN_SYSTEM_PROMPT", "").strip()
+    if sysp:
+        msgs = [{"role": "system", "content": sysp}] + msgs
     payload = {
         "model": args.model,
-        "messages": [{"role": "user", "content": item["prompt"]}],
+        "messages": msgs,
         "temperature": args.temperature, "top_p": args.top_p,
         "max_tokens": args.max_tokens, "n": 1, "seed": _seed(item, k),
         "extra_body": {"top_k": args.top_k},

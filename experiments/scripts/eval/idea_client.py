@@ -43,9 +43,18 @@ def parse_answer(text, choices):
 
 
 def one(args, item, k):
+    # IDEA_SYSTEM_PROMPT: optional system message prepended to every request, mirroring
+    # gen_client.py's GEN_SYSTEM_PROMPT. Unset/empty = historical behaviour (bare user prompt),
+    # so every number already on disk is unchanged; the unified 2026 protocol sets it to
+    # "It is now year 2026. You are a good researcher." -- these tasks had NO system prompt at all
+    # before, which is the one place the year could silently go missing.
+    msgs = [{"role": "user", "content": item["prompt"]}]
+    sysp = os.environ.get("IDEA_SYSTEM_PROMPT", "").strip()
+    if sysp:
+        msgs = [{"role": "system", "content": sysp}] + msgs
     payload = {
         "model": args.model,
-        "messages": [{"role": "user", "content": item["prompt"]}],
+        "messages": msgs,
         "temperature": args.temperature, "top_p": args.top_p,
         "max_tokens": args.max_tokens, "n": 1, "seed": 1000 * k + 7,
         "extra_body": {"top_k": args.top_k},

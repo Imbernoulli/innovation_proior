@@ -104,8 +104,14 @@ def build(task, meta, cand):
 
 
 def ask(args, prompt):
+    # JUDGE_SYSTEM_PROMPT: see IDEA_SYSTEM_PROMPT in idea_client.py. Unset/empty = historical
+    # behaviour, so numbers already on disk are unchanged.
+    msgs = [{"role": "user", "content": prompt}]
+    sysp = os.environ.get("JUDGE_SYSTEM_PROMPT", "").strip()
+    if sysp:
+        msgs = [{"role": "system", "content": sysp}] + msgs
     payload = {"model": args.model,
-               "messages": [{"role": "user", "content": prompt}],
+               "messages": msgs,
                "temperature": args.temperature, "top_p": 0.95,
                "max_tokens": args.max_tokens, "n": 1,
                "extra_body": {"top_k": 20}}
