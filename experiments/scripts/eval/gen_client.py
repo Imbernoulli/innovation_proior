@@ -27,8 +27,21 @@ import requests
 NUM_RE = re.compile(r"ANSWER\s*:\s*(-?\d+(?:\.\d+)?)", re.I)
 
 
+# Fallbacks, tried ONLY after the strict NUM_RE above fails, so a row that already parsed can
+# never change value. Measured on cc_gen_rlv5_4b_base_s20(_y26sp): recovers 166/319 and 257/547
+# of the "unparsed" rows from the stored 400-char tail alone. The failures are formatting, not
+# refusals -- the model ends with "Score: 8.5", "So 9.", "**ANSWER:** 8" instead of "ANSWER: 8".
+# Note these serves return reasoning INLINE in content (reasoning_content is empty, which is why
+# think_chars is 0 everywhere), so there is often no literal </think> to split on.
+TOL_RES = (
+    re.compile(r"ANSWER\s*\**\s*:?\s*\**\s*(-?\d+(?:\.\d+)?)\s*(?:/\s*10)?", re.I),
+    re.compile(r"(?:final|overall)?\s*(?:score|rating|answer)\s*(?:is|=|:)?\s*\**\s*(-?\d+(?:\.\d+)?)\s*(?:/\s*10)?", re.I),
+    re.compile(r"(?:so|okay,?\s*i'?ll (?:go with|say)|i'?ll stick with|final decision:?)\s*\**\s*(-?\d+(?:\.\d+)?)", re.I),
+)
+
+
 def parse_number(text):
-    """last ANSWER: wins; fall back to a bare number on one of the final lines."""
+    """last ANSWER: wins; then tolerant fallbacks; then a bare number on one of the final lines."""
     if not text:
         return None
     body = text.split("</think>")[-1]
@@ -39,10 +52,21 @@ def parse_number(text):
         except ValueError:
             return None
         return min(10.0, max(0.0, v))
-    for line in reversed([l.strip() for l in body.splitlines() if l.strip()][-3:]):
-        m = re.fullmatch(r"(-?\d+(?:\.\d+)?)\s*(?:/\s*10)?", line)
+    for pat in TOL_RES:
+        hits = pat.findall(body) or pat.findall(text)
+        for h in reversed(hits):
+            try:
+                v = float(h)
+            except ValueError:
+                continue
+            if 0.0 <= v <= 10.0:      # reject the template echo "ANSWER: <number between 0 and 10>"
+                return v
+    for line in reversed([l.strip(" *#`>-") for l in body.splitlines() if l.strip()][-4:]):
+        m = re.fullmatch(r"(-?\d+(?:\.\d+)?)\s*(?:/\s*10)?\.?", line)
         if m:
-            return min(10.0, max(0.0, float(m.group(1))))
+            v = float(m.group(1))
+            if 0.0 <= v <= 10.0:
+                return v
     return None
 
 
@@ -67,8 +91,14 @@ def one(args, item, k):
         "model": args.model,
         "messages": msgs,
         "temperature": args.temperature, "top_p": args.top_p,
+        # presence_penalty is the one parameter this client used to be missing relative to the
+        # RL training rollout and the main bench (both send 1.5). min_p/repetition_penalty were
+        # already at the protocol values by server default; send them explicitly so a server
+        # default change cannot silently move the numbers.
+        "presence_penalty": args.presence_penalty,
         "max_tokens": args.max_tokens, "n": 1, "seed": _seed(item, k),
-        "extra_body": {"top_k": args.top_k},
+        "extra_body": {"top_k": args.top_k, "min_p": args.min_p,
+                       "repetition_penalty": args.repetition_penalty},
     }
     t0 = time.time()
     for attempt in range(4):
@@ -89,7 +119,8 @@ def one(args, item, k):
             if item.get("kind") == "numeric":
                 p = parse_number(txt)
                 rec.update({"pred": p, "target": item.get("target"),
-                            "unparsed": p is None, "text_tail": txt[-400:]})
+                            "unparsed": p is None, "text_tail": txt[-400:],
+                            "text_full": txt[:20000]})
             else:
                 # the judge reads this, so keep the visible answer whole and drop the
                 # chain of thought -- judging the reasoning would grade a different thing
@@ -118,9 +149,19 @@ def main():
     ap.add_argument("--top-p", type=float, default=0.95)
     ap.add_argument("--top-k", type=int, default=20)
     ap.add_argument("--max-tokens", type=int, default=32768)
+    ap.add_argument("--presence-penalty", type=float, default=1.5)
+    ap.add_argument("--min-p", type=float, default=0.0)
+    ap.add_argument("--repetition-penalty", type=float, default=1.0)
     ap.add_argument("--timeout", type=float, default=2400)
     ap.add_argument("--only-task", default=None)
     a = ap.parse_args()
+    # Auditable in the job log: the sampling protocol this run actually sent. Must match the RL
+    # training rollout (temperature 1.0, top_p 0.95, top_k 20, min_p 0.0, presence_penalty 1.5,
+    # repetition_penalty 1.0, max 32768) or the arm is being measured off-protocol.
+    print("[gen-client] sampling: " + repr({
+        "temperature": a.temperature, "top_p": a.top_p, "top_k": a.top_k, "min_p": a.min_p,
+        "presence_penalty": a.presence_penalty, "repetition_penalty": a.repetition_penalty,
+        "max_tokens": a.max_tokens, "n_samples": a.n_samples}), flush=True)
 
     items = [json.loads(l) for l in open(a.tasks)]
     if a.only_task:

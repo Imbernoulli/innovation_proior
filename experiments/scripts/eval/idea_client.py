@@ -56,8 +56,12 @@ def one(args, item, k):
         "model": args.model,
         "messages": msgs,
         "temperature": args.temperature, "top_p": args.top_p,
+        # See gen_client.py: presence_penalty=1.5 aligns this client with the RL training
+        # rollout and the main bench; min_p/repetition_penalty are sent explicitly, not defaulted.
+        "presence_penalty": args.presence_penalty,
         "max_tokens": args.max_tokens, "n": 1, "seed": 1000 * k + 7,
-        "extra_body": {"top_k": args.top_k},
+        "extra_body": {"top_k": args.top_k, "min_p": args.min_p,
+                       "repetition_penalty": args.repetition_penalty},
     }
     t0 = time.time()
     for attempt in range(4):
@@ -99,9 +103,19 @@ def main():
     ap.add_argument("--top-p", type=float, default=0.95)
     ap.add_argument("--top-k", type=int, default=20)
     ap.add_argument("--max-tokens", type=int, default=8192)
+    ap.add_argument("--presence-penalty", type=float, default=1.5)
+    ap.add_argument("--min-p", type=float, default=0.0)
+    ap.add_argument("--repetition-penalty", type=float, default=1.0)
     ap.add_argument("--timeout", type=float, default=1800)
     ap.add_argument("--only-task", default=None)
     a = ap.parse_args()
+    # Auditable in the job log: the sampling protocol this run actually sent. Must match the RL
+    # training rollout (temperature 1.0, top_p 0.95, top_k 20, min_p 0.0, presence_penalty 1.5,
+    # repetition_penalty 1.0, max 32768) or the arm is being measured off-protocol.
+    print("[idea-client] sampling: " + repr({
+        "temperature": a.temperature, "top_p": a.top_p, "top_k": a.top_k, "min_p": a.min_p,
+        "presence_penalty": a.presence_penalty, "repetition_penalty": a.repetition_penalty,
+        "max_tokens": a.max_tokens, "n_samples": a.n_samples}), flush=True)
 
     items = [json.loads(l) for l in open(a.tasks)]
     if a.only_task:
