@@ -163,8 +163,11 @@ def main():
         todo = todo[: a.limit]
     print(f"[rejudge] {a.arm} {a.bench}: {len(want)} wanted, {len(todo)} have text", flush=True)
 
+    # NOTE: frontiercs and alebench share one output dir (thinking_32k_both_vllm), so the repaired
+    # shard MUST be per-bench -- a single shard_rejudge/samples.jsonl would have the two benches
+    # truncating each other's results. Both names still glob as shard_* and sort after shard_0/1.
     out = a.out or (f"{D}/rejudge/control_{a.arm}_{a.bench}.jsonl" if a.control else
-                    f"{D}/outputs/cc_eval_{a.arm}_{SUB[a.bench]}/shard_rejudge/samples.jsonl")
+                    f"{D}/outputs/cc_eval_{a.arm}_{SUB[a.bench]}/shard_rejudge_{a.bench}/samples.jsonl")
     os.makedirs(os.path.dirname(out), exist_ok=True)
     done, lock, t0 = [0], threading.Lock(), time.time()
     tally = collections.Counter()
