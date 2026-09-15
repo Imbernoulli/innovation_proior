@@ -36,7 +36,10 @@ go() {  # family wrapper walltime jobprefix extra-env
   for arm in "${ARMS[@]}"; do
     M="${MP[$arm]:?unknown arm $arm}"
     [ -f "$M/config.json" ] || { echo "no model $M for $arm"; continue; }
-    TAG="${arm}_y26sp"
+    # TAGSUF lets an off-protocol run be kept as a labelled control instead of being overwritten.
+    # y26sp   = year-2026 system prompt, but sampled WITHOUT presence_penalty (pre-alignment).
+    # y26pp   = same prompt, sampled on the RL rollout protocol (presence_penalty=1.5).
+    TAG="${arm}_${TAGSUF:-y26sp}"
     local ex="${extra//@TAG@/$TAG}"        # OUT_DIR needs the per-arm tag; sbatch --export does no expansion
     [ -d "$D/logs/locks/${pre}-${TAG}.lock" ] && { echo "SKIP ${pre}-${TAG} (lock)"; continue; }
     j=$(sbatch --parsable --partition=ailab --account=chij --qos=short --gres=gpu:1 -c 8 --mem=200G \
