@@ -35,7 +35,7 @@ submit() {  # bench ngroups walltime workers extra
     i=$((i+1))
     local j
     j=$(sbatch --parsable --partition=ailab --account=chij --qos=short --gres=gpu:1 -c 8 --mem=200G \
-        --time="$wall" --job-name="rj-${bench:0:4}-$i" \
+        --time="$wall" --job-name="rj-$(echo "$bench" | sed "s/frontiercs_research/res/;s/frontiercs/fcs/;s/alebench/ale/")-$i" \
         --output="$D/logs/%x-%j.out" --error="$D/logs/%x-%j.out" \
         --export=ALL,"BENCH=$bench,ARMS=$arms,KEYS=$KEYS,REJUDGE_WORKERS=$workers${extra:+,$extra}" \
         "$D/rejudge/rejudge_job2.sh") || { echo "sbatch failed: $bench $i"; continue; }

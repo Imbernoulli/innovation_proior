@@ -242,5 +242,11 @@ def summarise(path, out_path, a_tag, b_tag, task):
     print(json.dumps(summary, indent=1))
 
 
+def _log_sysprompt():
+    _sp = os.environ.get("JUDGE_SYSTEM_PROMPT", "").strip()
+    print("[judge-pointwise] system message: "
+          + (repr({"role": "system", "content": _sp}) if _sp else "(none)"), flush=True)
+
 if __name__ == "__main__":
+    _log_sysprompt()
     main()

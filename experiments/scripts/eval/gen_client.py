@@ -223,5 +223,11 @@ def summarise(samples_path, out_path):
     print(json.dumps(summary, indent=1))
 
 
+def _log_sysprompt():
+    _sp = os.environ.get("GEN_SYSTEM_PROMPT", "").strip()
+    print("[gen-client] system message: "
+          + (repr({"role": "system", "content": _sp}) if _sp else "(none)"), flush=True)
+
 if __name__ == "__main__":
+    _log_sysprompt()
     main()
