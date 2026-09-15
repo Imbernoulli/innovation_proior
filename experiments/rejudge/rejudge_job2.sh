@@ -96,7 +96,9 @@ esac
 # verdicts are speed-sensitive, so a repaired shard whose topology is not written down is a
 # confound waiting to happen -- dump2's judge_meta() globs shard_*/judge_node_meta.json.
 write_meta() {
-  local arm="$1" sub="$2" dir="$D/outputs/cc_eval_${arm}_${sub}/shard_rejudge_${BENCH}"
+  local arm="$1"
+  local sub="$2"
+  local dir="$D/outputs/cc_eval_${arm}_${sub}/shard_rejudge_${BENCH}"
   mkdir -p "$dir"
   python3 - "$dir/judge_node_meta.json" <<'PY2'
 import json, os, socket, subprocess, sys

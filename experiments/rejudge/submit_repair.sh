@@ -44,11 +44,11 @@ submit() {  # bench ngroups walltime workers extra
 }
 
 case "$WHICH" in
-  frontiercs)          submit frontiercs          6 20:00:00 6 ;;
+  frontiercs)          submit frontiercs          8 20:00:00 3 "REJUDGE_FCS_TIMEOUT=7200" ;;
   alebench)            submit alebench            2 08:00:00 3 ;;
   frontiercs_research) submit frontiercs_research 6 20:00:00 3 "REJUDGE_MODEL_ERR_AS_ZERO=1" ;;
   all) submit alebench 2 08:00:00 3
-       submit frontiercs 6 20:00:00 6
+       submit frontiercs 8 20:00:00 3 "REJUDGE_FCS_TIMEOUT=7200"
        submit frontiercs_research 6 20:00:00 3 "REJUDGE_MODEL_ERR_AS_ZERO=1" ;;
   *) echo "usage: submit_repair.sh [frontiercs|alebench|frontiercs_research|all]"; exit 2;;
 esac
