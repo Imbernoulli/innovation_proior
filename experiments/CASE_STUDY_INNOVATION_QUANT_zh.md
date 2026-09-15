@@ -482,3 +482,94 @@ RL 臂补回来的几乎全是真分数(+1.0~+1.4),非 RL 臂补回来的一大�
 research 各臂从 298–313 / 320 提到 **311–320 / 320**。剩下的缺口是真·基础设施:
 `vdb_pareto/*` 的 faiss `SIGABRT`(C++ 层 abort,写不出 result.json)与 `imagenet_pareto` / `llm_sql`
 的 2400s 墙钟超时。这些没有被记 0,仍然留作 error 行。
+
+## 14. idea / taste / research-judgment 三个 bench 一直在协议外采样
+
+### 14.1 六处推理参数的对照
+
+把 RL 训练 rollout、RL validation、主 bench、MLS、gen_client、idea_client、judge_pairwise/pointwise
+七条链路的采样参数逐条读出来比对(每条都追到实际构造请求的那一行,不看 wrapper 的注释),
+唯一真正的不一致是 **`presence_penalty`**:
+
+| 参数 | RL 训练 rollout | 主 bench | gen / idea / judge3 |
+|---|---|---|---|
+| temperature | 1.0 | 1.0 | 1.0 ✓ |
+| top_p / top_k | 0.95 / 20 | 0.95 / 20 | 0.95 / 20 ✓ |
+| min_p | 0.0 | 0.0 | 服务端默认 0.0(巧合对上) |
+| repetition_penalty | 1.0 | 1.0 | 服务端默认 1.0(巧合对上) |
+| **presence_penalty** | **1.5** | **1.5** | **代码里没有这个参数** ✗ |
+| max_tokens | 32768 | 32768 | gen 32768;idea 默认 8192,被 submitter 覆盖成 32768 |
+
+两个本来很像问题、实测不是的,记下来免得再翻案:
+
+- **`enable_thinking` 不是不一致。** Qwen3.5 的 chat template 默认就开思考。同一组 messages 三种渲染:
+  不传 kwargs 与传 `{"enable_thinking": True}` 逐字节相同(都以 `<|im_start|>assistant\n<think>\n` 结尾),
+  只有 `False` 会插入一个空 think 块。所以 gen/idea/judge 不发这个参数,拿到的就是 RL rollout 的行为;
+  主 bench 显式发 `True` 是个 no-op。
+- **idea 的 8192 上限不影响新跑批。** `extra_bench_submit.sh` 里 idea / ideav2 / judge3 三家都已写死
+  `MAX_TOKENS=32768`;8192 只影响历史数据。
+
+顺带查出两处不在本文范围、但会影响别的结论的:
+
+- **RL 自己的 validation 是个混血采样。** `agent_loop.py:496-499` 在 `validate=True` 分支里重置了
+  top_p / top_k / temperature,却没有重置 `presence_penalty` 和 `min_p`。所以 RL 的验证 rollout 跑的是
+  `top_p=1.0, temperature=1.0` 配 `presence_penalty=1.5`,既不等于训练 rollout 也不等于评测协议。
+- **MLS 的 thinking 从来没真开过。** config 写了 `thinking.enabled: true`、脚本头注释也写了 "THINKING mode ON",
+  但代码门是 `is_qwen = bare_model.lower().startswith("qwen")`(`models.py:417`),而我们服务的 TAG 是
+  `base9b` / `ft01mix_a10` / … 全都过不了,于是 `enable_thinking` 一次都没发出去;同一个门还管着
+  `tool_choice="required"` 的抑制,所以 `tool_choice="required"` 也被强上了。
+
+### 14.2 `presence_penalty` 就是「解析不出来」的原因
+
+先把「解析不出来」量清楚。旧跑批(`_y26sp`,有 2026 年 system prompt、无 presence_penalty)逐臂:
+
+| 臂 | unparsed | 中位 tokens | finish_reason=length |
+|---|---|---|---|
+| base9b_v2c | 0.1% | 5464 | 6 |
+| base4b | 0.2% | 5385 | 15 |
+| ft01mix_a10 | 0.4% | 5339 | 17 |
+| 4b_ft01mix_a10 | 0.6% | 5061 | 28 |
+| rlv5_base_s20 | 6.5% | 5096 | 119 |
+| rlv5_ft01mix_a10_s20 | 7.2% | 5334 | 192 |
+| rlv5_4b_ft01mix_a10_s20 | 11.9% | 4868 | 332 |
+| **rlv5_4b_base_s20** | **38.0%** | **2862** | **0** |
+
+不是普遍现象,是 RL 之后才出现的,而且 rlv5_4b_base_s20 是数量级离群。
+
+重跑一遍(`_y26pp`,同 prompt、同 seed,只加 `presence_penalty=1.5`)。但重跑同时还带了新的容错 parser,
+两个改动混在一起不能直接归因。拆法:**对两边都存在的 400 字 `text_tail` 跑同一个严格 parser**,
+按 `(task, id, sample_idx)` 逐格配对——parser 固定,窗口固定,唯一变量就是 presence_penalty。
+(注意不能拿新跑批的 `text_full` 去比:那个字段我自己截断在 20000 字,960 行里有 230–435 行到顶,
+ANSWER 行被我的存储切掉了,测出来的「旧 parser 漏判」全是假的。)
+
+`liveidea_gen` 和 `review_weakness` 是自由文本任务,本来就没有 ANSWER 行,两边恒为 100%「漏判」,
+池化数字里的 33% 底噪全是任务配比造成的。真信号在两个数值任务上:
+
+**openreview_novel + openreview_score,严格 parser,400 字窗口,逐格配对,n=960/臂:**
+
+| 臂 | strict-miss 无 pp | 有 pp | 每答 tokens |
+|---|---|---|---|
+| ft01mix_a10 | 1.7% | **0.0%** | 6173 → 4695 |
+| 4b_ft01mix_a10 | 2.2% | **0.9%** | 4929 → 3253 |
+| rlv5_ft01mix_a10_s20 | 17.7% | **0.2%** | 10370 → 4457 |
+| rlv5_4b_base_s20 | 59.4% | **4.5%** | 2753 → 2859 |
+
+9B RL 臂的机制看得很清楚:没有 presence_penalty 时每个答案烧 **10370** tokens——就是复读,
+`finish_reason=length` 也在这一列最多(192 / 1440);加上之后降到 4457,漏判 17.7% → 0.2%。
+
+**rlv5_4b_base_s20 不是这个机制。** 它的 token 数几乎没动(2753 → 2859),`finish_reason=length`
+本来就是 0,中位长度还是全部臂里最短的,漏判却从 59.4% 掉到 4.5%。它不是复读也不是截断,
+是提前吐 EOS 就是不写答案行。为什么加 presence_penalty 会让它开始写,目前没有证据,不作解释。
+
+### 14.3 这对已有数字意味着什么
+
+**所有历史的 idea / taste / research-judgment 数字都是在协议外采到的**,而且偏差不是随机的:
+RL 臂受影响远大于 base/SFT 臂(17.7% 对 1.7%),也就是说旧口径**系统性地低估了 RL 臂**——
+被判 unparsed 的格子按 0 或按缺失处理,都会压 RL 臂的分。这个方向对我们的结论不利,
+所以 8 条臂(base 与 ft01mix 两条线 × 4B/9B × RL 前后)四个 family 全部按对齐后的协议重跑。
+旧跑批以 `_y26sp` 标签原样保留,新的是 `_y26pp`,同 prompt 同 seed,可以随时复查这次对比。
+
+代码侧:`gen_client.py` / `idea_client.py` 加了 `--presence-penalty`(默认 1.5)、`--min-p`、
+`--repetition-penalty`,参数放置逐字照抄主 bench(presence_penalty 走顶层,其余走 `extra_body`);
+两个 client 启动时打印实际发出的采样协议,作业日志可审。`judge_pairwise` / `judge_pointwise`
+服务的是固定裁判模型(未微调 9B),不是被测臂,`temperature=0.3` 是有意为之,没有改。
