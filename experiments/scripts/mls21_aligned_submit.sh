@@ -63,8 +63,16 @@ JOBSUF="${JOBSUF:-}"
 #      mlsroot/src/mlsbench/agent/interactive.py:85 读 MLSBENCH_SYS_PREFIX(年份条件句)
 # 注意 agent 客户端跑在宿主 python($D/envs/client/bin/python),不在 Apptainer 里,
 # 所以不需要 APPTAINERENV_ 前缀;容器只用来跑任务自己的代码。
-# 作业起来后仍要 grep `[mlsbench] sampling aligned:` 做经验确认 —— 静态链路对
-# 只能说明「会传到」,打印出来才说明「真的生效了」。
+# 2026-09-16 19:07 经验确认(14004044 base9b_v2c_al1 / 14004046 ft01mix_a10_al1):
+#   a) 16/16 已开工的 task_log 全部打出
+#      `[mlsbench] sampling aligned: temp=1.0 top_p=0.95 pp=1.5 top_k=20 min_p=0.0 rep=1.0 max_tokens=unset`
+#   b) 带空格的值会不会被 --export 的逗号列表截断,日志看不出来,所以直接读了运行中
+#      进程的环境:`ssh della-i24g3` 进 job cgroup,`tr "\0" "\n" < /proc/<agent_pid>/environ`。
+#      MLSBENCH_SYS_PREFIX=It is now year 2026.  ← 空格完整,没被截断
+#      MLSBENCH_SAMPLING_ALIGN=1 / MLSBENCH_PRESENCE_PENALTY=1.5 / MLSBENCH_TOP_K=20
+#      EVAL_RESEARCHER_YEAR=2026 / MAX_MODEL_LEN=40960 / TASK_TIMEOUT=7200 / CONCURRENCY=7
+#      —— 与 p1 逐项一致,al1 与 p1 之差确实只有采样。
+#   /proc/<pid>/environ 这招比翻日志可靠:它读的是进程真正在用的 env,不是谁打印了什么。
 # ---------------------------------------------------------------------------
 ALIGN="MLSBENCH_SAMPLING_ALIGN=1,MLSBENCH_TEMPERATURE=1.0,MLSBENCH_TOP_P=0.95,MLSBENCH_TOP_K=20,MLSBENCH_MIN_P=0.0,MLSBENCH_PRESENCE_PENALTY=1.5,MLSBENCH_REPETITION_PENALTY=1.0"
 LOG=$D/logs/mls21_aligned_jobids.txt
