@@ -910,3 +910,67 @@ FrontierCS 上两个尺度都分不开(均值上 lo32nm 略高,但都不显著);
   s20 掉到 3.86 的情况,只看末步足以误判整条臂。臂间排序在中间步上可能不同。
 - **9B 的 ALE 判题拓扑是混的**(base / SFT 臂在 cpu 分区节点 speedFactor 0.79–0.83,RL 臂在 ailab ≈1.0),
   ALE 是墙钟计分的,所以 9B 的 ALE 数字不能用来排臂;上面的排序全部只用 FrontierCS 与 research。
+
+## §19 年份扫描的作业失败:退出码和分数不是一回事
+
+2026-09-16 补齐 y2000 时,发现两条臂的 FrontierCS/ALE 行数卡在半格上。
+逐格读日志(不按作业状态推断)得到三种互不相同的失败,**其中两种会让只看 `sacct` 的人得出反向的结论**。
+
+### 19.1 `f1` 的 `FAILED / ExitCode 2` 是假的:数据是全的
+
+`ev-rlv5_ft01mix_a10_s20_y2000-f1`(13961342)在 `sacct` 里是 `FAILED 2:0`,
+但它把 530 行(430 FrontierCS + 100 ALE)**全部写完了**,METRIC 也全部打印了
+(`official/frontiercs/num_problems: 86`)。非零退出码来自最后一行:
+
+```
+ERROR: 3 sample(s) failed, above --max-errors=0. Examples:
+  RuntimeError('FrontierCS judge infrastructure failure for problem 169 (status=timeout): Evaluation timed out after 1000s');
+  RuntimeError('... problem 154 ...'); RuntimeError('... problem 154 ...')
+```
+
+即 430 个 FrontierCS 样本里有 3 个判题超时(1000s),`--max-errors=0` 于是让客户端以 rc=2 收尾。
+**这 3 个样本本身也在文件里**(带 `error` 字段),行数不少。按作业状态判断「这一格没跑」是错的。
+
+### 19.2 `f0` 的 `FAILED / ExitCode 1` 是真的:0 行
+
+同一臂的 `f0`(13961339)2 分 23 秒就死了,原因在判题沙箱而不是模型:
+
+```
+start_frontiercs_judge_hybrid_v2.sh: line 151: 2509064 Killed   go-judge -parallelism ... 
+judge exited early
+[allinone] client exited rc=1 after 137 s
+```
+
+go-judge 自己起得很正常(`Worker stated {"parallelism": 8}`,`/version` 连答三次 200),
+随后被 **SIGKILL**。它通过 systemd dbus 把自己放进了 `user.slice/user-374317.slice/.../gojudge-13961339.scope`,
+即**跳出了 SLURM 作业自己的 cgroup**,谁杀的无法从日志内部确定。
+
+这是罕见故障,不是系统性的:353 个 `ev-*` 日志里只有 3 个出现 `judge exited early`
+(另两个是 `lo32nm_a10_y1975-f0`、`rlv5_lo32nm_a10_s20_y2026-f0`),约 0.8%。
+**处理方式是重发,不改配置。** 重发时不能复用原 `DUAL_NAME`——`cc_dual_wrap.sh` 的
+`mkdir $LOCKROOT/$DUAL_NAME.lock` 锁还在,同名作业会立刻 exit 0。
+改用新锁名 `ev-<TAG>-f0r`、`TAG`/`SHARD_IDX` 不变即可,原锁不用删。
+
+### 19.3 MLS 上 `ft01mix_a10` 是唯一会把 200G 撑爆的臂(2/2 对 0/51)
+
+`mls21-ft01mix_a10_y2000`(13961329)和 `mls21-ft01mix_a10_y2075`(13965260)都是 `OUT_OF_MEMORY`。
+形态一致:先正常跑分(y2000 跑完 9 个任务、y2075 跑完 3 个),然后 vLLM 的 EngineCore 死掉
+
+```
+vllm.v1.engine.exceptions.EngineDeadError: EngineCore encountered an issue.
+...
+error: Detected 1 oom_kill event in StepId=<jobid>.batch.
+```
+
+之后剩下的任务全部在 1–4 秒内 `agent_failed`(后端已经没了)。
+
+不是节点问题:两次分别在 `della-i21g3` 和 `della-i22g3`,这两个节点都跑成过别的 MLS 年份作业。
+**全部 MLS 年份作业里,OOM 只发生在 `ft01mix_a10` 这一条臂上,2 次里 2 次;其余 51 次全部 COMPLETED。**
+两次死时在跑的任务集合并不相同(y2000 死在 `ml-missing-data-imputation` 之后,y2075 死在
+`causal-observational-linear-gaussian` 之后),所以不是某一道题有毒,而是这条臂写出来的代码
+在 7 路并发下把宿主内存吃到了 200G——MLS 的 agent 代码是**在节点上真的跑起来的**,
+和 vLLM 抢同一份 host RAM,撑爆时先死的是 vLLM。
+
+n=2,不当作定量结论。**没有为此重跑**:§17 已经用 research 和 FrontierCS 两条能出 ★ 的 bench
+否掉了年份效应,而 MLS 题级本来就不可复现、不打 ★(见 MLS 案例研究),
+补这两格改变不了任何结论。这里记录它,是为了解释 `ft01mix_a10` 的 MLS 年份点为什么缺。
