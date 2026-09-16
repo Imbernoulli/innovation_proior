@@ -2238,7 +2238,14 @@ NEAR=2025,FAR=mean(2000, 2075),按题配对,bootstrap 10000 次:
 
 ### 34.1 第二个被目录命名吞掉的整块
 
-§2/§17–§30 里我一直说「年份扫描没覆盖 research」。**错的。**
+**先更正我自己的措辞。** §17 是分析过 research 的年份的(旧扫描、2000-vs-2026,
+`base9b_v2c` +4.151★、`4b_lo32nm_a10` +2.509★,都已因噪声底作废,见 §2.2)。
+掉出来的是 **09-16 的那次重算**:`year_shape.py` / `year_completion.py` / `year_curves.py`
+三个新脚本把 tag 解析到 `_thinking_32k_both_vllm`,research 从此不再进表,
+而我在 §30/§33 前后反复把这写成「年份扫描从没覆盖 research」——那是错的,
+正确说法是「research 掉出了新一轮的重算」。
+
+不变的是数据一直在,而且没有任何读取器看过它:
 `year_sweep_submit.sh` 第 62 行就投了 `SOURCE=research` 的独立作业,
 `sacct` 显示 **141 个 research 作业 COMPLETED**,日志里有完整的
 `METRIC official/frontiercs_research/... num_problems=31` 一整段。

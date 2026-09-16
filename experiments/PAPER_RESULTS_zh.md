@@ -30,10 +30,32 @@
 > 同时 `jac_pool` 这把尺子因噪声底 Z=+4.64 被整条撤回(两个方向),
 > 4B 的同类对照因对照臂只剩 5–23 条抽样不可解读。
 
-本期一句话:**新增了两条能站住的正面结果(先验对 4B 科研判断力的作用且扛得住 lens;
-先验带来的是搜索广度而非组合数量,且扛得住长度归一),
+> **年份有两块掉出了 09-16 的重算:MLS(§2.4/§33)从没进过任何一张年份表;
+> FCS-research(§34)进过 §17,但被新脚本的目录解析挡在了 §30 之外。**
+> 两块都不是没跑,是**读取器没看那个位置**——MLS 不写 `samples.jsonl`(产出是
+> `summary.json`),research 落在 `..._research_thinking_32k_vllm/shard_*/` 而
+> `year_shape.py` / `year_completion.py` / `year_curves.py` 只解析 `..._both_vllm/`。
+> 补上之后**四块数据(FCS-algorithm、ALE、MLS、research)全部给出同一个方向:
+> 近年不更好**,倒 U 仍不成立。
+> 但 research 那批换个读法给出本期最强的有利结果:年份只改系统提示里一个数字,
+> 四个年份点≈四次准复跑,**4B RL(先验)−RL(base) 分数 +9.23★/+10.47★/+13.22★、
+> 完成率 +0.769★/+0.753★/+0.712★(逐题 62/0),9B 分数 4/4 正**(§34.3)。
+
+> **MLS 的采样协议从来没有对齐过(§35)。** FCS/ALE/research 都走
+> `cc_eval_cpu_client*.sh` 并在日志里印出
+> `max_tokens=32768 temp=1.0 top_p=0.95 top_k=20 pp=1.5 n=5`;
+> MLS 走 `mlsbench/agent/models.py`,那条路对本地 vLLM **一个采样参数都不发**。
+> 所以**此前每一个 MLS 数字都是在服务端默认采样下产生的**。这不是装饰性差异:
+> MLS 主导的故障就是复读到吐不出 tool call(34% 的格子空提交,65% 以
+> `No action returned after 3 attempts` 收尾),正是 `presence_penalty=1.5` 用来压的那种。
+> 已加 opt-in 对齐分支,主表八臂 A/B 在跑;**在 A/B 出来之前,MLS 的绝对值不要写进论文。**
+
+本期一句话:**新增了三条能站住的正面结果(先验对 4B 科研判断力的作用且扛得住 lens;
+先验带来的是搜索广度而非组合数量,且扛得住长度归一;先验在 research 上对 RL(base)
+的优势在四个年份点上全部成立),
 否掉了两个候选结论(品味类 bench 整体、以及「我们比 base 更好」这句话本身),
-年份条件化改判为不成立,并且把七处评测口径的错误修掉了——其中三处会让此前的数字不可比。**
+年份条件化改判为不成立(四块数据同向),并且把十处评测口径的错误修掉了——
+其中三处会让此前的数字不可比,一处(MLS 采样未对齐)使该 bench 的绝对值暂缓引用。**
 
 ---
 
@@ -449,8 +471,9 @@ judge3 每一格都用 `$D/scripts/j3stats.py --control` 独立复算过,逐格�
 
 ### 2.4 MLS 也没有年份效应,而且它的「0 分」四分之三不是模型分低(§33)
 
-**这块此前完全没被分析过。** `year_shape.py` / `year_completion.py` / `year_curves.py`
-都从 `samples.jsonl` 读数,而 MLS 不写 `samples.jsonl`(产出是 `summary.json` + `saves/`)。
+**MLS 这块此前完全没被分析过**(research 不同:它进过 §17,只是掉出了 §30 的重算,见 §34)。
+`year_shape.py` / `year_completion.py` / `year_curves.py` 都从 `samples.jsonl` 读数,
+而 MLS 不写 `samples.jsonl`(产出是 `summary.json` + `saves/`)。
 所以 §17–§30 的每一张年份表都不含 MLS,尽管 `cc_mls21_<arm>_y<year>/` 目录一直存在。
 `innov_quant/mls_year.py` → `mls_year.md` 补上,只做 ft01mix 线,四点批次 2000/2025/2050/2075。
 
@@ -507,7 +530,7 @@ n=21 题单次跑。**不打 ★,不建议进论文。**
 本期的两个反例正好各占一条:§15 的 `aaar_equation` 单任务扛全场(过不了 b),
 §16 的 `novelty_pair` 全臂掷硬币(过不了 c)。
 
-### 3.2 四项评测口径修复 —— 其中 A、B 会让此前的数字不可比
+### 3.2 评测口径修复 —— 其中 A、B 会让此前的数字不可比;B 的 MLS 部分已更正(§35)
 
 **A. research 判题把模型自己的错算成基础设施故障。**
 `frontiercs_research_cpu_eval.py:495` 是
@@ -526,6 +549,20 @@ n=21 题单次跑。**不打 ★,不建议进论文。**
 七条链路逐行追到实际构造请求那一行,唯一真正的不一致是 **`presence_penalty`**
 (RL rollout 与主 bench 都发 1.5,这三个 client 代码里根本没这个参数;min_p / repetition_penalty
 是靠服务端默认值巧合对上的)。
+
+> **[更正 2026-09-16] 上面这段把 MLS 列为「已追、通过」,是错的(§35)。**
+> MLS 那条链路(`mlsroot/src/mlsbench/agent/models.py`)对本地 vLLM 构造的请求里
+> **一个采样参数都没有**——不只是缺 `presence_penalty`:`max_tokens` 只在 Kimi 分支设、
+> `temperature` 只在 Anthropic 分支设,`top_p` / `top_k` / `min_p` / `repetition_penalty`
+> 全都不发。服务端也不兜底(`start_vllm_server.sh` 不设生成默认值,合并模型的
+> `generation_config.json` 只有 eos/pad)。所以**此前每一个 MLS 数字都是在
+> vLLM 默认采样下产生的**,而不是在评测协议下。
+>
+> 下面那张 pp 效果表本身就说明了这件事的量级:`rlv5_4b_base_s20` 的 strict-miss
+> **59.4% → 4.5%**、`rlv5_ft01mix_a10_s20` **17.7% → 0.2%**,全靠这一个参数。
+> MLS 上对应的故障(34% 的格子空提交,65% 以 `No action returned after 3 attempts`
+> 收尾,生成约 2.6 万 token 吐不出 tool call)是同一种复读失控。
+> **在对齐 A/B 出来之前,MLS 的绝对值与「哪条臂不会动手」的归因都不要写进论文。**
 
 后果实测(同 parser、同 400 字窗口、逐格配对、n=960/臂,唯一变量是 presence_penalty):
 
