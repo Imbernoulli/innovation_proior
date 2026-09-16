@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Taste / idea / research-judgment benches: every contrast, including the one that was
+missing -- our shipped model vs the ORIGINAL base model.
+
+Earlier passes reported SFT-base, RL(base)-base, RL(SFT)-SFT and RL(SFT)-RL(base) but
+never RL(SFT)-base, which is the comparison an outside reader actually cares about.
+
+Per (family, task, contrast): pair by item id, per item average `correct` over the 5
+draws, paired difference, Wilcoxon + 4000-sample bootstrap CI. Then aggregate the tasks
+of a family by sign test + Stouffer, which is the right test for effects that are small
+but consistent -- a single task of 120-500 items has little power on its own.
+"""
+import json, glob, collections, math, os, sys
+import numpy as np
+from scipy.stats import wilcoxon, binomtest, norm
+
+D = "/scratch/gpfs/CHIJ/ziran/innov_v2_multi/outputs"
+FAM = {"idea": "cc_idea32k_{}_y26pp", "ideav2": "cc_ideav2_{}_y26pp", "judge3": "cc_judge3_{}_y26pp"}
+ARMS = {
+ "9B base": "base9b_v2c", "9B SFT": "ft01mix_a10",
+ "9B RL(base)": "rlv5_base_s20", "9B RL(SFT)": "rlv5_ft01mix_a10_s20",
+ "4B base": "base4b", "4B SFT": "4b_ft01mix_a10",
+ "4B RL(base)": "rlv5_4b_base_s20", "4B RL(SFT)": "rlv5_4b_ft01mix_a10_s20"}
+CONTRASTS = [("9B RL(SFT)", "9B base"), ("9B SFT", "9B base"), ("9B RL(SFT)", "9B RL(base)"),
+             ("4B RL(SFT)", "4B base"), ("4B SFT", "4B base"), ("4B RL(SFT)", "4B RL(base)")]
+DEAD = {("judge3", "novelty_pair")}   # every arm at chance on this task; see 16.2
+
+def load(fam, arm):
+    p = os.path.join(D, FAM[fam].format(ARMS[arm]), "samples.jsonl")
+    if not os.path.exists(p): return None
+    by = collections.defaultdict(lambda: collections.defaultdict(list))
+    for ln in open(p):
+        try: r = json.loads(ln)
+        except Exception: continue
+        c = r.get("correct")
+        if c is None: continue
+        by[r.get("task")][str(r.get("id"))].append(1.0 if c else 0.0)
+    return {t: {i: float(np.mean(v)) for i, v in d.items()} for t, d in by.items()}
+
+CACHE = {(f, a): load(f, a) for f in FAM for a in ARMS}
+
+def cell(fam, task, A, B, rng):
+    da, db = CACHE[(fam, A)], CACHE[(fam, B)]
+    if not da or not db or task not in da or task not in db: return None
+    ids = sorted(set(da[task]) & set(db[task]))
+    if len(ids) < 20: return None
+    d = np.array([da[task][i] - db[task][i] for i in ids])
+    nz = d[d != 0]
+    if len(nz) < 5: return None
+    _, p_two = wilcoxon(nz)
+    if not np.isfinite(p_two): return None
+    z = (1.0 if np.median(nz) > 0 else -1.0) * abs(norm.ppf(max(p_two, 1e-12) / 2))
+    bs = np.array([d[rng.integers(0, len(d), len(d))].mean() for _ in range(4000)])
+    lo, hi = np.percentile(bs, [2.5, 97.5])
+    return dict(fam=fam, task=task, n=len(ids), mean=float(d.mean()), lo=float(lo), hi=float(hi),
+                pos=int((d > 0).sum()), neg=int((d < 0).sum()), p=float(p_two), z=float(z))
+
+def agg(cells, label):
+    cells = [c for c in cells if c]
+    if not cells: return
+    k, n = sum(1 for c in cells if c["mean"] > 0), len(cells)
+    Z = sum(c["z"] for c in cells) / math.sqrt(n)
+    print(f"| **{label}** | **{n} 个任务** | **{k}/{n} 正** | **{binomtest(k,n,0.5).pvalue:.4f}** | "
+          f"**{Z:+.2f}** | **{2*(1-norm.cdf(abs(Z))):.4f}** |")
+
+rng = np.random.default_rng(0)
+print("# taste / idea / research-judgment:全部对比(含此前缺失的 RL(SFT) − base)\n")
+for A, B in CONTRASTS:
+    print(f"\n## {A} − {B}\n")
+    print("| family | task | n | Δ | 95% CI | +/− | Wilcoxon p |")
+    print("|---|---|---|---|---|---|---|")
+    allc = []
+    for fam in ("idea", "ideav2", "judge3"):
+        if not CACHE[(fam, A)] or not CACHE[(fam, B)]: continue
+        for task in sorted(CACHE[(fam, A)]):
+            if (fam, task) in DEAD: continue
+            c = cell(fam, task, A, B, rng)
+            if not c: continue
+            allc.append(c)
+            star = " ★" if (c["lo"] > 0 or c["hi"] < 0) else ""
+            print(f"| {fam} | {task} | {c['n']} | {c['mean']:+.4f}{star} | [{c['lo']:+.4f}, {c['hi']:+.4f}] "
+                  f"| {c['pos']}/{c['neg']} | {c['p']:.4f} |")
+    print("\n| 聚合 | 格子 | 方向 | 符号检验 p | Stouffer Z | p |")
+    print("|---|---|---|---|---|---|")
+    agg(allc, "全部有效任务")
+    agg([c for c in allc if c["fam"] == "judge3"], "只看 judge3(research judgment)")
+    agg([c for c in allc if c["fam"] in ("idea", "ideav2")], "只看 idea+ideav2(taste)")
