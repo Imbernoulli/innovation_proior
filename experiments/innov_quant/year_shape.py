@@ -94,6 +94,13 @@ CURVE = {
  "rlv5_4b_base_s20":          [2000,2025,2050,2075],
  "rlv5_4b_ft01mix_a10_s20":   [2000,2025,2050,2075],
 }
+# Which year sweep an arm belongs to.  These are NOT one experiment: the OLD sweep has a
+# 5-to-12 point grid with NEAR={2025,2026} (4B arms only have 2026), the NEW one is the
+# main ft01mix line plus the two rlv5_base arms submitted as a single batch with exactly
+# four points and NEAR={2025}.  Pooling them into one 24-cell Stouffer hides that, so the
+# aggregate is also reported per sweep.
+SWEEP = {a: ("新四点批次" if years == [2000, 2025, 2050, 2075] else "旧扫描")
+         for a, years in CURVE.items()}
 BEN = ["frontiercs", "frontiercs_research", "alebench"]
 CACHE = {}
 def get(arm, y):
@@ -125,10 +132,12 @@ for arm, years in CURVE.items():
         if not c: continue
         cells[b].append(c); cells["ALL"].append(c)
         cells["9B" if not arm.startswith(("base4b", "4b_", "rlv5_4b")) else "4B"].append(c)
+        cells[SWEEP[arm]].append(c)
         print(f"| {arm} | {b} | {c['n']} | {c['mean']:+.3f} | {c['pos']}/{c['neg']} | {c['p']:.4f} |")
 print("\n| 聚合 | 格子 | 方向 | 符号检验 p | Stouffer Z | p |")
 print("|---|---|---|---|---|---|")
-for k in ("ALL", "9B", "4B", "frontiercs", "frontiercs_research", "alebench"):
+for k in ("ALL", "新四点批次", "旧扫描", "9B", "4B",
+          "frontiercs", "frontiercs_research", "alebench"):
     agg(cells[k], f"T1 {k}")
 
 print("\n## T2 二次项(倒 U ⇒ 系数为负)\n")
