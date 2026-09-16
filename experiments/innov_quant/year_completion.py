@@ -14,8 +14,15 @@ that halts early without ever closing its thinking block produced no answer eith
 that clause put rlv5_4b_base_s20 at a flat 1.000 in every year while its FrontierCS mean
 was 0.61.
 
-T1 is the pre-registered contrast: NEAR = {2025, 2026} vs FAR = {<=2010} U {>=2050},
-paired per problem, aggregated over (arm x bench) cells by sign test + Stouffer.
+T1 is the pre-registered contrast: NEAR vs FAR = {<=2010} U {>=2050}, paired per problem,
+aggregated over (arm x bench) cells by sign test + Stouffer.
+
+NEAR is {2025} rather than {2025, 2026}. These six arms have no `_y2026` directory -- the
+year batch gave them exactly {2000, 2025, 2050, 2075} -- so an earlier version of this
+script filled the 2026 slot from each arm's MAIN run instead. That silently put one of the
+two NEAR points in a different submission batch from every other point, which is precisely
+the confound the noise floor below measures. Dropping 2026 costs one near point and buys a
+contrast in which all four years come from the same batch.
 
 The noise floor runs the SAME machinery over same-protocol re-runs -- y1950 vs y1950r2,
 y2025 vs y2025r2, and each main run against its _y2026 replicate. Nothing differs between
@@ -27,13 +34,21 @@ import numpy as np
 from scipy.stats import wilcoxon, binomtest, norm
 
 OUT = "/scratch/gpfs/CHIJ/ziran/innov_v2_multi/outputs"
-YEARS = [2000, 2026, 2050, 2075]      # 2025 still running at time of writing
-NEAR = {2025, 2026}
+YEARS = [2000, 2025, 2050, 2075]      # all four submitted as one year batch
+NEAR = {2025}
 ARMS = ["ft01mix_a10", "rlv5_base_s20", "rlv5_ft01mix_a10_s20",
         "4b_ft01mix_a10", "rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20"]
-REPL = [("rlv5_lo32nm_a10_s20_y1950", "rlv5_lo32nm_a10_s20_y1950r2", "y1950 复跑"),
-        ("rlv5_lo32nm_a10_s20_y2025", "rlv5_lo32nm_a10_s20_y2025r2", "y2025 复跑"),
-        ("base9b_v2c", "base9b_v2c_y2026", "9B base 复跑"),
+# The two y####r2 pairs are NOT clean replicate pairs and are reported separately.
+# Their first runs (jobs 13769934, 13769964) each hit an 8h walltime TIMEOUT on the gpu
+# partition and were topped up afterwards; the rows a timed-out job managed to write are
+# the requests that finished first, and a request finishes first when none of its five
+# draws runs to the 32768 cap. Both first runs therefore sit ~8500 tokens short in median
+# length and ~14pp low in truncation rate against their own replicate, while every one of
+# the six `_y2026` pairs -- all single clean jobs -- agrees to within 44 tokens of median.
+# So those two pairs measure timeout survivorship, not run-to-run noise.
+CONTAM = [("rlv5_lo32nm_a10_s20_y1950", "rlv5_lo32nm_a10_s20_y1950r2", "y1950 首跑超时"),
+          ("rlv5_lo32nm_a10_s20_y2025", "rlv5_lo32nm_a10_s20_y2025r2", "y2025 首跑超时")]
+REPL = [("base9b_v2c", "base9b_v2c_y2026", "9B base 复跑"),
         ("lo32nm_a10", "lo32nm_a10_y2026", "9B lo32nm 复跑"),
         ("rlv5_lo32nm_a10_s20", "rlv5_lo32nm_a10_s20_y2026", "9B RL(lo32nm) 复跑"),
         ("base4b", "base4b_y2026", "4B base 复跑"),
@@ -88,7 +103,7 @@ def main():
     print("|---|---|---|---|---|---|---|")
     cells, curves = collections.defaultdict(list), {}
     for a in ARMS:
-        D = {y: comp(a if y == 2026 else f"{a}_y{y}") for y in YEARS}
+        D = {y: comp(f"{a}_y{y}") for y in YEARS}
         for b in BEN:
             pp = {y: D[y].get(b, {}) for y in YEARS}
             if not all(pp[y] for y in YEARS):
@@ -118,7 +133,7 @@ def main():
         print(f"| {a} | {b} | " + " | ".join(f"{m[y]:.3f}" for y in YEARS) +
               f" | {max(m, key=m.get)} |")
 
-    print("\n## 噪声底:同协议复跑\n")
+    print("\n## 噪声底:同协议复跑(均为单次干净作业)\n")
     print("| 对比 | bench | n题 | Δ完成率 | +/− | p | Z |")
     print("|---|---|---|---|---|---|---|")
     nf = []
@@ -140,6 +155,27 @@ def main():
     agg(nf, "噪声底")
     a = [abs(c["mean"]) for c in nf]
     print(f"\n逐格 |Δ完成率| 中位数 **{np.median(a):.4f}**,最大 **{max(a):.4f}**。")
+
+    print("\n## 被排除的两对:首跑撞墙钟超时,不是复跑噪声\n")
+    print("| 对比 | bench | n题 | Δ完成率 | +/− | p | Z |")
+    print("|---|---|---|---|---|---|---|")
+    cf = []
+    for A, B, lab in CONTAM:
+        ca, cb = comp(A), comp(B)
+        for b in BEN:
+            if b not in ca or b not in cb:
+                continue
+            ks = sorted(set(ca[b]) & set(cb[b]))
+            if len(ks) < 8:
+                continue
+            c = cell(np.array([ca[b][k] - cb[b][k] for k in ks]))
+            if not c:
+                continue
+            cf.append(c)
+            print(f"| {lab} | {b} | {c['n']} | {c['mean']:+.4f} | {c['pos']}/{c['neg']} | {c['p']:.4f} | {c['z']:+.2f} |")
+    print("\n| 聚合 | 格子 | 方向 | 符号 p | Stouffer Z |")
+    print("|---|---|---|---|---|")
+    agg(cf, "超时污染(不作为噪声底)")
 
 
 if __name__ == "__main__":

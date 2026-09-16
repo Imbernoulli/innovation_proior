@@ -36,8 +36,17 @@ def read(dirpat):
             got[r.get("data_source")][(gt, r.get("sample_idx"))] = float(s)
     return got
 
+# rlv5_lo32nm_a10_s20's FIRST y1950 and y2025 runs were assembled after an 8h walltime
+# TIMEOUT (jobs 13769934, 13769964) and are survivor-biased toward short generations -- a
+# request only got written if none of its five draws ran to the cap. Their r2 re-runs are
+# single clean jobs of the identical protocol, so those are the points used here. This
+# matters beyond hygiene: y2025 is a NEAR point, and the bias inflates it.
+CLEAN = {("rlv5_lo32nm_a10_s20", 1950): "rlv5_lo32nm_a10_s20_y1950r2",
+         ("rlv5_lo32nm_a10_s20", 2025): "rlv5_lo32nm_a10_s20_y2025r2"}
+
+
 def arm_year(arm, year):
-    tag = f"{arm}_y{year}" if year != "main" else arm
+    tag = CLEAN.get((arm, year)) or (f"{arm}_y{year}" if year != "main" else arm)
     return read(f"cc_eval_{tag}_thinking_32k_both_vllm")
 
 def perprob(d):
@@ -73,6 +82,14 @@ CURVE = {
  "base4b":                    [1900,2000,2010,2026,2100],
  "4b_lo32nm_a10":             [1900,2000,2010,2026,2100],
  "rlv5_4b_lo32nm_a10_s20":    [1900,2000,2010,2026,2100],
+ # the ft01mix line and the two rlv5_base arms were submitted as one year batch
+ # with exactly these four points, so none of their points comes from the main run.
+ "ft01mix_a10":               [2000,2025,2050,2075],
+ "rlv5_base_s20":             [2000,2025,2050,2075],
+ "rlv5_ft01mix_a10_s20":      [2000,2025,2050,2075],
+ "4b_ft01mix_a10":            [2000,2025,2050,2075],
+ "rlv5_4b_base_s20":          [2000,2025,2050,2075],
+ "rlv5_4b_ft01mix_a10_s20":   [2000,2025,2050,2075],
 }
 BEN = ["frontiercs", "frontiercs_research", "alebench"]
 CACHE = {}
@@ -133,7 +150,10 @@ print(f"\n**{neg}/{tot} 个 (臂×bench) 的二次项为负(倒 U);符号检验 
 print("\n## 噪声底:同年复跑(什么都没改)\n")
 print("| 对比 | bench | n题 | Δ均值 | +/− | Wilcoxon p |")
 print("|---|---|---|---|---|---|")
-REPS = [("rlv5_lo32nm_a10_s20", 1950, "1950r2"), ("rlv5_lo32nm_a10_s20", 2025, "2025r2")]
+# nothing left to compare here: the only same-year re-runs this arm has are the two
+# timeout-contaminated pairs, now resolved in favour of the clean side by CLEAN above.
+# The honest floor for this analysis is the `_y2026` replicate set in year_completion.py.
+REPS = []
 rc = []
 for arm, y, r2 in REPS:
     for b in BEN:
