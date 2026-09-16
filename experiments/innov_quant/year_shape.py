@@ -10,8 +10,11 @@ Two tests, both far more powerful than the single 2000-vs-2026 contrast used ear
   T2  quadratic fit of the per-year arm mean; an inverted U means a NEGATIVE t^2 term.
 Cells = (arm x bench); aggregated by sign test + Stouffer.
 
-Noise floor comes from same-year re-runs -- 1950 vs 1950r2, 2025 vs 2025r2, and the
-main 2026 run vs its `_y2026` replicate -- put through the identical machinery.
+Noise floor does NOT come from this script any more. Its only same-year re-runs were
+y1950/y1950r2 and y2025/y2025r2, and section 28 showed both first runs were assembled
+after an 8h walltime TIMEOUT, which selects on exactly the variable being measured. The
+honest floor is the six `_y2026` replicate pairs, run through the identical machinery in
+year_completion.py.
 """
 import json, glob, os, re, collections, math
 import numpy as np

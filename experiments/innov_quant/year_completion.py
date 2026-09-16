@@ -24,10 +24,10 @@ two NEAR points in a different submission batch from every other point, which is
 the confound the noise floor below measures. Dropping 2026 costs one near point and buys a
 contrast in which all four years come from the same batch.
 
-The noise floor runs the SAME machinery over same-protocol re-runs -- y1950 vs y1950r2,
-y2025 vs y2025r2, and each main run against its _y2026 replicate. Nothing differs between
-those pairs except that they were run twice, so whatever they show is the floor any year
-effect has to clear.
+The noise floor runs the SAME machinery over the six `_y2026` replicate pairs: each main
+run against a re-run of the identical protocol, nothing changed but the second launch, so
+whatever they show is the floor any year effect has to clear. The two y####r2 pairs are
+reported separately and are NOT part of the floor -- see CONTAM below.
 """
 import json, glob, os, collections, math
 import numpy as np
