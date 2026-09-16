@@ -120,3 +120,43 @@ FrontierCS 有 3 个格子在 7200s 上限下仍然判不出来:`ft03nm_a20` 两
 `rlv5_4b_lo32nm_a10_s20_y2026` 一格。三条臂都不在 base / ft01mix 两条线内。
 
 另有 15 个格子没有存下正文(vLLM 连接中断,生成本身丢了),只能真重生成,不在本次修复范围内。
+
+## 7 15 个无正文格子的真重生成(2026-09-16)
+
+§6.4 记下的「15 个格子没有存下正文(vLLM 连接中断,生成本身丢了),只能真重生成」已经做完。
+
+**定位**:全部落在 FrontierCS,且只在两条 9B 非 RL 臂上——`base9b_v2c` 8 格
+(`APIConnectionError`)、`ft01mix_a10` 7 格(`APITimeoutError`)。其余 6 条主臂一格不缺。
+判题侧的 error 行不在此列(它们有正文)。
+
+**做法**:直接重发原 `TAG`/`SHARD_IDX` 的 f 分片,靠驱动自己的 `--resume`——
+`_record_compatible()` 对带 `error` 的记录返回 False,于是只有这些行被重做,写入是 append。
+发之前验了两处会翻车的地方:
+
+1. 原始 `samples.jsonl` 里成功行的 `error` 是**真 null**(一个 shard 522 null / 16 字符串),
+   不是下游 dump 产物里那个字符串 `"None"`——若是后者,`rec.get("error")` 恒为真,
+   整个 shard 都会被重生成。
+2. `_record_compatible` 还比 `prompt_variant` 与 `score_backend`:存的是
+   `frontiercs:official-generate_solutions` / `official`,与当前脚本默认逐字一致。对不上同样会全量重生成。
+
+重发用新的 `DUAL_NAME`(`ev-<arm>-regen-f<s>`),原锁不动(`cc_dual_wrap.sh` 的
+`mkdir $LOCKROOT/$DUAL_NAME.lock` 还在,同名作业会立刻 exit 0)。
+
+**结果**:行数 538→546 / 533→533 / 530→542 / 530→542(共 +32 行,含重试对),分片划分没有变。
+
+| 臂 | FCS 键 | error 行 | 无正文格 | mean@5 前 → 后 |
+|---|---|---|---|---|
+| `base9b_v2c` | 860 / 860 | 8 → **2** | 8 → **0** | 4.471 → **4.468** |
+| `ft01mix_a10` | 860 / 860 | 7 → **0** | 7 → **0** | 5.783 → **5.776** |
+
+**8 条主臂的 FrontierCS 与 ALE 现在都是完整网格**(860/860、200/200)。
+补回来的格子几乎全是 0(最大臂均值变动 0.007),因为它们集中在 143/148/153/160/167/169
+这几道 TLE 高发题上——与 §6.3 的发现一致。
+
+剩下的两格是 `base9b_v2c` 的 prob 148 idx 2 与 prob 160 idx 1,判题在 7200s 仍然超时;
+它们**有正文**,属于 §6.4 那一类真 TLE,不是生成缺失。
+
+**一条必须写进 limitations 的代价**:原跑判在 cpu 分区(speedFactor 0.79–0.83),
+这次补跑判在 ailab(≈1.0)。所以这 15 格(占该两臂 1720 个抽样的 0.87%)的判题拓扑
+与同臂其余格子不同。不补的话,这些键会从**所有 9B 的 FrontierCS 配对**里被剔掉
+(公共键 843 而不是 858–860)。
