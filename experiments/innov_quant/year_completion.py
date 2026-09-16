@@ -7,8 +7,12 @@ draws per cell, and section 20.1 got Stouffer Z=+18.19 out of it on the RL contr
 if the test-time year prompt changes the model's behaviour at all, completion rate is
 where it should be visible.
 
-A draw completes when its text contains </think> or it stopped short of the 32768 cap;
-otherwise it ran out of budget mid-thought and never produced an answer.
+A draw completes when its text contains </think> -- the same definition dump2.py uses, so
+this number is comparable with section 20.1's. An earlier version of this script also
+counted a draw as complete when it stopped short of the 32768 cap, which is wrong: an arm
+that halts early without ever closing its thinking block produced no answer either, and
+that clause put rlv5_4b_base_s20 at a flat 1.000 in every year while its FrontierCS mean
+was 0.61.
 
 T1 is the pre-registered contrast: NEAR = {2025, 2026} vs FAR = {<=2010} U {>=2050},
 paired per problem, aggregated over (arm x bench) cells by sign test + Stouffer.
@@ -52,8 +56,8 @@ def comp(tag):
                 continue
             gt = r.get("ground_truth")
             gt = gt if isinstance(gt, str) else json.dumps(gt, sort_keys=True)
-            t, ct = r.get("text") or "", r.get("completion_tokens") or 0
-            out[r.get("data_source")][gt].append(1.0 if ("</think>" in t or ct < 32700) else 0.0)
+            t = r.get("text") or ""
+            out[r.get("data_source")][gt].append(1.0 if "</think>" in t else 0.0)
     return {b: {k: float(np.mean(v)) for k, v in d.items()} for b, d in out.items()}
 
 
