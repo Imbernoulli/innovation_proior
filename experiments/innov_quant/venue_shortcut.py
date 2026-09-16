@@ -20,12 +20,25 @@ Two things had to be ruled out before believing that.
    training that would not.
 
    --venue-ablation is the controlled test and had already been run: same papers, same
-   ids, same labels, the venue sentence removed and nothing else. Comparing each arm
-   with and without it isolates how much of that arm's score was the shortcut.
+   ids, same labels, the venue sentence removed and nothing else.
+
+ERA TRAP -- THE REASON THIS SCRIPT WAS REWRITTEN.
+The ablation ran 2026-09-07. `cc_idea32k_<arm>_y26pp` ran 2026-09-15, after the protocol
+realignment (the `_y26pp` suffix IS that realignment). Pairing the ablation against the
+_y26pp run confounds "venue removed" with "protocol changed", and it changes the answer:
+base's AUC on the SAME 120 items is 0.679 in the 09-07 run and 0.776 in the _y26pp run.
+The with-venue side must be `cc_idea32k_<arm>` (bare tag, 09-07), which is six hours
+before the ablation. Never mix a bare tag with a _y26pp tag.
+
+WHAT THE CORRECT COMPARISON SAYS, which is NOT what the first pass claimed:
+removing the venue helps EVERY arm, and helps base LEAST (-0.017 against -0.142 for
+RL(base) and -0.110 for RL(01mix)). So the venue sentence was hurting the RL arms rather
+than propping base up, and the "monotone dose-response with base leaning hardest on
+venue memory" is withdrawn. The contrast against base still moves from -0.071 (with) to
++0.022 (without), but neither CI excludes zero and the swing is no larger than base's own
+run-to-run spread on this task.
 
 CI by bootstrapping ITEMS (arms resampled together, so pairing is kept). Ties 0.5.
-Caveat kept in the output: the ablation is an independent generation run, so per-arm AUC
-also carries sampling noise that an item bootstrap does not see.
 """
 import json, collections, os
 import numpy as np
@@ -72,7 +85,7 @@ def boot(fn, ids, rng, n=3000):
 
 def main():
     rng = np.random.default_rng(0)
-    W = {n: load(f"cc_idea32k_{a}_y26pp") for n, a in ARMS}
+    W = {n: load(f"cc_idea32k_{a}") for n, a in ARMS}   # bare tag = same 09-07 era as the ablation
     O = {n: load(f"cc_venueabl_{a}") for n, a in ARMS}
     names = [n for n, _ in ARMS if W[n] and O[n]]
     ids = sorted(set.intersection(*[set(W[n][0]) & set(O[n][0]) for n in names]))
@@ -107,6 +120,8 @@ def main():
     print(f"\n跨臂方向: 掉幅按 base > SFT > RL(base) > RL(SFT) 单调排列 = "
           f"{drops == sorted(drops, reverse=True)}  ({', '.join(f'{d:+.3f}' for d in drops)})")
     print("注意: 消融是一次独立的生成跑批, 逐臂 AUC 还带生成侧抽样噪声, 题级 bootstrap 看不到这一层。")
+    print("噪声尺度: base 在同一批 120 题上, 09-07 跑批 AUC 0.679 / _y26pp 跑批 0.776, 相差 0.097 —— ")
+    print("          与这里讨论的每一个效应同量级。n=120 撑不起这个任务上的逐臂结论。")
 
 
 if __name__ == "__main__":
