@@ -2289,3 +2289,62 @@ NEAR=2025,FAR=mean(2000,2075),按题配对:
 限定:这四个点**不是独立复跑**(同一模型、同一题集,只换系统提示里的年份),
 所以 Stouffer 偏乐观,方向一致性是主要证据,不要引那个 p 值。
 另:9B 上 RL(先验) 的完成率**低于** SFT(0/4 正,−0.030),这条必须一起报。
+
+## §35 MLS 的采样协议从来没有对齐过
+
+### 35.1 对齐做过,但只做在另一条代码路径上
+
+FrontierCS / ALE / research 都走 `cc_eval_cpu_client*.sh`,它 `export` 了完整协议,
+并在**每个作业日志里逐字印出来**:
+
+```
+[cpu-client] protocol: max_tokens=32768 temp=1.0 top_p=0.95 top_k=20 pp=1.5 n=5
+```
+
+(`cc_eval_cpu_client_pinned.sh:196-203`,另有 `MIN_P=0.0`、`REPETITION_PENALTY=1.0`。)
+年份扫描的 `ev-*-f*` / `ev-*-r*` 作业日志里这一行都在,所以 §25 那次「推理参数是否对齐」
+的审计结论对这三条 bench 是成立的。
+
+**MLS-Bench 走的是完全不同的一条路:`mlsroot/src/mlsbench/agent/models.py`。**
+在那条路上,对本地 vLLM 发出的 `create_kwargs` 只有:
+
+```python
+{"model": ..., "messages": ..., "tools": ..., "tool_choice": "required"}   # + extra_body(只放 thinking 开关)
+```
+
+`max_tokens` 只在 Kimi 分支设;`temperature` 只在 Anthropic 分支设;
+**`top_p` / `top_k` / `min_p` / `presence_penalty` / `repetition_penalty` 一个都没有。**
+服务端也没有兜底:`start_vllm_server.sh` 不设生成默认值(它提到 `presence_penalty=1.5`
+只是为了开惩罚项的 fast-path 内核),模型自带的 `generation_config.json` 里也只有
+`eos_token_id` / `pad_token_id`。
+
+所以 **此前每一个 MLS 数字都是在 vLLM 服务端默认采样下产生的,不是在评测协议下。**
+
+### 35.2 这不是装饰性的差异
+
+§33 量到的主导故障正是 `presence_penalty` 用来压的那一种:419 个 (臂,年份,题) 格子里
+143 个(34.1%)是空提交,其中 **65% 以 `[agent] No action returned after 3 attempts, stopping`
+收尾**,模型 `agent_returncode=0`、跑满约十分钟、生成约 2.6 万 token,
+却从头到尾没吐出一个可解析的 tool call。`4b_ft01mix_a10` 是 21/21。
+
+复读失控到吐不出结构化输出,正是 `presence_penalty=1.5` 存在的理由。
+在没有它的情况下测出来的「这条臂不会动手」,**有多少是模型、有多少是协议,目前分不开。**
+
+### 35.3 改法与验证计划
+
+`models.py` 加了 opt-in 的对齐分支(默认关闭,所以已产出的每个数字仍可复现,
+与仓库自己的 `MLSBENCH_SAMPLING_SEED` 同一套约定):
+`MLSBENCH_SAMPLING_ALIGN=1` 时发 `temperature/top_p/presence_penalty`(顶层)与
+`top_k/min_p/repetition_penalty`(`extra_body`,vLLM 接受),并打一行
+`[mlsbench] sampling aligned: ...` 供日志核对。
+`max_tokens` **故意不设成 32768**:MLS 是多轮、prompt 每步变长,单轮上限那么大会在
+任务中途撑爆 `MAX_MODEL_LEN=40960`。
+
+提交脚本 `mls21_aligned_submit.sh` 的其余 env 与 p1 那批**逐字相同**
+(`MLSBENCH_PY` / `MLSBENCH_SYS_PREFIX` / `MAX_MODEL_LEN=40960` / `TASK_TIMEOUT=7200` /
+`CONCURRENCY=7` / `MLSBENCH_DATA_ROOT`),**唯一变量就是采样协议**,
+所以 `al1` 对 `p1` 是一个干净的 A/B。TAG 带 `al1` 后缀:TAG 同时是
+`--served-model-name` 和排行榜选行的键,复用同名会让两批互相顶替。
+
+先跑单题冒烟确认 env 传得到 worker 子进程(`MLSBENCH_SYS_PREFIX` 在 r2 那次就是
+在这一步被静默丢掉的),再上主表八臂。
