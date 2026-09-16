@@ -1,0 +1,56 @@
+--- /scratch/gpfs/CHIJ/ziran/innov_v2_multi/mlsroot/src/mlsbench/agent/models.py.bak-20260916	2026-08-25 15:15:35.116784000 -0400
++++ /scratch/gpfs/CHIJ/ziran/innov_v2_multi/mlsroot/src/mlsbench/agent/models.py	2026-09-16 16:48:48.396178000 -0400
+@@ -613,6 +613,53 @@
+             "messages": openai_msgs,
+             "tools": openai_tools,
+         }
++        # Sampling-protocol alignment (2026-09-16). FrontierCS / ALE / research all go
++        # through cc_eval_cpu_client*.sh, which pins
++        #   max_tokens=32768 temp=1.0 top_p=0.95 top_k=20 min_p=0.0 pp=1.5 rep=1.0
++        # and prints that line in every job log. MLS-Bench goes through THIS path, which
++        # sent no sampling parameters at all for a local vLLM -- so every MLS number was
++        # produced under the server's defaults, not the evaluation protocol. That is not
++        # a cosmetic gap: 34% of MLS (arm, year, task) cells ended as empty submissions,
++        # 65% of them with "[agent] No action returned after 3 attempts", the model having
++        # generated ~26k tokens without emitting a parseable tool call -- exactly the
++        # runaway-repetition failure presence_penalty=1.5 exists to suppress.
++        #
++        # Opt-in via env so the default stays byte-identical and every number already
++        # produced remains reproducible (same convention as MLSBENCH_SAMPLING_SEED below).
++        # Set MLSBENCH_SAMPLING_ALIGN=1 to send the protocol; individual knobs override.
++        # top_k / min_p / repetition_penalty are not OpenAI-standard and go in extra_body,
++        # which vLLM's OpenAI server accepts.
++        if os.environ.get("MLSBENCH_SAMPLING_ALIGN", "").strip() in ("1", "true", "True"):
++            def _f(name, default):
++                raw = os.environ.get(name, "").strip()
++                try:
++                    return float(raw) if raw else default
++                except ValueError:
++                    return default
++            create_kwargs["temperature"] = _f("MLSBENCH_TEMPERATURE", 1.0)
++            create_kwargs["top_p"] = _f("MLSBENCH_TOP_P", 0.95)
++            create_kwargs["presence_penalty"] = _f("MLSBENCH_PRESENCE_PENALTY", 1.5)
++            extra_body["top_k"] = int(_f("MLSBENCH_TOP_K", 20))
++            extra_body["min_p"] = _f("MLSBENCH_MIN_P", 0.0)
++            extra_body["repetition_penalty"] = _f("MLSBENCH_REPETITION_PENALTY", 1.0)
++            # max_tokens is deliberately NOT forced to the single-turn 32768: MLS is
++            # multi-turn and the prompt grows every step, so a per-call cap that large
++            # would overrun MAX_MODEL_LEN partway through a task. Left unset (server
++            # allows up to the context limit) unless MLSBENCH_MAX_TOKENS is given.
++            _mt = os.environ.get("MLSBENCH_MAX_TOKENS", "").strip()
++            if _mt:
++                try:
++                    create_kwargs["max_tokens"] = int(_mt)
++                except ValueError:
++                    pass
++            if not getattr(self, "_align_logged", False):
++                self._align_logged = True
++                print("[mlsbench] sampling aligned: temp=%s top_p=%s pp=%s top_k=%s "
++                      "min_p=%s rep=%s max_tokens=%s"
++                      % (create_kwargs["temperature"], create_kwargs["top_p"],
++                         create_kwargs["presence_penalty"], extra_body["top_k"],
++                         extra_body["min_p"], extra_body["repetition_penalty"],
++                         create_kwargs.get("max_tokens", "unset")), flush=True)
+         # Kimi thinking models need max_tokens >= 16000 for reasoning + content
+         if is_kimi_thinking:
+             create_kwargs["max_tokens"] = max(16000, budget_tokens + 4096)
