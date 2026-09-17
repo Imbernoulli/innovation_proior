@@ -197,9 +197,13 @@ def main():
     out.append("")
 
     # ---- 4. 逐年原始值 ----
+    # 年份列由数据决定,不写死:曾经写死 2000/2025/2050/2075,y2100 落地后峰值列指向
+    # 一个表里根本没显示的年份(9B RL(先验) 与 4B SFT 都标了 2100)。读者看不到峰值
+    # 所依据的那个数,就是错的表。
+    YCOLS = sorted({y for a, _ in ARMS for y in store[a] if (a, y) not in bad})
     out += ["## 4. 逐年原始值(每条臂限制到该臂所有年份点都判出分的公共题)", "",
-            "| 臂 | 公共题 | " + " | ".join(str(y) for y in [2000, 2025, 2050, 2075]) + " | 峰值 |",
-            "|---|---|---|---|---|---|---|"]
+            "| 臂 | 公共题 | " + " | ".join(str(y) for y in YCOLS) + " | 峰值 |",
+            "|" + "---|" * (len(YCOLS) + 3)]
     for a, lab in ARMS:
         ys = [y for y in sorted(store[a]) if (a, y) not in bad]
         if not ys:
@@ -208,7 +212,7 @@ def main():
                                     for y in ys])
         cells = {y: np.mean([store[a][y][t]["score"] for t in common]) for y in ys} if common else {}
         pk = max(cells, key=cells.get) if cells else "—"
-        row = " | ".join(f"{cells[y]:.3f}" if y in cells else "—" for y in [2000, 2025, 2050, 2075])
+        row = " | ".join(f"{cells[y]:.3f}" if y in cells else "—" for y in YCOLS)
         note = " ⛔部分年份无效" if any((a, y) in bad for y in store[a]) else ""
         out.append(f"| {lab} `{a}`{note} | {len(common)} | {row} | {pk} |")
     out.append("")
