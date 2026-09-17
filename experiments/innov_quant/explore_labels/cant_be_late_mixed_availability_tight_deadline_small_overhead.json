@@ -1,0 +1,226 @@
+{
+ "A": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "纯贪心:有spot就用spot,没有则on-demand,不做deadline/剩余时间判断",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "同样贪心优先spot,但距deadline剩余时间≤1小时时强制切换on-demand",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "维护跟踪连续失败次数的StateTracker,用多因子优先级(剩余时间≤2h、失败次数、headroom不足等)决定是否强制on-demand,否则按时间窗口决定spot/on-demand/none",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "代码在_step中途被截断(列表未闭合、无return语句),没有可辨认的完整策略",
+    "no_method": true,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "只要有spot就无条件用spot(即使紧迫也不切换on-demand);没有spot时才根据buffer在on-demand和none(等待)之间选择",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "按work_remaining_ratio分三阶段(最后1/4、中段、前期),各阶段用不同risk_buffer阈值和距deadline时间阈值决定on-demand还是spot",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "以slack_hours<2小时分两种模式,紧张模式看能否覆盖restart开销,正常模式用work_remaining相对slack的倍数(10倍/5倍)阈值决定spot/on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "纯贪心:有spot用spot,没有用on-demand,不含deadline逻辑",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3
+    ]
+   },
+   {
+    "desc": "贪心基础上加一条:距deadline剩余时间≤restart_overhead时强制on-demand",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "从spec_path解析预定的SPOT/ON_DEMAND/NONE计划表并按步跟随(按当前spot可用性微调),硬编码48h/52h常量,无计划时退回贪心",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "(没有最终答案)",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "纯贪心:有spot用spot否则on-demand(其中一例额外加了任务完成/deadline已过时返回none的收尾判断,不改变主逻辑)",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     5
+    ]
+   },
+   {
+    "desc": "基于连续步数的滞回策略:记录连续on-demand/spot步数,只有连续满10步on-demand后才切回spot,不涉及deadline缓冲计算",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "提前算出完成剩余工作所需时间与剩余时间的差值,余量不足就提前切到on-demand,否则贪心用spot",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "计算slack=剩余时间-剩余工作量,slack低于与restart_overhead相关的缓冲阈值就强制on-demand,否则贪心优先spot",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "完全不考虑任务完成进度,只用固定2小时的deadline倒计时阈值决定是否切换on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "用多档缓冲阈值(gap/1.0/2.0)分级判断,最紧张档位可返回none;只要没有spot就恒定返回on-demand",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "用绝对秒数阈值(10s/200s/600s)结合剩余工作量比较,外加一个几乎恒真的'每小时开销成本'门槛才决定用spot",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "cost_optimized_scheduler:slack低于4倍restart_overhead时强制on-demand,否则显式比较spot价格与on-demand价格选更便宜的",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "维护连续使用spot步数的状态机,结合3小时标记点和距deadline30分钟标记点在spot/on-demand间滞回切换",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "近似纯贪心:唯一额外判断是elapsed已超过deadline时返回on-demand,其余情况有spot用spot否则on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "只用'距deadline剩余时间≤1.5倍restart_overhead'决定是否强制on-demand,完全不考虑剩余工作量;另外单独判断完成工作量达标时返回none",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "计算slack=剩余时间-剩余工作量,slack低于某缓冲常数(分别为3600秒/0/restart_overhead)就强制on-demand,否则有spot就用spot",
+    "no_method": false,
+    "samples": [
+     2,
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "同样基于slack,但用两档缓冲阈值,且在slack充裕但没有spot时故意返回none(暂停等待)而非上on-demand",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ }
+}

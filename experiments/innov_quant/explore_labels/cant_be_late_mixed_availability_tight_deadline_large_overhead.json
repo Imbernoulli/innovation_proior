@@ -1,0 +1,220 @@
+{
+ "A": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "Naive: always use SPOT when available, else ON_DEMAND; no deadline/work risk logic actually drives the decision (extra comments/completion-guards don't change this)",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "Deadline-aware: only take SPOT if remaining time covers remaining work plus restart overhead, otherwise ON_DEMAND",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "Naive: always use SPOT when available, else ON_DEMAND (a completion-check variant doesn't change the core decision)",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "Compares slack (deadline minus elapsed) to restart_overhead alone, ignoring remaining work, to gate SPOT vs ON_DEMAND",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "Compares remaining time to work-derived minimum time plus a fixed multi-hour buffer to gate ON_DEMAND fallback",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "Tracks cumulative completed work and compares remaining wall time to remaining work plus a buffer that's a multiple of restart_overhead",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     4
+    ]
+   },
+   {
+    "desc": "Counts consecutive SPOT interruptions and permanently locks into ON_DEMAND once a threshold (10) is reached",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "Maintains a rolling history of spot availability and uses its average against a threshold, falling back to a deadline-vs-work check when unstable",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "Naive: always use SPOT when available, else ON_DEMAND",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "Adds a time-remaining-vs-restart_overhead threshold check before allowing SPOT",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "No final answer produced in any sample",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "Phase-based heuristic: aggressively exploits SPOT early with persistence based on last_cluster_type, then switches to safety thresholds using multiples of restart_overhead late",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "Probability-threshold approach that shrinks an allowed SPOT probability as the deadline nears and draws a random decision against it; code is truncated/incomplete",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "Fractional-progress state machine tracking restart grace periods, combining absolute time-to-deadline cutoffs (1hr/30min) with completion-fraction checks",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "\"Critical zone\" concept comparing time-to-complete and a safety-margin-in-hours, and pauses (returns NONE) instead of falling back to ON_DEMAND when critical",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "Multi-threshold heuristic using explicit price constants and several named hour-based thresholds (slack time, max spot continuation) to decide; code truncated at the end",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "Hour-based cutoffs (0.5h/1h/1.5h/2h) combined with a minimum completed-segment-count gate before allowing SPOT",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "Computes feasibility via an assumed SPOT uptime efficiency factor (90%) dividing remaining work, compared against remaining time budget plus a small safety buffer",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "Staged windows relative to absolute deadline offsets (30min/1h/2h) that force ON_DEMAND only within the final 30 minutes; otherwise behaves like naive spot-if-available",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "Cost-difference calculation between spot and on-demand pricing plus modulo-based restart-window tracking to decide",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "Computes a time buffer (deadline slack minus work-and-overhead) and converts it into an estimated step count, gating SPOT on step-count and buffer-size thresholds",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "Compares only remaining wall-clock time to a fixed or overhead-derived buffer (ignoring how much task work actually remains) to gate ON_DEMAND fallback",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     5
+    ]
+   },
+   {
+    "desc": "Computes slack as remaining time minus remaining work still needed, compared to a restart_overhead buffer, to decide SPOT vs ON_DEMAND",
+    "no_method": false,
+    "samples": [
+     3,
+     4
+    ]
+   }
+  ]
+ }
+}

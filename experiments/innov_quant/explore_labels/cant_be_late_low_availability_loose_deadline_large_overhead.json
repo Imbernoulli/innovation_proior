@@ -1,0 +1,226 @@
+{
+ "A": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "贪心:有spot就用spot,否则on-demand,不考虑deadline/重启开销(是否额外判断任务是否已完成不影响核心策略)",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "贪心:有spot就用spot,否则on-demand(部分附带到点/完成即停的收尾判断)",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "计算slack=剩余时间-剩余工作,slack不足重启开销时强制on-demand",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "级联时间阈值判断+一个恒为假的静态成本比分支,结果几乎总落到on-demand",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "基于剩余时间/工作比例与上一次集群类型的滞后状态机(含restart_pending判断)",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "显式期望成本模拟:按重启概率估算spot总期望成本,与on-demand总成本比较后择优",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "简单绝对时间安全垫(缓冲小时数阈值,不涉及重启开销计算)",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "预估被抢占导致的工作损失比例,结合剩余步数阈值决定是否转on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "缓冲区策略:剩余工作量+重启开销的倍数 与 剩余时间比较,不够则on-demand,够则贪心用spot",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "按已用时间占比阈值(90%)判断,并维护连续spot使用计数器",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "固定绝对时间阈值(距deadline<1小时即on-demand),不考虑剩余工作量",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "缓冲区策略:剩余工作量+重启开销倍数 与 剩余时间比较,不够则on-demand,够则用spot",
+    "no_method": false,
+    "samples": [
+     1,
+     5
+    ]
+   },
+   {
+    "desc": "预估抢占次数及其开销,按比例阈值(0.75)加绝对deadline缓冲判断是否能用spot",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "跟踪spot历史可靠率与高优先级模式的复杂状态机式判断",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "维护抢占次数计数器,超高阈值(110次)才强制on-demand,其余近似贪心",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "无最终答案/无法辨认方法",
+    "no_method": true,
+    "samples": [
+     1,
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "贪心:有spot就用spot,否则on-demand",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "贪心:有spot就用spot,否则on-demand",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "缓冲区策略:剩余工作量+一倍重启开销 与 剩余时间比较,不够则on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "直接比较剩余工作量与剩余时间(无重启缓冲),接近deadline时返回NONE暂停",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "按已用时间占deadline比例分早/中/晚三阶段,各阶段用不同规则决定spot/on-demand",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "显式美元成本效益比较:估算spot总成本与potential节省额度对比",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "缓冲区策略:剩余工作量+重启开销+额外大额gap缓冲项 与 剩余时间比较",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "仅用剩余deadline时间与重启开销的固定倍数(1.5x)比较,不考虑剩余工作量",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,262 @@
+{
+ "A": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "维护两个按 pid 分派的独立 kernel(mixed/gemm),内部用逐元素标量循环而非 tl.dot,包装函数只做流同步、从未真正调用 kernel,输出未初始化",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "网格仅按 M 行分块(N 整块处理),对 K 做分块循环调用 tl.dot 累加,bias 加在循环内,GELU 用 erf 精确公式",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "二维网格但 BLOCK_M 覆盖整个 M、grid 直接设为 (M,N),对 K 不分块只调用一次 tl.dot,GELU 用 sigmoid 近似而非 erf",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "放弃 tl.dot 改用 tl.reduce 逐元素乘加,把 kernel 源码写入 /tmp 文件,solve() 最终返回的是占位字符串而非代码",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "M<=16 时退化为纯 PyTorch 双重循环逐元素计算,M 较大时尝试自定义标量乘加 kernel,最终返回一个从未写出的 program_path",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "一维 pid 拆出行列块,对 K 分块循环 tl.dot 累加,bias 用 reshape+repeat_interleave 广播后调用内置 tl.gelu,包装函数做大量转换但从未真正发起 kernel 调用",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "网格按每个 (m,n) 单元一个 program,对 K 分块用逐元素乘加(不用 tl.dot)累加,激活实际是 sigmoid(out)*out 即 SiLU 而非 GELU,附带单独 baseline 和 benchmark 函数",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "二维 block 网格,对 K 不分块只用一次 tl.dot(用 inf/-inf 作 mask 的 other 值),GELU 用精确 erf 公式,附带 triton.testing 的 benchmark 报告",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "kernel 变量命名沿用 Q/K/V 注意力式命名,用逐元素求和模拟矩阵乘法,结构明显是从别的模板改造而来,与标准 GEMM 差异很大",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "二维 grid,对 K 显式分块循环调用 tl.dot 累加,自定义 sigmoid 近似 GELU(而非 erf),额外定义了一个空的 _check_args 桩函数",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "抽样 1/3/5 明确没有最终答案,抽样 2 的 kernel 主体全是 pass、后面只是大段举棋不定的文字讨论,没有落地任何可辨认实现",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "不写自定义 kernel,直接在顶层把 tl.dot / tl.math.gelu 当成即时张量运算调用,没有 grid、分块或 mask",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "五次抽样都没有给出最终答案",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "同一抽样里定义三个并列 kernel 变体,一维 pid 通过除法/取模拆成二维分块,对 K 分块循环 tl.dot,GELU 用 sigmoid/exp 混合近似公式",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "网格按每行一个 program,不使用 tl.dot,而是用自造中间变量做混乱的求和拼凑,不构成真正的矩阵乘法",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "标准二维 grid、完整的 m/n/k mask,对 K 分块循环 tl.dot 累加,GELU 用精确 erf 公式,是本组最规整的实现",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "solve() 用 inspect.getsource(__file__) 试图直接返回自身源码,kernel 里还带一段检测/注册 CUDA 编译模块的旁路逻辑",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "Solution 类带一个 configure_kernel 方法动态调整块大小,草稿 kernel 调用了一个杜撰的 gelu 近似函数,最终嵌入字符串版本才换成精确 erf",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "自定义 kernel 基本只剩 pass 桩,真正生效的是 try 块里直接用 torch.mm + F.gelu(tanh 近似)兜底,except 分支还有一个错误的求和后备",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "尝试用 Python 的 @ 运算符对 tl.load 出的分块做矩阵乘法,索引算术里混入占位符,整体错乱不构成有效 tl.dot 调用",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "kernel 本身计算公式是错的(并非 GELU),外层包装函数最终委托给一个并不存在的 tl.linear_gelu API",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "用 Python for 循环逐行手动调用 kernel(而非并行 grid),最终版按列块做逐元素乘加累积,调用了臆造的张量方法",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "函数和变量命名高度奇幻,GELU 通过符号阈值在 erf 公式和一个自造分支之间切换,是本组最脱离常规写法的一版",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "把二维分块展平成一维线程索引手动算行列偏移,对 K 分块用逐元素乘加(不用 tl.dot)累加,bias 后用 libdevice.erf 做 GELU",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "大段边写边纠结的注释,最终用 tl.tensor() 把整块矩阵包装成张量后一次性调用 tl.dot 计算全矩阵,完全没有按 program_id 分块",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "抽样 3、4 都没有给出最终答案",
+    "no_method": true,
+    "samples": [
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "二维 grid 按块调用一次 tl.dot(K 维不分块循环),bias 广播后用 libdevice.erf 做 GELU,但外层调用语法整体错乱",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "抽样 1 明确没有最终答案;抽样 4 的内外循环全是 pass 桩没有真正计算;抽样 5 只写到累加器初始化就变成大段规划性注释,没有任何实际 load/dot/store",
+    "no_method": true,
+    "samples": [
+     1,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "用位运算把一维 program_id 拆成二维行列块号,对 K 分块循环里用 tl.dot 就地累加,GELU 用精确 erf 公式",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "不写自定义 kernel,直接顶层调用 tl.dot(acc_dtype=float32)和 tl.math.erf 完成整个线性层+GELU",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   }
+  ]
+ }
+}

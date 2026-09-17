@@ -1,0 +1,280 @@
+{
+ "A": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "1D grid按输出位置映射,对K做逐元素标量循环加载单值,无tl.dot/累加器,先对A做GELU再与B相乘后直接存储(无真正规约)",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "2D grid+autotune,用make_block_ptr风格的分块指针,tile通过`a@b`矩阵乘计算,GELU在单独的fused kernel变体里对结果做激活",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     2,
+     3,
+     5
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "2D grid,分块K循环+tl.dot(对B块做转置),按HAS_GELU标志在每个k块内(而非最后)对累加值做GELU",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "逻辑不连贯:先只加载一次A块又不使用,随后循环里对未定义/未更新的a_val、b_val做矩阵乘,无法识别出一致的规约算法",
+    "no_method": true,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "1D grid(仅按行分块,N整块处理),自定义dict形式的autotune配置+is_output_fused标志跳过计算,Python侧对小K/非contiguous场景有标量三重循环兜底",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "按矩阵规模分档选block大小,kernel内含None相乘等无法解释的错误,外层用try/except吞掉异常并直接返回未初始化输出,附带随机测试脚本",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "非class的函数式solve,内含多个冗余kernel变体,其中一个用tl.min动态裁剪tile尺寸(而非mask)处理边界,autotune配置写成非法的list-valued dict",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "2D grid,单次tl.dot不做K分块循环(假定K可一次性装入),GELU在dot之后对结果整体应用",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "1D grid(仅按行),用while循环做K分块,GELU被拆成单独的elementwise kernel在matmul之后另行应用,并用heuristic按M/N/K动态定block大小",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "2D grid,用heuristic lambda按张量形状动态算BLOCK_M/N/K,K循环用指针递增(而非重算偏移)的方式做累加",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "2D grid+真实K循环+tl.dot,但最终返回版本里漏掉了对GELU的调用,用标量方式写C(而非整块mask store)",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "用逐元素相乘再.sum()规约(不用tl.dot),K方向用按比例的浮点mask(而非布尔mask)做边界截断",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "标准2D grid+真实K循环+tl.dot+边界mask,最后统一对整块结果做GELU,是相对工整的标准实现",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "2D grid,用while循环+取模方式计算K方向的分块索引,而非标准arange递增",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "2D grid,单次tl.dot不做K循环(假定整块K),用规范的triton.Config列表做autotune(8组),dot后直接接GELU",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "同时叠加autotune与heuristics两个装饰器,2D grid+真实K循环,tl.dot用了非标准的block_shape参数,num_stages/num_warps按BLOCK_M动态推导",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "含未使用的SPLIT_K参数(暗示split-K思路),用逐元素乘+tl.sum规约(不用tl.dot),solve()最终用inspect.getsource只返回外层matmul包装函数源码而不含kernel本身",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "1D grid按div/mod拆成(m,n),用逐元素乘(非tl.dot)做规约,对最后一个K块单独做越界补齐处理,且从未真正调用GELU",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "2D grid,K循环里逐元素乘累加,结尾用`乘以1/(m*n)再sum`这类不合理的伪归一化操作,kernel内还引用了外层Python变量的shape",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "写了完整kernel但solve()最终返回空字符串\"\",相当于没有可执行的最终代码",
+    "no_method": true,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "2D grid+真实K循环,用tl.sum规约(非tl.dot),再定义一个autotune包装kernel直接委托调用未调优的实现,对结果整体做GELU",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "2D grid+真实K循环,用`tl.dot(a,b,acc)`累加写法,Python侧手写穷举BLOCK_M/N/K/num_warps组合并用try/except逐个尝试,而非用@triton.autotune装饰器",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "1D flatten grid,对K做逐位置的秩一(outer-product式)累加而非分块tl.dot,最后用双重标量循环逐元素store",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "用tl.make_block_ptr这一block-pointer API做分块访存,1D flatten grid,K循环+tl.dot",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "完全朴素的三重嵌套标量循环(逐输出元素、K也逐标量),autotune/jit装饰器顺序写反,GELU只在循环结束后对最后一个元素误用一次",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "2D grid+标准@triton.autotune,单次tl.dot不做K循环,代码含大量自我纠错式注释反复重写指针计算后收敛",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "1D flatten grid,K循环内用tl.dot做分块累加,但注释里反复自我纠结累加器写法,最终写法混乱、整体思路仍是分块dot累加",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "用BLOCK_M*BLOCK_N展平的虚拟线程下标做逐元素定位,tl.load用了非标准的num_elements/stride参数形式,累加用逐元素乘+sum",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "只给出一长串且大量重复的autotune配置列表和函数签名,内核体完全没写出来,以及kernel几乎全是注释加`pass`没有任何真正计算实现的样本合并",
+    "no_method": true,
+    "samples": [
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "2D grid用arange广播得到行列下标,K循环每步只按单个k位置做秩一式累加而非整块tile,结尾调用了并不存在的tl.gelu内置函数",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ }
+}

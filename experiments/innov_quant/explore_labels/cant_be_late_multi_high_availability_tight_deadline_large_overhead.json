@@ -1,0 +1,250 @@
+{
+ "A": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "纯贪心策略:有spot就用spot,没有则on-demand,不做完成度或deadline判断",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "同样的贪心策略,但先判断任务是否已完成(work_done>=task_duration),完成则返回NONE",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "按剩余gap数计算安全余量(spare_gaps/effective_time),不紧急且无spot时主动闲置(NONE)省钱,否则贪心用spot",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "以剩余时间占总deadline的比例(<10%)作为唯一安全阈值,其余一律贪心用spot,无spot时恒用on-demand",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "用overhead和4个gap的缓冲区算出安全时间与剩余工作量比较,不足则on-demand,否则用spot;无spot恒用on-demand",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "维护各region历史spot可用率和真实价格常量,按urgency_factor在保守/激进模式间切换,计算平均可用率时代码被截断",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "每步调用假设存在的env.check_spot_region()主动扫描,按最近切换过的region+3的窗口找spot并切换,找不到才on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "按gap数量的slot计算安全余量(spot需要overhead_slots+1个slot缓冲),不足则on-demand",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "统计最近steps中spot使用占比,并用剩余工作量/gap估算完工时间相对deadline的富余度来决定,含未定义变量的bug",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "只看当前时间是否过了deadline的一半(elapsed<deadline/2)决定spot还是on-demand,不考虑工作量",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "用已完成工作量/已用时间外推吞吐率估算完工时间,若外推显示能按时完成反而切到on-demand作为safety net",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "有spot就无条件用spot(不设deadline安全阈值),无spot时只有剩余时间<=3倍overhead才放弃(NONE),否则on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "solve()中预读所有region的trace文件,每步按时间索引优先检查当前region,不可用则按顺序扫描第一个可用region并切换,否则on-demand",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "完全不读取trace,只用传入的has_spot标志做纯贪心判断",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "严格可行性判断:剩余时间是否够完成剩余工作决定spot/on-demand,都不够则暂停NONE(代码误用未定义的env变量)",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "计算了margin等变量但从未真正用于分支,最终不论松紧只要有spot就恒返回spot,等效于纯贪心",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "剩余时间充裕可行时用spot,剩余时间非常紧张时也偏向继续用spot,只有中间地带才用on-demand,多处计算有bug",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "以last_cluster_type维持状态的临界阶段状态机,进入critical_phase倾向保持上次实例类型不切换,代码被截断",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "引入spot/on-demand真实单价常量和2步缓冲的margin判断,一旦margin不足且无spot就直接放弃(NONE)而非抢用on-demand",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "先判断任务完成返回NONE,再用overhead换算的缓冲判断是否绝望到直接放弃(NONE),否则贪心用spot/on-demand",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "引入真实spot/on-demand单价常量,按小时计算margin判断spot可行性,松弛用spot、临近deadline强制on-demand,含调用不存在方法的bug",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "只判断任务是否完成(NONE),其余纯贪心用spot/on-demand,不做任何deadline缓冲判断",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "按绝对经过时间划分早/中/晚三阶段(4小时/8小时阈值)决定何时贪心用spot、何时强制on-demand",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "用(deadline剩余-1个gap-overhead)是否<=0判断是否强制on-demand,其余纯贪心用spot,不闲置NONE",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "纯贪心:有spot用spot否则on-demand,完全不读取trace也不做任何时间判断",
+    "no_method": false,
+    "samples": [
+     1,
+     2
+    ]
+   },
+   {
+    "desc": "solve()中预读所有region的trace,每步在线检查当前region是否可用,不可用则扫描其它region并切换,否则on-demand",
+    "no_method": false,
+    "samples": [
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "在solve()阶段就用trace一次性离线预计算好整个时间步的region/实例类型排程表,_step只按预存排程逐步执行",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ }
+}

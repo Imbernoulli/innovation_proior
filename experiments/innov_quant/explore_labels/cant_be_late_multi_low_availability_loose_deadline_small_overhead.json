@@ -1,0 +1,274 @@
+{
+ "A": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "按安全边际(剩余时间-开销)与剩余工作比较做紧急/非紧急两段分支判断,紧急时仍优先spot,demand也不够时短暂暂停",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "预估各区域spot价格进行比较,按剩余步数设紧急阈值,步数不足时锁定当前区域或切换到估算最优区域",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "按已用时间占任务比例和实际进度落后程度判断是否临近/落后临界点,触发则强制on-demand,否则用spot,含异常兜底",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "用3倍开销做安全缓冲,时间不足时强制on-demand,否则简单优先spot",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "几乎不做安全裕度计算,只在deadline已过时兜底,其余情况始终优先spot",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "初始化阶段按trace中1的总数预先一次性选定spot可用性最高的单一区域,并持续切换过去使用",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "仅在当前无spot时,用叠加overhead后的未来时间点检索其它区域trace做预测性切换,平时直接信任has_spot",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "完全不读取/使用trace文件,只按has_spot简单二选一,不做任何区域切换",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "无spot时按当前时间步扫描各区域自有trace,找到第一个可用区域立即切换,不做超前预测",
+    "no_method": false,
+    "samples": [
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "维护价格缓存与剩余步数计算,用剩余步数30%阈值在临近尾声强制on-demand,并有基于溢出开销次数的(未真正实现的)分支",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "仅当剩余时间小于单次开销这一临界点时返回NONE放弃,其余按has_spot简单二选一,不涉及区域切换",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "用slack<=剩余工作+开销构造安全边际强制on-demand,否则按has_spot二选一",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "剩余时间超过总任务时长时整体暂停(NONE),再用overhead*3+1小时阈值及95%完成度特判决定是否继续用spot",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "不做安全边际检查,有spot即无条件使用;无spot时尝试读取硬编码路径的trace文件重新择优区域(逻辑未完成)",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "五次抽样均无可辨认的最终答案",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "不做任何安全边际或进度判断,单纯按has_spot二选一",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "按剩余gap数和已完成进度比例(>70%且gap不足6)判定紧急,不足1个gap强制on-demand,无spot时按能否覆盖开销决定on-demand或暂停",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "跟踪当前所处集群类型,以deadline剩余比例(<40%为临界区)分段,依据当前是否已在spot/on-demand决定切回或维持,含滞回逻辑",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "用多种(部分冗余)基于gap数的临界时间检查强制on-demand,并含一个从未被真正触发的连续失败计数特性",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "维护spot连续使用streak、区域访问历史与切换计数,按slack槽位和streak阈值判定是否强制on-demand,长期未换区时探索性切换",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "不做任何安全边际计算,始终按has_spot二选一(部分版本含任务完成后暂停的判断)",
+    "no_method": false,
+    "samples": [
+     1,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "有spot时用spot;无spot但deadline未到时选择暂停(NONE)而非退回on-demand",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "以剩余工作量与剩余可用时间的严格比较作安全边际,判定不安全时无论有无spot都强制on-demand",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "不做任何区域或trace处理,始终按has_spot简单二选一(部分版本含任务完成后暂停判断)",
+    "no_method": false,
+    "samples": [
+     1,
+     3
+    ]
+   },
+   {
+    "desc": "初始化阶段按trace中1的计数预先一次性选定最佳区域并切换,之后仍按has_spot简单二选一",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "预解析带时间戳的区域可用性网格,仅在has_spot为假时按当前时间步扫描其它区域并切换",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "自行解析各区域trace且不参考has_spot参数,每步依自有数据计算可用区域集合并取首个作为切换目标",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "按gap单位构建时间/工作比值及一个恒真的\"近期失败\"检查,导致该分支下实际总是回退到on-demand",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "按剩余时间与任务时长比值分多档阈值(0.15/0.30/0.50等),各档配不同开销倍数缓冲并尝试区域质量择优(实现有明显缺陷)",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "估算含开销的最短完成时间构造临界区,仅在临界且接近deadline时才弃用spot,区域预检查只是占位未真正实现",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "维护按历史统计的区域可靠性评分,依据上一步集群类型做滞回决策,可靠性/富余比不足时强制on-demand,无spot且非on-demand时选择暂停",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "计算恐慌度、进度等多个指标但最终返回基本未使用它们,只在暂停后剩余步数极少时特判,其余仍退化为has_spot简单二选一",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ }
+}

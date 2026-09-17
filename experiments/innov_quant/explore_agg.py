@@ -68,7 +68,12 @@ def main():
             ss = sorted(x for c in v["clusters"] for x in c["samples"])
             if ss != [1, 2, 3, 4, 5]:
                 print(f"[bad] {slug}/{li} samples={ss}"); bad += 1; okslug = False
-            if v["n"] != len(v["clusters"]):
+            if v["n"] != len(v["clusters"]) and ss == [1, 2, 3, 4, 5]:
+                # n 是冗余字段,真身是 clusters 的个数。分块本身合法(1-5 不重不漏)时
+                # 只是标注者数错了个数,按 len(clusters) 纠正;分块不合法才作废这题。
+                print(f"[warn] {slug}/{li} n={v['n']} 但 clusters={len(v['clusters'])},按 clusters 纠正")
+                v["n"] = len(v["clusters"])
+            elif v["n"] != len(v["clusters"]):
                 print(f"[bad] {slug}/{li} n={v['n']} clusters={len(v['clusters'])}"); bad += 1; okslug = False
         if not okslug:
             continue

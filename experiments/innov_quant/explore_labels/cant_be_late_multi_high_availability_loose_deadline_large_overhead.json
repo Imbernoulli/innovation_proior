@@ -1,0 +1,238 @@
+{
+ "A": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "Spot优先;没有spot时按顺序切换到下一个region(不检查新region是否真的有spot),该步返回on-demand",
+    "no_method": false,
+    "samples": [
+     1,
+     3
+    ]
+   },
+   {
+    "desc": "纯贪心:只看当前has_spot决定spot或on-demand,完全不做region切换",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "预先读取各region的可用性trace,主动扫描找到有spot的region再切换过去,找不到才用on-demand",
+    "no_method": false,
+    "samples": [
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "两段式:临近deadline(剩余时间<=gap+overhead)时按安全余量决定spot/on-demand,否则只要有spot就用spot",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "按剩余gap数(需>=2个完整gap缓冲)做强制on-demand判断,缓冲够则spot优先",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "显式比较使用spot(含重启开销成本)与on-demand的期望花费公式来决定",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "用gap的10倍/5倍等多档时间阈值,且挂起重启开销时调用专门的_find_best_spot_region按区域列表取中点切换",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "按剩余工作量本身分层设置阈值(gap的30/10/5倍)来决定spot/on-demand,而非直接比较剩余时间与工作量",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "纯贪心:有spot就用spot,没有就on-demand,完全不做region切换(是否带完成度检查不影响判定)",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "预加载各region的trace,没有spot时遍历所有region用trace找可用的就切换过去用spot",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "统一模板:有spot用spot否则on-demand,不做region切换,也不做任何缓冲/成本计算",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "比较剩余时间与剩余工作量的缓冲区,足够则spot优先,不够则on-demand",
+    "no_method": false,
+    "samples": [
+     1,
+     5
+    ]
+   },
+   {
+    "desc": "用gap计数公式(实际未真正用到所需工作量)判断是否还有余量,按has_spot分别走spot/on-demand,不够时返回NONE",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "只看是否有挂起的重启开销(remaining_restart_overhead)决定:没有挂起才用spot,否则on-demand",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "用重启开销的固定倍数(6x/3x)作为剩余时间的阈值,完全不看剩余工作量",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "五次抽样均未给出可辨认的最终代码或方法",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "维护per-region的spot历史(实际从未被写入,恒为空)加danger标志判断是否续用spot,代码在计算中途被截断",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "critical/very_critical两级判断加固定2小时安全余量,危险时强制on-demand,截断在计算effective_deadline_slack处",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "urgency_ratio=剩余工作小时/剩余缓冲小时,按1.5/2.0两档阈值判断,且已在spot上时倾向继续用spot",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "safety_margin(可用步数/所需步数)配合region索引启发式可靠度分层判断,多档阈值加连续失败计数触发保守回退模式",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "用历史完成速率估算+is_critical标志+最近3步是否连续完整完成来判断是否继续用spot,代码在条件判断处截断",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "按task_duration_hours比例计算安全时间,不够则on-demand;没有spot时按顺序切换到下一个region",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "剩余步数相对所需步数留20%安全边际分层判断,并带一个恒为False的跨region更优spot探测",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "用deadline的百分比(0.7/0.75)加15%时间安全边际来决定spot/on-demand",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "用剩余时间减剩余工作量的缓冲是否大于restart_overhead来决定(切换region调用是自我切换的空操作)",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "用剩余时间减剩余工作量的缓冲是否大于剩余工作量的一个小比例阈值来决定",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ }
+}

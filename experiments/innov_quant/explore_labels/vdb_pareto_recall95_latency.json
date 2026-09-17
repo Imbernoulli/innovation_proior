@@ -1,0 +1,214 @@
+{
+ "A": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "标准持久 HNSWFlat 索引,add() 直接把传入向量一次性交给 index.add,无特殊累积处理",
+    "no_method": false,
+    "samples": [
+     2,
+     4
+    ]
+   },
+   {
+    "desc": "自建本地全量镜像数组,每次 add() 都把整个累积历史分块重新插入索引,导致重复插入",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "把 HNSW 当成需要训练的量化索引:首次 add 走 train+addIds,之后调用 addVectors 做两段式构建",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "索引延迟到首次 add 才创建,并假设每次传入的是累积全量数组,用已存长度做切片只加新增部分",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "用 faiss.IndexHNSWFlat 包装或继承,配置 M/ef_construction,并用属性/位置参数/nprobe关键字等不同写法把 ef_search 接入一次性 add/search",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     3
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "单个持久 HNSWFlat 索引,一次性 add,search 使用非标准的参数顺序/调用签名",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "HNSW 但每次 add() 及首次 search 都从缓存的原始向量重新构建全新索引,不做增量维护",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "尝试构建 IVF/PQ(倒排文件+乘积量化)类索引,附带量化器或 ID 映射包装等各种(多半报错的)变体",
+    "no_method": false,
+    "samples": [
+     2,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "运行时自动多级回退:优先尝试 HNSW,失败退化到 IVF,再失败退化到 numpy 暴力搜索",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "标准持久 HNSWFlat 索引,一次性 add,ef_search 通过各种方式静态设定",
+    "no_method": false,
+    "samples": [
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "每次 add() 先 reset() 清空索引再重新加入子集(丢失历史数据),且按查询 k 动态调整 ef_search",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "标准持久 HNSWFlat 包装,一次性 add,ef_search 通过属性/搜索参数对象/额外实参等不同写法配置(部分附带距离开方转换)",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "固定使用 IVF-PQ 索引,按块 add 并显式指定向量 ID",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "运行时多级回退:先尝试 IVF+PQ,失败退化到 HNSW,再失败退化到全量 Flat 搜索",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "按 kwargs 中的 type 在 flat/IVF/HNSW 三种索引间显式切换,默认 HNSW",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "HNSW 索引在每次 add() 时都重新创建一个全新索引对象,不保留此前累积的数据",
+    "no_method": false,
+    "samples": [
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "用 faiss.IndexFlatL2 做精确暴力搜索,不做任何近似",
+    "no_method": false,
+    "samples": [
+     1,
+     4
+    ]
+   },
+   {
+    "desc": "用 HNSW 图索引,可调 M/ef_construction/ef_search",
+    "no_method": false,
+    "samples": [
+     2,
+     5
+    ]
+   },
+   {
+    "desc": "用 IVF-PQ(倒排文件+乘积量化)索引",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,160 @@
+{
+ "A": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "在(伪)triton kernel里用位移+掩码(x>>i*4)&0xF从打包int32中逐nibble拆出int4权重/offset,再用scale*(w-offset)反量化后与activation逐点相乘累加",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "没有最终答案",
+    "no_method": true,
+    "samples": [
+     3
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "没有最终答案",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "都用位移+掩码从打包int32里逐nibble解出int4权重/offset,反量化公式scale*(w-offset)后与activation累乘求和,循环/分组细节各有bug但拆包策略一致",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "真正按4位位移(>>g*4)&0xF对打包字做nibble级解包,再反量化后与activation做矩阵乘/累加规约(有的用tl.dot,有的退化成纯Python嵌套循环,但都确实做了拆包)",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4
+    ]
+   },
+   {
+    "desc": "跳过对int4的按位拆包,直接把打包字当成已可用的分组标量做sub/load",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "没有最终答案,或代码停在未完成的思考注释里,没有落地任何解包/反量化逻辑",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "对每个k显式算group=k//8、lane=k%8,用位移掩码(>>4*i)&0xF解出weight和offset,乘scale后与activation逐点累加",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "全部停留在大段思考注释、空壳函数(pass)或半截代码,没有任何可执行的解包/反量化/累加逻辑",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "不对打包int32做按位解包,直接把每行8个打包值当成已反量化的分组标量,靠重复/广播铺满K=64后再与activation做点积/矩阵乘",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "用(packed>>j*4)&0xF做真正的按位nibble解包,再反量化并与activation累乘(纯Python嵌套循环实现,只处理了其中一个打包字)",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "没有最终答案",
+    "no_method": true,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "都尝试用位移(或warp shuffle)+掩码从打包int32中拆出int4分量,乘scale减offset做反量化,再与activation做规约,部分抽样把拆出的nibble又移位加回导致bug,但拆包这一核心策略一致",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ }
+}

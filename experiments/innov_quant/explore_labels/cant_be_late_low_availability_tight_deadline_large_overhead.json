@@ -1,0 +1,220 @@
+{
+ "A": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "纯贪婪:has_spot 就用 SPOT,否则 ON_DEMAND,完全不考虑 deadline/剩余工作量",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "同样贪婪选 spot/on-demand,但额外加了任务完成检测(elapsed>=task_duration 时提前返回 NONE)",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "纯贪婪策略:has_spot 则用 SPOT,否则 ON_DEMAND,全程不使用 deadline/overhead 信息",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "无最终答案",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "多因子危险区判断:结合安全倍数、90%临界deadline比例、工作完成度等多个danger_factors综合决策(代码被截断)",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "只比较剩余到deadline时间与固定倍数restart_overhead缓冲,不扣减剩余工作量",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "计算slack=剩余时间-剩余工作量,与restart_overhead的倍数/常数缓冲比较,不足用on-demand否则spot",
+    "no_method": false,
+    "samples": [
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "slack(剩余时间-剩余工作量)与restart_overhead阈值比较,不足则on-demand,否则spot",
+    "no_method": false,
+    "samples": [
+     1,
+     4
+    ]
+   },
+   {
+    "desc": "纯贪婪,无deadline/剩余工作量相关逻辑",
+    "no_method": false,
+    "samples": [
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "贪婪+deadline过期或任务完成时返回NONE的边界检查,但无提前切换的缓冲逻辑",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "依据cluster_type/last_cluster_type组合及time_critical_threshold(安全余量的3倍)做多分支决策",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "用15分钟critical_time_window与work_completed_ratio判断safe_to_spot/should_consolidate的整合策略",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "仅用time_to_deadline与restart_overhead+gap的小缓冲比较(不减剩余工作量),外加一个gap*2判断",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "经典slack(剩余时间-剩余工作量)与restart_overhead缓冲比较的策略",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "基于last_cluster_type与urgency_ratio(剩余工作/剩余时间)的分支决策(代码被截断)",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "只用deadline剩余时间与固定阈值(小时或秒常数)比较,不使用剩余工作量,足够就优先spot",
+    "no_method": false,
+    "samples": [
+     1,
+     4
+    ]
+   },
+   {
+    "desc": "剩余时间(未扣工作量)与restart_overhead+gap相关小缓冲比较,并按剩余工作量是否>restart_overhead切换缓冲档位",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "有状态的重启计数策略,追踪total_restarts/slot_since_restart,按slack_available分多档决策(代码被截断)",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "引入最近切换次数检测以避免频繁切换,同时结合slack与restart_overhead+gap缓冲判断",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 4,
+  "clusters": [
+   {
+    "desc": "用buffer_remaining>0.5*task_duration门槛加progress_ratio分档决定是否用spot,不直接使用restart_overhead",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "只比较deadline剩余时间与restart_overhead量级或固定小时缓冲,不使用剩余工作量,足够就用spot",
+    "no_method": false,
+    "samples": [
+     2,
+     3
+    ]
+   },
+   {
+    "desc": "经典slack(剩余时间-剩余工作量)与3倍restart_overhead缓冲比较",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "近似纯贪婪+任务完成检测,deadline缓冲阈值设置过小几乎失效",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,214 @@
+{
+ "A": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "Greedy: always use Spot when available, otherwise On-Demand, with no deadline/overhead calculation at all",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "Deadline-aware: computes remaining_time and forces On-Demand once remaining_time <= gap + restart_overhead, else Spot",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   }
+  ]
+ },
+ "B": {
+  "n": 3,
+  "clusters": [
+   {
+    "desc": "Greedy: always Spot if available else On-Demand, with only descriptive comments and no actual deadline math",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "Fixed absolute buffer (remaining_time < 3600s) forces On-Demand regardless of how much work remains, otherwise greedy",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "Explicitly estimates remaining work and compares remaining time against remaining_work plus an overhead-based safety buffer to decide when to force On-Demand, else Spot",
+    "no_method": false,
+    "samples": [
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "C": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "Feasibility check forcing On-Demand when time-until-deadline <= remaining_work + overhead, NONE when work already done, else Spot allowed with a 2x-overhead margin",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "Multi-branch heuristic using multiples of the step size as safety margins and a completion-ratio check; notably returns NONE (not On-Demand) whenever Spot is unavailable",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "Phase/hysteresis policy keyed on elapsed time and last cluster type, with an early-phase spot preference and boundary multiples of restart_overhead/gap governing later continuation vs switching",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "Uses tiny absolute-second deadline thresholds (5s/15s) plus a distinct rule to pause (NONE) instead of restarting when remaining work is smaller than the overhead and not already on On-Demand",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "Ratio-based check (remaining work vs 10% of task duration) combined with a crash-recovery rule that forces On-Demand after a Spot interruption specifically when Spot is currently unavailable",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ },
+ "D": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "No final answer / no identifiable method",
+    "no_method": true,
+    "samples": [
+     1,
+     2,
+     3,
+     5
+    ]
+   },
+   {
+    "desc": "Greedy: Spot if available else On-Demand, no deadline logic",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   }
+  ]
+ },
+ "E": {
+  "n": 1,
+  "clusters": [
+   {
+    "desc": "Greedy: always use Spot when available, otherwise On-Demand; no deadline or overhead reasoning anywhere",
+    "no_method": false,
+    "samples": [
+     1,
+     2,
+     3,
+     4,
+     5
+    ]
+   }
+  ]
+ },
+ "F": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "Greedy: Spot if available else On-Demand, with no deadline check",
+    "no_method": false,
+    "samples": [
+     1,
+     3,
+     4,
+     5
+    ]
+   },
+   {
+    "desc": "Same greedy policy but with an added (practically negligible) deadline guard: forces On-Demand only if time_left < 1.0 before falling back to the greedy rule",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   }
+  ]
+ },
+ "G": {
+  "n": 2,
+  "clusters": [
+   {
+    "desc": "Forces On-Demand once time-to-deadline drops below a fixed or overhead-derived buffer (6x overhead, or a flat 2 hours), without ever computing actual remaining work",
+    "no_method": false,
+    "samples": [
+     1,
+     4
+    ]
+   },
+   {
+    "desc": "Explicitly tracks completed/remaining work and forces On-Demand once remaining time is less than remaining_work plus an overhead-based safety margin, else prefers Spot",
+    "no_method": false,
+    "samples": [
+     2,
+     3,
+     5
+    ]
+   }
+  ]
+ },
+ "H": {
+  "n": 5,
+  "clusters": [
+   {
+    "desc": "Progress-rate extrapolation: projects completion time from current work rate/should-restart heuristics and forces On-Demand if projected to miss deadline (implementation is truncated/incomplete)",
+    "no_method": false,
+    "samples": [
+     1
+    ]
+   },
+   {
+    "desc": "Ratio checks: forces On-Demand if restart overhead exceeds 10% of remaining time, or once inside the last 20% of the deadline window, else Spot",
+    "no_method": false,
+    "samples": [
+     2
+    ]
+   },
+   {
+    "desc": "State-machine hysteresis on current cluster type: stays On-Demand unless ample work remains, stays on Spot unless work is nearly done, plus a consecutive-restart penalty near deadline",
+    "no_method": false,
+    "samples": [
+     3
+    ]
+   },
+   {
+    "desc": "Tiered by percent of task completed (50/75/90%), becoming progressively more conservative, including pausing (NONE) instead of On-Demand in some tiers when Spot is unavailable",
+    "no_method": false,
+    "samples": [
+     4
+    ]
+   },
+   {
+    "desc": "Single threshold on elapsed/task_duration ratio (95%): Spot preferred below it, On-Demand at/above it, with dead-code branches on last_cluster_type",
+    "no_method": false,
+    "samples": [
+     5
+    ]
+   }
+  ]
+ }
+}
