@@ -20,8 +20,11 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import minilb as M
 
+# 批次后缀。用户 2026-09-17 定:MLS 一律用 p1 —— al1 换了采样,和年份点不是
+# 同一套协议,混在一起年份扫描就没意义了。al1 那份留着当采样 A/B,不进主表。
+SUF = next((a for a in sys.argv[1:] if not a.startswith("-")), "p1")
 D = Path("/scratch/gpfs/CHIJ/ziran/innov_v2_multi")
-RES = D / "outputs" / "rescore_al1"
+RES = D / "outputs" / f"rescore_{SUF}"
 
 ARMS = [("base9b_v2c", "9B base"), ("ft01mix_a10", "9B SFT"),
         ("rlv5_base_s20", "9B RL(base)"), ("rlv5_ft01mix_a10_s20", "9B RL(先验)"),
@@ -56,7 +59,7 @@ def asrun():
     s = {}
     for tag, _ in ARMS:
         cur = {}
-        for d in (f"cc_mls21_{tag}_al1", f"cc_mls21_{tag}_al1-fix"):
+        for d in (f"cc_mls21_{tag}_{SUF}", f"cc_mls21_{tag}_{SUF}-fix"):
             p = D / "outputs" / d / "summary.json"
             if not p.exists():
                 continue
@@ -67,6 +70,21 @@ def asrun():
                 cur[t["task"]] = t.get("score")
         s[tag] = cur
     return s
+
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+_BUF = []
+
+
+def emit(line=""):
+    """同时打屏和落盘。只打 stdout 的脚本,表一转手就丢了(第 18 号)。"""
+    sys.stdout.write(line + "\n")
+    _BUF.append(line)
+
+
+def _flush(name):
+    with open(os.path.join(HERE, f"{name}_{SUF}.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(_BUF) + "\n")
 
 
 def main():
@@ -94,7 +112,7 @@ def main():
             if not m:
                 nometric[tag].append(t)
                 continue
-            s = M.score_row(t, f"vllm/{tag}_al1", m)
+            s = M.score_row(t, f"vllm/{tag}_{SUF}", m)
             if s is None:
                 nometric[tag].append(t)
                 continue
@@ -102,9 +120,9 @@ def main():
             if s > 0:
                 moved[tag].append((t, s))
 
-    print("## 1. 逐臂:as-run vs file-state(al1,分母 21)\n")
-    print("| 臂 | 补测格子 | 跑出指标 | 补出非零 | as-run 均分 | file-state 均分 | Δ | as-run 非零 | file-state 非零 |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
+    emit(f"## 1. 逐臂:as-run vs file-state({SUF},分母 21)\n")
+    emit("| 臂 | 补测格子 | 跑出指标 | 补出非零 | as-run 均分 | file-state 均分 | Δ | as-run 非零 | file-state 非零 |")
+    emit("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     store = {}
     for tag, name in ARMS:
         a = [A[tag].get(t) or 0.0 for t in T21]
@@ -115,27 +133,27 @@ def main():
         # 「跑出指标但分数被钳到 0」既不在 moved 里也不在 nometric 里。
         n_try = len(tried[tag])
         n_met = n_try - len(nometric[tag])
-        print(f"| {name} | {n_try} | {n_met} | {len(moved[tag])} | {sum(a)/21:.4f} | {sum(b)/21:.4f} | "
+        emit(f"| {name} | {n_try} | {n_met} | {len(moved[tag])} | {sum(a)/21:.4f} | {sum(b)/21:.4f} | "
               f"{sum(b)/21-sum(a)/21:+.4f} | {sum(1 for x in a if x>0)}/21 | "
               f"{sum(1 for x in b if x>0)}/21 |")
 
-    print("\n## 2. 对照\n")
-    print("| 对照 | as-run Δ | as-run 胜/负/平 | as-run p | file-state Δ | file-state 胜/负/平 | file-state p |")
-    print("|---|---:|:---:|---:|---:|:---:|---:|")
+    emit("\n## 2. 对照\n")
+    emit("| 对照 | as-run Δ | as-run 胜/负/平 | as-run p | file-state Δ | file-state 胜/负/平 | file-state p |")
+    emit("|---|---:|:---:|---:|---:|:---:|---:|")
     for lo, hi, lbl in PAIRS:
         da = (sum(store[hi][0]) - sum(store[lo][0])) / 21
         db = (sum(store[hi][1]) - sum(store[lo][1])) / 21
         wa = sign_counts(store[lo][0], store[hi][0])
         wb = sign_counts(store[lo][1], store[hi][1])
-        print(f"| {lbl} | {da:+.4f} | {wa[0]}/{wa[1]}/{wa[2]} | {sign_p(*wa[:2]):.4f} | "
+        emit(f"| {lbl} | {da:+.4f} | {wa[0]}/{wa[1]}/{wa[2]} | {sign_p(*wa[:2]):.4f} | "
               f"{db:+.4f} | {wb[0]}/{wb[1]}/{wb[2]} | {sign_p(*wb[:2]):.4f} |")
 
-    print("\n## 3. 补出非零的格子\n")
-    print("| 臂 | 题 | file-state 分 |")
-    print("|---|---|---:|")
+    emit("\n## 3. 补出非零的格子\n")
+    emit("| 臂 | 题 | file-state 分 |")
+    emit("|---|---|---:|")
     for tag, name in ARMS:
         for t, s in sorted(moved[tag]):
-            print(f"| {name} | `{t}` | {s:.4f} |")
+            emit(f"| {name} | `{t}` | {s:.4f} |")
 
     json.dump({"tasks": T21,
                "asrun": {t: store[t][0] for t, _ in ARMS},
@@ -146,3 +164,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    _flush("rescore_score")

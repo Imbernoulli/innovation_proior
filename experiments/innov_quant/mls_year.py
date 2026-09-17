@@ -46,31 +46,44 @@ RE_NOACT = re.compile(r"No action returned after 3 attempts")
 
 
 def load(arm):
-    """-> {year: {task: dict(score, kind, noact, conn)}}"""
+    r"""-> {year: {task: dict(score, kind, noact, conn)}}
+
+    补跑目录 `<tag>-fix` 必须合并进来,同名题后写覆盖 —— 这是全仓的惯例
+    (year_grid / mls_audit21 / mls_align_* / mls_filestate 都这么读)。
+    2026-09-17:这个函数原来用 `..._y\d{4}$` 锚定,把 `-fix` 整个挡在外面,
+    于是 91 个补跑格子一个都没进来:9B SFT y2000 还是 12/21、18 个连接错误,
+    而 year_grid 同一格已经是 21/21。两张表对同一个数打架就一定有一张错。
+    `-alfix` 是单题跟跑,不并。
+    """
     out = {}
     for d in sorted(glob.glob(os.path.join(D, f"cc_mls21_{arm}_y[0-9][0-9][0-9][0-9]"))):
         m = re.match(rf"cc_mls21_{re.escape(arm)}_y(\d{{4}})$", os.path.basename(d))
         p = os.path.join(d, "summary.json")
         if not m or not os.path.exists(p):
             continue
+        srcs = [(d, p)]
+        fx = os.path.join(d + "-fix", "summary.json")
+        if os.path.exists(fx):
+            srcs.append((d + "-fix", fx))
         cell = {}
-        for t in json.load(open(p))["tasks"]:
-            sc, se = t.get("score"), (t.get("settings") or [])
-            if sc is None:
-                kind = "nores"
-            elif sc > 0:
-                kind = "pos"
-            elif not se:
-                kind = "empty"
-            elif all((s.get("score") or 0) == 0 for s in se):
-                kind = "floor"
-            else:
-                kind = "other0"
-            lg = os.path.join(d, "task_logs", t["task"] + ".log")
-            txt = open(lg, errors="replace").read() if os.path.exists(lg) else ""
-            cell[t["task"]] = dict(score=sc, kind=kind,
-                                   noact=bool(RE_NOACT.search(txt)),
-                                   conn=bool(RE_CONN.search(txt)))
+        for dd, pp in srcs:
+          for t in json.load(open(pp))["tasks"]:
+              sc, se = t.get("score"), (t.get("settings") or [])
+              if sc is None:
+                  kind = "nores"
+              elif sc > 0:
+                  kind = "pos"
+              elif not se:
+                  kind = "empty"
+              elif all((s.get("score") or 0) == 0 for s in se):
+                  kind = "floor"
+              else:
+                  kind = "other0"
+              lg = os.path.join(dd, "task_logs", t["task"] + ".log")
+              txt = open(lg, errors="replace").read() if os.path.exists(lg) else ""
+              cell[t["task"]] = dict(score=sc, kind=kind,
+                                     noact=bool(RE_NOACT.search(txt)),
+                                     conn=bool(RE_CONN.search(txt)))
         out[int(m.group(1))] = cell
     return out
 

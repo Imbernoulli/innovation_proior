@@ -112,7 +112,7 @@ def score(task, model, root):
 
 
 def main():
-    suf = sys.argv[1] if len(sys.argv) > 1 else "al1"
+    suf = sys.argv[1] if len(sys.argv) > 1 else "p1"   # 主表口径:p1
     if os.path.exists(SHADOW):
         shutil.rmtree(SHADOW)
     # PROJECT_ROOT 是从 mlsbench/__init__.py 的位置往上三层推出来的,不看 MLSBENCH_ROOT。

@@ -9,11 +9,15 @@
   无输出     —— 跑通了但 parser 一个指标都没解析出来
 """
 import json
+import os
 import re
 from pathlib import Path
 
+import sys
+
+SUF = next((a for a in sys.argv[1:] if not a.startswith("-")), "p1")
 D = Path("/scratch/gpfs/CHIJ/ziran/innov_v2_multi")
-RES = D / "outputs" / "rescore_al1"
+RES = D / "outputs" / f"rescore_{SUF}"
 ARMS = [("base9b_v2c", "9B base"), ("ft01mix_a10", "9B SFT"),
         ("rlv5_base_s20", "9B RL(base)"), ("rlv5_ft01mix_a10_s20", "9B RL(先验)"),
         ("base4b", "4B base"), ("4b_ft01mix_a10", "4B SFT"),
@@ -52,6 +56,21 @@ def classify(cell: dict) -> tuple[str, str]:
     return top, msg
 
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+_BUF = []
+
+
+def emit(line=""):
+    """同时打屏和落盘。只打 stdout 的脚本,表一转手就丢了(第 18 号)。"""
+    sys.stdout.write(line + "\n")
+    _BUF.append(line)
+
+
+def _flush(name):
+    with open(os.path.join(HERE, f"{name}_{SUF}.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(_BUF) + "\n")
+
+
 def main():
     rows = {}
     for tag, name in ARMS:
@@ -63,9 +82,9 @@ def main():
             rows[(tag, j["task"])] = classify(j)
 
     kinds = ["有指标", "语法错", "导入错", "超时", "运行错", "无输出"]
-    print("## 补测 71 个「有方法但记 0」的格子:跑得起来吗\n")
-    print("| 臂 | 补测 | " + " | ".join(kinds) + " |")
-    print("|---|---:|" + "---:|" * len(kinds))
+    emit(f"## 补测「有方法但记 0」的格子({SUF}):跑得起来吗\n")
+    emit("| 臂 | 补测 | " + " | ".join(kinds) + " |")
+    emit("|---|---:|" + "---:|" * len(kinds))
     tot = {k: 0 for k in kinds}
     for tag, name in ARMS:
         cs = [v[0] for (t, _), v in rows.items() if t == tag]
@@ -74,18 +93,19 @@ def main():
         c = {k: cs.count(k) for k in kinds}
         for k in kinds:
             tot[k] += c[k]
-        print(f"| {name} | {len(cs)} | " + " | ".join(str(c[k]) for k in kinds) + " |")
-    print(f"| **合计** | **{sum(tot.values())}** | " + " | ".join(f"**{tot[k]}**" for k in kinds) + " |")
+        emit(f"| {name} | {len(cs)} | " + " | ".join(str(c[k]) for k in kinds) + " |")
+    emit(f"| **合计** | **{sum(tot.values())}** | " + " | ".join(f"**{tot[k]}**" for k in kinds) + " |")
 
-    print("\n## 逐格死因\n")
-    print("| 臂 | 题 | 类 | 最后一行 |")
-    print("|---|---|---|---|")
+    emit("\n## 逐格死因\n")
+    emit("| 臂 | 题 | 类 | 最后一行 |")
+    emit("|---|---|---|---|")
     for tag, name in ARMS:
         for (t, task), (k, msg) in sorted(rows.items()):
             if t != tag or k == "有指标":
                 continue
-            print(f"| {name} | `{task}` | {k} | `{msg[:120]}` |")
+            emit(f"| {name} | `{task}` | {k} | `{msg[:120]}` |")
 
 
 if __name__ == "__main__":
     main()
+    _flush("rescore_why")

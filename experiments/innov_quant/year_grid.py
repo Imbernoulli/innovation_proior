@@ -320,8 +320,12 @@ def curve_section():
             vals, cells = {}, []
             for y in ALLY:
                 if bench == "mls" and y == 2026:
-                    # 2026 的四个来源就地铺开。峰值按 al1(我们的主协议)参与,
-                    # 它没有就退到 p1、再退到 _y2026 —— 这样每条臂的 2026 都不会是空的。
+                    # 2026 的四个来源就地铺开。曲线上的 2026 取 **p1**,没有才退到
+                    # _y2026。
+                    # 用户 2026-09-17:MLS 一律用 p1。al1 把采样换成了评测协议
+                    # (temp/top_p/top_k/min_p/presence_penalty),年份点一个都没换,
+                    # 把 al1 放进年份曲线等于让 2026 这一个点单独换了套采样,
+                    # 年份扫描就不成立了。al1 那一列仍然打印,但不参与曲线。
                     got = {}
                     for key, tg in (("y2026", f"{arm}_y2026"), ("p1", f"{arm}_p1"),
                                     ("al1", f"{arm}_al1"), ("裸tag", arm)):
@@ -332,7 +336,7 @@ def curve_section():
                             cells.append(f"{c['mean21']:.3f} ({c['n']}/21{flag})")
                         else:
                             cells.append("")
-                    for key in ("al1", "p1", "y2026"):
+                    for key in ("p1", "y2026"):
                         if key in got:
                             vals[y] = got[key]["mean21"]
                             break
