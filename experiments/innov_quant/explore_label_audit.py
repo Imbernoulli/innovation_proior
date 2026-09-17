@@ -18,6 +18,11 @@ n_method 差值里混着一截纯粹的语料假象,**必须重标**(见 `explor
 v2 语料一个字不截、只放四条 RL 臂、题目集合与 v1 完全相同)。
 
 本文件保留 v1 的审计结论,作为「为什么要有 v2」的证据链,不是最终结果。
+
+**重标之后照实说**:这个假象确实存在,但它对 9B 那一对是**对称**的 ——
+绝对值动了(FCS-research 两条 9B 臂各降 0.58),4B 在 ALE 上的优势从 +1.31 抬到 +1.54,
+而 `9B 我们 − RL(base)` 在两个 bench 上原封不动(−0.27 / −0.23)。
+9B 的这个劣势是真的,不能拿截断解释。最终结果见 `explore_agg2.md`。
 """
 import glob, json, math, os, re, statistics, sys
 
@@ -157,9 +162,15 @@ def main():
                 print(f"| {disp} | {NAME[a]} | {len(g)} | {sum(1 for c in g if c['vis']<0.5)} |")
     print("\n> 砸得不匀:ALE 上我们 9B 的 8 个「判无方法」里 7 个是只看到不足一半,"
           "对手 2 个里只有 1 个。v1 那个 `9B 我们 − RL(base) = −0.23` 里面**混着这一截假象**。\n")
-    print("> **处理方式:重标。** `explore_corpus2.py` 生成的 v2 语料一个字不截"
+    print("> **处理方式:已重标。** `explore_corpus2.py` 生成的 v2 语料一个字不截"
           "(全量 2.6MB / 39 题),只放四条 RL 臂,题目集合与 v1 完全相同因而可配对;"
-          "协议见 `EXPLORE_LABEL_PROTOCOL2.md`,新增一句「长 ≠ 没方法」。\n")
+          "协议见 `EXPLORE_LABEL_PROTOCOL2.md`,新增一句「长 ≠ 没方法」。"
+          "结果在 `explore_agg2.md`。\n")
+    print("> **重标的结论(照实说):这个假象是真的,但它对 9B 那一对是对称的。**"
+          "绝对值动了(FCS-research 两条 9B 臂的 n_method 各降 0.58),"
+          "4B 在 ALE 上的优势从 +1.31 抬到 +1.54,"
+          "但 `9B 我们 − RL(base)` 在两个 bench 上都**原封不动**(−0.27 / −0.23)。"
+          "所以 9B 这个劣势不是语料造的,是真的 —— 不能再拿截断解释它。\n")
 
     print("## 3. 抽的题有没有代表性(题均分:标注子集 vs 该 bench 全集)\n")
     print("| bench | 臂 | 标注子集 | 全集 | 差 |")

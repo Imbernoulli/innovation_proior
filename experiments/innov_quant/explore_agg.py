@@ -161,6 +161,9 @@ def main():
     groups = collections.defaultdict(list)
     for s in slugs:
         groups[kb.get(s, "未标 bench")].append(s)
+    emit("> ⚠ **这份是 v1 语料(每条最终答案截到 4000 字)的结果,已被 `explore_agg2.md` 取代。**")
+    emit("> 4000 字那道闸门自己在生产「没产出方法」(完整可见 1.8% → 只看到 <25% 时 58.1%),")
+    emit("> 见 `explore_label_audit.md` §2。这里留着是为了保留 v1↔v2 的对照,不要直接引用。\n")
     emit(f"合规:{'通过' if bad == 0 else str(bad) + ' 处问题'} | 已标注 {len(slugs)} 题 | "
          + "、".join(f"{BENCH_NAME.get(b, b)} {len(v)}" for b, v in
                      sorted(groups.items(), key=lambda kv: BENCH_ORDER.index(kv[0])

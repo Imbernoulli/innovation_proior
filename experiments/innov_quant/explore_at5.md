@@ -1,4 +1,8 @@
 [warn] gemm_optimization_near_tile/G n=4 但 clusters=5,按 clusters 纠正
+> ⚠ **这份是 v1 语料(每条最终答案截到 4000 字)的结果,已被 `explore_agg2.md` 取代。**
+> 4000 字那道闸门自己在生产「没产出方法」(完整可见 1.8% → 只看到 <25% 时 58.1%),
+> 见 `explore_label_audit.md` §2。这里留着是为了保留 v1↔v2 的对照,不要直接引用。
+
 合规:通过 | 已标注 39 题 | FrontierCS-research 26、ALE-Bench 13
 
 ## FrontierCS-research
