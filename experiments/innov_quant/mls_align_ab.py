@@ -39,36 +39,63 @@ def feats(p):
                 nstep=len(steps), done=int("[done]" in s))
 
 
+def status(arm, suf):
+    """summary.json 的 per-task status。这才是「这一格能不能用」的判据:
+    `[done]` 这行 agent_failed / timeout+scored 的题根本不写,拿它当完成判据会把
+    已结束的作业误判成还在跑(2026-09-16 21:14 踩到)。"""
+    import json
+    p = f"{D}/outputs/cc_mls21_{arm}_{suf}/summary.json"
+    if not os.path.exists(p):
+        return None
+    d = json.load(open(p))
+    ts = d.get("tasks", d)
+    if isinstance(ts, dict):
+        ts = list(ts.values())
+    out = {}
+    for t in ts:
+        n = t.get("task") or t.get("task_name") or t.get("name")
+        if n:
+            out[n] = t.get("status")
+    return out
+
+
 def pair(arm):
     A = f"{D}/outputs/cc_mls21_{arm}_al1/task_logs"
     P = f"{D}/outputs/cc_mls21_{arm}_p1/task_logs"
-    rows, na, np_ = [], 0, 0
+    sa, sp = status(arm, "al1"), status(arm, "p1")
+    ran = sa is not None and sp is not None and len(sa) >= 21 and len(sp) >= 21
+    rows, drop = [], {"agent_failed": 0, "timeout": 0, "dead_serve": 0, "no_log": 0}
     for f in sorted(glob.glob(A + "/*.log")):
         t = os.path.basename(f)[:-4]
         g = f"{P}/{t}.log"
         if not os.path.exists(g):
-            continue
+            drop["no_log"] += 1; continue
+        st_a = (sa or {}).get(t, ""); st_b = (sp or {}).get(t, "")
+        # 互斥剔除,按优先级:agent 根本没被问过 > 撞墙钟 > serve 死
+        if "agent_failed" in (st_a or "") or "agent_failed" in (st_b or ""):
+            drop["agent_failed"] += 1; continue
+        if "timeout" in (st_a or "") or "timeout" in (st_b or ""):
+            drop["timeout"] += 1; continue
         a, b = feats(f), feats(g)
-        na += a["done"]; np_ += b["done"]
-        if a["done"] and b["done"]:
-            rows.append((t, a, b))
-    dead = sum(a["conn"] >= 3 or b["conn"] >= 3 for _, a, b in rows)
-    rows = [r for r in rows if not (r[1]["conn"] >= 3 or r[2]["conn"] >= 3)]
-    return rows, na, np_, dead
+        if a["conn"] >= 3 or b["conn"] >= 3:
+            drop["dead_serve"] += 1; continue
+        rows.append((t, a, b))
+    return rows, ran, drop
 
 
 def main():
     print("# MLS 采样对齐 A/B:`_al1`(协议对齐)− `_p1`(未对齐)\n")
     print("两批除采样外 env 逐项相同(已从 /proc/<pid>/environ 直读确认)。\n")
     print("## 0. 每条臂进入分析的题数(§27:先看分母)\n")
-    print("| arm | al1 完成 | p1 完成 | 配对 | serve死格剔除 | 状态 |")
-    print("|---|---|---|---|---|---|")
+    print("| arm | 作业 | 可配对 n | 剔:agent没被问 | 剔:撞墙钟 | 剔:serve死 | 状态 |")
+    print("|---|---|---|---|---|---|---|")
     keep = {}
     for arm, lab in ARMS:
-        rows, na, np_, dead = pair(arm)
-        st = "完整" if (na >= 21 and np_ >= 21) else f"⚠部分(al1 {na}/21)"
-        print(f"| {lab} | {na} | {np_} | {len(rows)} | {dead} | {st} |")
-        keep[arm] = (rows, st.startswith("完整"))
+        rows, ran, drop = pair(arm)
+        st = "完整" if ran else "⚠还在跑"
+        print(f"| {lab} | {'已结束' if ran else '未结束'} | {len(rows)} | {drop['agent_failed']} | "
+              f"{drop['timeout']} | {drop['dead_serve']} | {st} |")
+        keep[arm] = (rows, ran)
     for key, lab in METRICS:
         print(f"\n## {lab}\n")
         print("| arm | n | al1 | p1 | Δ | +/− | 符号 p | Wilcoxon p | |")
