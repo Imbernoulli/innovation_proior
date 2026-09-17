@@ -42,7 +42,9 @@ import sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dump2 import load  # noqa: E402
+from dump2 import load, judge_meta  # noqa: E402
+
+SLOW = 0.90   # 判题节点速度低于这个值就标 ⚠:11 条臂在 0.949-1.017,掉出来的那三条在 0.56-0.83
 
 BOOT = 5000
 SEED = 0
@@ -95,12 +97,28 @@ def fmt(bench, x):
     return f"{x:.1f}" if bench == "alebench" else f"{x:.3f}"
 
 
+def speeds(arm, bench):
+    """这条臂在这个 bench 上的判题节点速度因子。
+
+    `gojudge_shim_v2._calibrate_node_speed` 把节点速度写进 judge_node_meta.json,
+    但**只记录、不修正** —— NODE_CALIB 从来没有拿去缩放时限。FrontierCS 与
+    ALE-Bench 都是按运行时间给分的,所以换一台慢节点判题,分数会被系统性压低,
+    而且这件事在 samples.jsonl 里看不出来。凡是跨臂比分,先比这一列。
+    """
+    v = [m["speed"] for m in judge_meta(arm, bench) if m.get("speed")]
+    parts = sorted({m["partition"] for m in judge_meta(arm, bench) if m.get("partition")})
+    return v, parts
+
+
 def emit(title, arms, out):
     for b, zh in BENCHES:
         out.append(f"### {zh}\n")
         out.append("| 臂 | n题 | n抽样 | mean@5 | 95% CI | best@5 | worst@5 | pass@5 | 5/5>0 | 满分@5 |")
         out.append("|---|---|---|---|---|---|---|---|---|---|")
         for a, lab in arms:
+            sp, _ = speeds(a, b)
+            if sp and min(sp) < SLOW:
+                lab = f"⚠ {lab}"
             s = stats(per_problem(a, b))
             if not s:
                 out.append(f"| {lab} `{a}` | — | — | — | — | — | — | — | — | — |")
@@ -124,8 +142,34 @@ def main():
            "只对已判的 858 行拉平是 4.479。仅此一臂受影响,其余格子网格全满、三种算法一致。", ""]
     out.append("## 8 条主臂\n")
     emit("main", ARMS, out)
+    out.append("> **⚠ 标记 = 这一格的判题节点明显慢于其余臂**,见文末「判题节点速度核验」。"
+               "FrontierCS 与 ALE-Bench 按运行时间给分,慢节点会系统性压低分数,"
+               "而 speedFactor 只被记录、从不用来修正时限,所以带 ⚠ 的行**不能和别的臂直接比**。\n")
     out.append("## 其余 6 条臂(ft03nm / lo32nm 线,供 §18 选臂用)\n")
     emit("other", OTHER, out)
+    out.append("## 判题节点速度核验(speedFactor:1.0 = ailab EPYC 基准)\n")
+    out.append("`gojudge_shim_v2.py` 的 `_calibrate_node_speed()` 把节点速度写进每个 shard 的")
+    out.append("`judge_node_meta.json`,但 `NODE_CALIB` **只落盘、从不拿去缩放时限**。")
+    out.append("FrontierCS 与 ALE-Bench 共用同一批 `thinking_32k_both_vllm` 的 shard,")
+    out.append("所以这两个 bench 的速度是同一个值;FCS-research 是单独的目录。\n")
+    out.append("| 臂 | FrontierCS + ALE-Bench | 分区 | FCS-research | 分区 |")
+    out.append("|---|---|---|---|---|")
+    for a, lab in ARMS + OTHER:
+        cells = []
+        for b in ("frontiercs", "frontiercs_research"):
+            sp, parts = speeds(a, b)
+            rng = "—" if not sp else (f"{min(sp):.3f}" if min(sp) == max(sp)
+                                      else f"{min(sp):.3f} – {max(sp):.3f}")
+            if sp and min(sp) < SLOW:
+                rng = f"**⚠ {rng}**"
+            cells += [rng, "/".join(parts) or "—"]
+        out.append(f"| {lab} `{a}` | " + " | ".join(cells) + " |")
+    out.append("")
+    out.append("**结论**:FCS-research 上 14 条臂全部落在 ailab 0.96–1.02,**这一层是干净的**")
+    out.append("(而创新性/探索性的主表就是 FCS-research)。FrontierCS + ALE 上,")
+    out.append("`ft03nm_a20`(0.82)、`lo32nm_a10`(0.79)、`rlv5_ft03nm_a20_s20`(**0.56**)")
+    out.append("三条臂的判题跑在 cpu / gpu-ee 分区的慢节点上,与其余 11 条臂的 0.95–1.02 不可比。")
+    out.append("要用它们的 FrontierCS / ALE 数,得先在同速节点上重判。\n")
     txt = "\n".join(out) + "\n"
     open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "main_table.md"), "w").write(txt)
     print(txt)
