@@ -40,15 +40,25 @@ def classify(t):
     return "ok", ""
 
 
-def audit(tag):
-    p = f"{D}/cc_mls21_{tag}/summary.json"
-    if not os.path.exists(p):
+def _tasks(path):
+    if not os.path.exists(path):
         return None
-    d = json.load(open(p)); ts = d.get("tasks", d)
-    if isinstance(ts, dict):
-        ts = list(ts.values())
-    return {t["task"]: dict(cls=classify(t)[0], why=classify(t)[1], score=t.get("score"))
-            for t in ts}
+    d = json.load(open(path)); ts = d.get("tasks", d)
+    return list(ts.values()) if isinstance(ts, dict) else ts
+
+
+def audit(tag):
+    ts = _tasks(f"{D}/cc_mls21_{tag}/summary.json")
+    if ts is None:
+        return None
+    out = {t["task"]: dict(cls=classify(t)[0], why=classify(t)[1], score=t.get("score"))
+           for t in ts}
+    # 合并补跑:同名题以 <tag>-fix 里的为准,口径与 year_grid.py 的 mls_cell 一致。
+    # 不合并的话审计器读到的是补跑前的旧状态。
+    fx = _tasks(f"{D}/cc_mls21_{tag}-fix/summary.json")
+    for t in (fx or []):
+        out[t["task"]] = dict(cls=classify(t)[0], why=classify(t)[1], score=t.get("score"))
+    return out
 
 
 FULL21 = None

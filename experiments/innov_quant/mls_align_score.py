@@ -35,6 +35,14 @@ def load(arm, suf):
     ts = d.get("tasks", d)
     if isinstance(ts, dict):
         ts = list(ts.values())
+    # 合并补跑:同名题以 <tag>-fix 里的为准,口径与 year_grid.py / mls_audit21.py 一致。
+    fp = f"{D}/outputs/cc_mls21_{arm}_{suf}-fix/summary.json"
+    if os.path.exists(fp):
+        fd = json.load(open(fp)); fts = fd.get("tasks", fd)
+        fts = list(fts.values()) if isinstance(fts, dict) else fts
+        byname = {t.get("task"): t for t in ts}
+        byname.update({t.get("task"): t for t in fts})
+        ts = list(byname.values())
     out = {}
     for t in ts:
         n = t.get("task")
