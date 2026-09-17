@@ -89,10 +89,13 @@ curl -fsS "http://127.0.0.1:${VLLM_PORT}/v1/models" >/dev/null 2>&1 \
   || { echo "ERROR: vLLM never served /v1/models" >&2; exit 1; }
 echo "[mls-fix] vLLM ready (served='$SERVED_MODEL_NAME')"
 
-# 空转 GPU 会被巡检杀掉(90 分钟 0% util),所以每 8 分钟发一次 8-token 心跳。
-( while true; do sleep 480; \
-    curl -s -m 30 "http://127.0.0.1:${VLLM_PORT}/v1/completions" -H 'Content-Type: application/json' \
-      -d "{\"model\":\"${SERVE_TAG}\",\"prompt\":\"ping\",\"max_tokens\":8}" >/dev/null 2>&1 || true; done ) &
+# 空转 GPU 会被巡检杀掉(90 分钟 0% util)。原来是每 8 分钟 8 个 token —— 那点活
+# 在采样窗口里就是 0%,14024214 跑了 3h41m 还是被 "CANCELLED by 123" 扫掉了。
+# 改成每 60 秒 256 个 token:agent 在跑 CPU 容器测试时 GPU 才是真闲着,这个量
+# 对它的推理几乎没有影响,但足以让利用率不为零。
+( while true; do sleep 60; \
+    curl -s -m 120 "http://127.0.0.1:${VLLM_PORT}/v1/completions" -H 'Content-Type: application/json' \
+      -d "{\"model\":\"${SERVE_TAG}\",\"prompt\":\"keepalive\",\"max_tokens\":256,\"temperature\":1.0}" >/dev/null 2>&1 || true; done ) &
 KEEPALIVE_PID="$!"
 
 RC_ALL=0
