@@ -35,7 +35,10 @@ def tables(path):
             if cols:
                 out.append((tuple(head), cols, rows)); cols, rows = None, []
             lvl = len(m.group(1))
-            head = head[:lvl - 1] + [m.group(2).strip()]
+            # 必须按层级补位再写:源文件里没有一级标题时,`head[:lvl-1]` 会让第一个
+            # 二级标题落到 index 0,下一个二级标题却落到 index 1 —— 于是第二节起
+            # 全部继承了第一节的名字(ALE-Bench 和「合计」都被打成 FrontierCS-research)。
+            head = (head + [""] * lvl)[:lvl - 1] + [m.group(2).strip()]
             continue
         if ln.startswith("|"):
             cells = [c.strip() for c in ln.strip("|").split("|")]
@@ -127,10 +130,17 @@ def sec_between():
          "`n_approach` = 类数(**「没产出方法」自成一类**,所以坍塌的臂照样进分母);"
          "`n_method` = 去掉「没产出方法」那一类之后的类数。两个数必须并排看 —— 五抽全没交东西"
          "和五抽交了同一个方法,n_approach 都是 1,但 n_method 分别是 0 和 1。\n")
-    for want, title in (("逐臂", "原始数值(每臂)"), ("对照", "配对差")):
-        for head, cols, rows in tables("explore_at5.md"):
-            if want in " / ".join(head):
-                emit(f"## {title}\n"); table(cols, rows); break
+    # explore_at5.md 现在按 bench 分了节,这里要**全部**取过来,不能只取第一张 ——
+    # 只取第一张会静默变成「只报 FCS-research」,而标题却写着「五条输出之间」。
+    for head, cols, rows in tables("explore_at5.md"):
+        if len(head) < 2:
+            continue
+        bench = next((x for x in head[:-1] if x), "")
+        sect = head[-1]
+        if "逐臂" in sect:
+            emit(f"## {bench} —— 原始数值(每臂)\n"); table(cols, rows)
+        elif "对照" in sect or "全部 bench" in sect:
+            emit(f"## {bench} —— 配对差\n"); table(cols, rows)
 
 
 def sec_idea():
@@ -138,7 +148,7 @@ def sec_idea():
     for head, cols, rows in tables("idea_v1_rl.md"):
         h = " / ".join(head)
         if "原始数值" in h or "配对差" in h or "聚合" in h:
-            emit(f"## {h.split(' / ')[-1]}\n"); table(cols, rows)
+            emit(f"## {head[-1]}\n"); table(cols, rows)
 
 
 def sec_recomb():
@@ -186,8 +196,10 @@ def main():
     emit("|---|---|---|---|")
     emit("| A | 一条输出**内部**探索了几种路子 | 样本 → 题 | **对我们有利**(9B/4B 三个 bench 上"
          "我们 − RL(base) 的 n_reason / n_abandon / explore_ratio 基本都是正的) |")
-    emit("| B | **五条输出之间**有多少不同做法 | 题(26 题人工标注) | **对我们不利**"
-         "(9B 我们的 n_method 低于 base/SFT;只有 4B 我们 − 4B RL(base) 是正的,24/0/2) |")
+    emit("| B | **五条输出之间**有多少不同做法 | 题(39 题人工标注:FCS-research 26 + ALE 13) | "
+         "**分 bench 后不是一句话**:9B 我们 − SFT 在 FCS-research 上 −1.23(0/18/8,p<1e-4),"
+         "在 ALE 上只有 −0.08(5/5/3,p=1.00);4B 我们 − RL(base) 两个 bench 都压倒性为正"
+         "(合计 36/0/3,p<1e-4) |")
     emit("| C | 会不会判断 research idea 的好坏 | 题 | 9B 三个非 ⚑ 任务 3/3 正但都不显著;"
          "4B penalise 下 Stouffer Z=+5.66 |")
     emit("| D | 是不是在拼已有的零件 | 样本 → 题 | D1(FrontierCS)我们的 n_tech 比 SFT 低 0.822"

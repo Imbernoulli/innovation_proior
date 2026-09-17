@@ -1,0 +1,70 @@
+{
+  "A": {
+    "n": 3,
+    "clusters": [
+      {"desc": "无最终答案", "no_method": true, "samples": [1, 2]},
+      {"desc": "把坐标离散化成固定分辨率(约200)的粗网格,建立按格计数的数组以定位最优矩形(刚搭好网格就被截断)", "no_method": false, "samples": [3]},
+      {"desc": "以鲭鱼整体外接矩形为基线,叠加质心随机扰动、随机点子集外接矩形、直接采样唯一坐标值等随机式候选生成加局部爬山,搜索更优矩形", "no_method": false, "samples": [4, 5]}
+    ]
+  },
+  "B": {
+    "n": 1,
+    "clusters": [
+      {"desc": "全部样本均无最终答案", "no_method": true, "samples": [1, 2, 3, 4, 5]}
+    ]
+  },
+  "C": {
+    "n": 4,
+    "clusters": [
+      {"desc": "以全局外接矩形为基线,通过随机点子集外接矩形、随机采样唯一坐标做笛卡尔积组合枚举、中位数切分、局部微调等随机式启发搜索寻找更优矩形", "no_method": false, "samples": [1, 2]},
+      {"desc": "直接输出鲭鱼整体外接矩形,不做任何搜索优化", "no_method": false, "samples": [3]},
+      {"desc": "对坐标做离散压缩后建立二维前缀和网格,为系统化的矩形求和查询做准备", "no_method": false, "samples": [4]},
+      {"desc": "按距离阈值把鲭鱼做空间分桶,再用洪水填充/BFS求连通块聚类,对聚类求外接矩形", "no_method": false, "samples": [5]}
+    ]
+  },
+  "D": {
+    "n": 4,
+    "clusters": [
+      {"desc": "对y坐标离散压缩后按x轴扫描,用维护最大子段和(前缀/后缀/整体)的线段树动态求解最大子矩形", "no_method": false, "samples": [1, 5]},
+      {"desc": "建立稠密二维差值网格(鲭鱼计数减沙丁鱼计数),双重枚举行区间并对列前缀和做Kadane式最大子段搜索", "no_method": false, "samples": [2]},
+      {"desc": "构建二维树状数组(Fenwick)以支持矩形区域计数查询", "no_method": false, "samples": [3]},
+      {"desc": "代码只是反复推倒重来的骨架和注释,没有给出任何可辨认的求解算法", "no_method": true, "samples": [4]}
+    ]
+  },
+  "E": {
+    "n": 4,
+    "clusters": [
+      {"desc": "只取鲭鱼整体外接矩形(对退化维度做+1修正),不参考沙丁鱼", "no_method": false, "samples": [1]},
+      {"desc": "无视输入点,直接输出覆盖整个坐标域[0,100000]的矩形", "no_method": false, "samples": [2]},
+      {"desc": "被截断,只完成了读入数据结构,未展示任何求解算法", "no_method": true, "samples": [3, 5]},
+      {"desc": "坐标压缩建二维前缀和网格,枚举所有输入点两两配对作为矩形对角顶点,用前缀和精确评分取最优", "no_method": false, "samples": [4]}
+    ]
+  },
+  "F": {
+    "n": 4,
+    "clusters": [
+      {"desc": "尝试构建二维树状数组(Fenwick)按点计数支持矩形查询,动态扩张矩形的思路尚未落地(被截断)", "no_method": false, "samples": [1]},
+      {"desc": "为一维数组建立支持最大子段和(含区间端点回溯)的线段树/合并结构,按扫描方式动态求解最大子矩形", "no_method": false, "samples": [2, 4]},
+      {"desc": "坐标压缩建二维前缀和网格,枚举所有鲭鱼两两点对作为矩形边界并用前缀和评分", "no_method": false, "samples": [3]},
+      {"desc": "枚举唯一x坐标对作为矩形左右边界,对该x条带内按y排序的点做Kadane式一维最大子段扫描", "no_method": false, "samples": [5]}
+    ]
+  },
+  "G": {
+    "n": 4,
+    "clusters": [
+      {"desc": "无最终答案", "no_method": true, "samples": [1]},
+      {"desc": "输出鲭鱼整体外接矩形(对退化维度做修正),不做任何搜索优化", "no_method": false, "samples": [3, 4]},
+      {"desc": "遍历所有鲭鱼,尝试其周围4种1x1小矩形并用集合检验避开沙丁鱼,搜索零沙丁鱼的最小矩形", "no_method": false, "samples": [2]},
+      {"desc": "任意选取第一条鲭鱼,围绕它构造一个1x1的最小合法矩形,不做搜索也不检查沙丁鱼", "no_method": false, "samples": [5]}
+    ]
+  },
+  "H": {
+    "n": 4,
+    "clusters": [
+      {"desc": "输出鲭鱼整体外接矩形,不做任何搜索优化", "no_method": false, "samples": [1, 4]},
+      {"desc": "按距离阈值对鲭鱼做BFS聚类,再对每个聚类求外接矩形并比较评分取最优", "no_method": false, "samples": [2]},
+      {"desc": "坐标压缩建二维前缀和网格,穷举所有唯一x坐标对与y坐标对的矩形组合(带周长约束)求精确最优", "no_method": false, "samples": [3]},
+      {"desc": "以鲭鱼整体外接矩形为基线,叠加随机生成矩形的随机搜索寻找更优解", "no_method": false, "samples": [5]}
+    ]
+  }
+}
