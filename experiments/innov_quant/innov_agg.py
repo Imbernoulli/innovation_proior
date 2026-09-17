@@ -37,8 +37,12 @@ def cell(DATA, bench, A, B, field):
             if v in (None, ""): continue
             if isinstance(v, str) and v.strip() in ("True", "False"):
                 v = 1.0 if v.strip() == "True" else 0.0
-            try: byp[k[0]][idx].append(float(v))
+            try: fv = float(v)
             except ValueError: return None
+            # NaN 会一路混到 d 里:`d != 0` 对 NaN 为真,所以它进得了 nz,wilcoxon 就返回
+            # nan,整个格子被 isfinite 那道关卡丢掉。一个样本缺指标不该废掉整条对照。
+            if not math.isfinite(fv): continue
+            byp[k[0]][idx].append(fv)
     xa, xb = [], []
     for p, (la, lb) in byp.items():
         if la and lb: xa.append(np.mean(la)); xb.append(np.mean(lb))
