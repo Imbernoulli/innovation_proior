@@ -267,45 +267,57 @@ def curve_section():
            "两条扫描线:`新四点`只投了 2000/2025/2050/2075;`老扫描`投了 "
            "1700-2100 共 12 个点但只覆盖 base 与 lo32nm 两族。**两条线不是同一世代,不要横跨着比。**\n",
            "每格 `均分 (n)`。峰值只在该臂**自己有的**点里取。\n",
-           "**MLS 的 2026 只认 `_y2026`。** 它的 worker python 才是世代主键:裸 tag 和全部 "
-           "`_y####` 走 `/home/zy7019/miniconda3/bin/python3`,而 `_p1`/`_al1` 走 "
-           "`$D/envs/client/bin/python`(`mls21_rerun_submit.sh` 显式传了 `MLSBENCH_PY`)。"
-           "裸 tag 另外还在 vendor 重建之前。三者都不能并进年份曲线,单列在右边三列 "
-           "`均分 (n/python)`,**只可同列纵比,不可与年份列横比**。\n"]
+           "**MLS 的 2026 有四种来源,全部就地列在 2026 那一格**(先前我把它们赶到右边侧栏,"
+           "结果主结果从 2026 消失了 —— 判据定得太严,已改回)。\n\n"
+           "四者的 env 逐项比过:prefix 形式、`MAX_MODEL_LEN=40960`、`TASK_TIMEOUT=7200`、"
+           "`CONCURRENCY=7` 全都一样,`_p1`/`_al1` 与年份点的**唯一差别是 `MLSBENCH_PY`** "
+           "(年份点与裸 tag 走 conda python,`_p1`/`_al1` 走 client venv);`_al1` 另外还改了采样。"
+           "裸 tag 则还在 09-11 vendor 重建之前,是唯一一个真·旧世代。\n\n"
+           "这个 worker-python 差**量过了**(只有 `base9b_v2c`/`base4b` 同时有两边,逐题配对):"
+           "9B base y2026→p1 **+0.068**(6/0, W=0.028)、y2026→al1 +0.006(3/4, ns);"
+           "4B base y2026→p1 +0.018(ns)、y2026→al1 +0.040(ns)。"
+           "**四个对照只有一个显著**,量级与年份间差同阶 —— 不足以把它们排除,但纵向读曲线时"
+           "只在同一来源内读。\n"]
     for bench, blab in [("mls", "MLS-Bench")] + NONMLS:
         out.append(f"\n## {blab}\n")
-        hdr = " | ".join((f"**{y}**" if y == 2026 else str(y)) for y in ALLY)
-        ex = " | 裸tag | p1 | al1" if bench == "mls" else ""
-        nex = 3 if bench == "mls" else 0
-        out.append(f"| arm | 扫描线 | {hdr}{ex} | 峰值 | 点数 |")
-        out.append("|---|---|" + "---|" * (len(ALLY) + 2 + nex))
         if bench == "mls":
-            out.append("")
-            out.pop()
+            hdr = " | ".join(
+                ("**2026:y2026** | **2026:p1** | **2026:al1** | **2026:裸tag**"
+                 if y == 2026 else str(y)) for y in ALLY)
+            nex = 3
+        else:
+            hdr = " | ".join((f"**{y}**" if y == 2026 else str(y)) for y in ALLY)
+            nex = 0
+        out.append(f"| arm | 扫描线 | {hdr} | 峰值 | 点数 |")
+        out.append("|---|---|" + "---|" * (len(ALLY) + 2 + nex))
         for arm, lab, line in LINE:
             vals, cells = {}, []
             for y in ALLY:
-                # MLS 的 2026 只认 `_y2026`(与年份点同一次投递、同一个 worker python)。
-                # 裸 tag 是 vendor 重建之前的,p1/al1 换了 worker python —— 都不能并进曲线,
-                # 它们在下面单列。非 MLS 的三条 bench 裸 tag 与年份点同世代,可以并。
-                if bench == "mls":
-                    tag = f"{arm}_y{y}"
-                else:
-                    tag = arm if y == 2026 else f"{arm}_y{y}"
+                if bench == "mls" and y == 2026:
+                    # 2026 的四个来源就地铺开。峰值按 al1(我们的主协议)参与,
+                    # 它没有就退到 p1、再退到 _y2026 —— 这样每条臂的 2026 都不会是空的。
+                    got = {}
+                    for key, tg in (("y2026", f"{arm}_y2026"), ("p1", f"{arm}_p1"),
+                                    ("al1", f"{arm}_al1"), ("裸tag", arm)):
+                        c = mls_cell(tg)
+                        if c and c["n"] > 0 and not np.isnan(c["mean"]):
+                            got[key] = c
+                            cells.append(f"{c['mean']:.3f} ({c['n']}/{c['py']})")
+                        else:
+                            cells.append("")
+                    for key in ("al1", "p1", "y2026"):
+                        if key in got:
+                            vals[y] = got[key]["mean"]
+                            break
+                    continue
+                tag = f"{arm}_y{y}" if bench == "mls" else (arm if y == 2026 else f"{arm}_y{y}")
                 c = mls_cell(tag) if bench == "mls" else nonmls_cell(tag, bench)
                 if c and c["n"] > 0 and not np.isnan(c["mean"]):
                     vals[y] = c["mean"]
                     cells.append(f"{c['mean']:.3f} ({c['n']})")
                 else:
                     cells.append("")
-            extra = ""
-            if bench == "mls":
-                ec = []
-                for suf, nm in (("", "裸tag"), ("_p1", "p1"), ("_al1", "al1")):
-                    c = mls_cell(f"{arm}{suf}")
-                    ec.append(f"{c['mean']:.3f} ({c['n']}/{c['py']})" if c and c["n"] else "")
-                extra = " | " + " | ".join(ec)
-            row = f"| {lab} | {line} | " + " | ".join(cells) + extra + " | "
+            row = f"| {lab} | {line} | " + " | ".join(cells) + " | "
             if len(vals) < 3:
                 out.append(row + f"— | {len(vals)} |")
             else:
