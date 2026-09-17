@@ -94,10 +94,13 @@ def mls_cell(tag):
         ts = list(ts.values())
     # 用户 2026-09-16:MLS 分母一律 21。真 0 记 0 进分母;环境坏掉的题不进,要重跑。
     # 补跑结果写在 <tag>-fix 目录,这里按题后写覆盖并进来。
-    sc = [t["score"] for t in ts
-          if t.get("score") is not None
-          and "agent_failed" not in (t.get("status") or "")
-          and "timeout" not in (t.get("status") or "")]
+    #
+    # 2026-09-17:原来这里还按 status 把 `agent_failed+scored` / `timeout+scored` 剔掉,
+    # 于是同一格 year_grid 报 0.098 而 mls_year 报 0.125(9B RL(base) y2100)。那三题
+    # 是有分的(0.255/0.000/0.303),剔掉等于把分子也一起剔了。用户口径是「分母钉死 21、
+    # 真 0 记 0」,外加「模型没主动 finalize 也要挑一个版本评分」—— 有分就进分母。
+    # 只有**根本没跑出分**的题才出分母,那种才是要重跑的。
+    sc = [t["score"] for t in ts if t.get("score") is not None]
     # 口径必须与 mls_year.py 一致:统计**出现过至少一次** APIConnectionError 的题数,
     # 该格 dead>=3 题即判基础设施无效。先前这里写成「单个日志里出现>=3次」,那从不发生,
     # dead 恒为 0,整张年份表一格死 serve 都没标出来(ft01mix_a10 y2000/y2075 实为 12/18 题)。
@@ -115,11 +118,13 @@ def mls_cell(tag):
         for t in fts:
             byname[t["task"]] = t
         ts = list(byname.values())
-        sc = [t["score"] for t in ts
-              if t.get("score") is not None
-              and "agent_failed" not in (t.get("status") or "")
-              and "timeout" not in (t.get("status") or "")]
-    return dict(n=len(sc), mean=(float(np.mean(sc)) if sc else float("nan")),
+        sc = [t["score"] for t in ts if t.get("score") is not None]
+    # 带标记但仍出了分的题:照进分母,但要能数出来,免得「21/21」把它们藏了。
+    flagged = sorted(t["task"] for t in ts
+                     if t.get("score") is not None
+                     and ("agent_failed" in (t.get("status") or "")
+                          or "timeout" in (t.get("status") or "")))
+    return dict(flagged=flagged, n=len(sc), mean=(float(np.mean(sc)) if sc else float("nan")),
                 mean21=(float(np.sum(sc)) / 21.0),     # 用户口径:分母钉死 21
                 mt=mt(f"{D}/cc_mls21_{tag}"), dead=dead, tot=len(ts), py=worker_py(tag),
                 fixed=os.path.exists(fx))
@@ -351,6 +356,34 @@ def curve_section():
                 out.append(row + f"**{max(vals, key=vals.get)}** | {len(vals)} |")
     out.append("\n**看峰值那一列**:倒 U 成立的话峰应该集中在 2025/2026。"
                "另见下一节 —— 峰值列受分母影响,配对之后效应消失。")
+    out += flagged_section()
+    return out
+
+
+def flagged_section():
+    """出了分但带 agent_failed / timeout 标记的题。
+
+    它们照进分母(用户口径:分母 21、真 0 记 0、没 finalize 也挑一版评分),
+    但必须能被数出来 —— 否则「21/21」会让人以为这一格干干净净。
+    """
+    rows = []
+    for arm, lab, _ in LINE:
+        for key, tg in ([("p1", f"{arm}_p1"), ("al1", f"{arm}_al1"), ("裸tag", arm)]
+                        + [(f"y{y}", f"{arm}_y{y}") for y in ALLY if y != 2026]):
+            c = mls_cell(tg)
+            for t in (c or {}).get("flagged", []):
+                rows.append((lab, key, t))
+    out = ["\n\n# 带标记但仍计分的题(MLS)\n",
+           "`agent_failed+scored` / `timeout+scored`:agent 半途出错或撞了预算,"
+           "但仍有一个版本被判出了分。**这些题照进分母** —— 剔掉它们等于连分子一起剔,"
+           "9B RL(base) y2100 会从 0.125 掉到 0.098。列在这里是为了「21/21」不遮住它们。\n"]
+    if not rows:
+        out.append("(无)\n")
+        return out
+    out.append("| 臂 | 格 | 题 |")
+    out.append("|---|---|---|")
+    out += [f"| {a} | {k} | `{t}` |" for a, k, t in rows]
+    out.append(f"\n合计 **{len(rows)}** 题。\n")
     return out
 
 
