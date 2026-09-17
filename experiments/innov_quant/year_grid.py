@@ -161,44 +161,48 @@ def main():
 # 依据是 mtime —— ft01mix 那条四点线的年份点是 09-15/16,而这六条臂的裸 tag 也是 09-15,
 # 所以 2026 可以并进去,变成 2000 / 2025 / 2026 / 2050 / 2075 五个点。
 # base9b_v2c / base4b 不在这条线上(它们只有 09-11/12 的老扫描),单列。
-LINE = [("ft01mix_a10", "9B SFT"), ("rlv5_base_s20", "9B RL(base)"),
-        ("rlv5_ft01mix_a10_s20", "9B RL(先验)"), ("4b_ft01mix_a10", "4B SFT"),
-        ("rlv5_4b_base_s20", "4B RL(base)"), ("rlv5_4b_ft01mix_a10_s20", "4B RL(先验)")]
-PTS = [(2000, "y"), (2025, "y"), (2026, "bare"), (2050, "y"), (2075, "y")]
+LINE = [("base9b_v2c", "9B base", "老扫描 09-11/12"),
+        ("ft01mix_a10", "9B SFT", "新四点 09-15/16"),
+        ("rlv5_base_s20", "9B RL(base)", "新四点 09-15/16"),
+        ("rlv5_ft01mix_a10_s20", "9B RL(先验)", "新四点 09-15/16"),
+        ("base4b", "4B base", "老扫描 09-11/12"),
+        ("4b_ft01mix_a10", "4B SFT", "新四点 09-15/16"),
+        ("rlv5_4b_base_s20", "4B RL(base)", "新四点 09-15/16"),
+        ("rlv5_4b_ft01mix_a10_s20", "4B RL(先验)", "新四点 09-15/16")]
+
+ALLY = YEARS   # 1700 … 2100,缺的留空
 
 
 def curve_section():
-    out = ["\n\n# 同世代五点年份曲线(2000 / 2025 / **2026** / 2050 / 2075)\n",
-           "2026 取**裸 tag**:`EVAL_RESEARCHER_YEAR` 默认就是 2026,而这六条臂的裸 tag "
-           "mtime 是 09-15、年份点是 09-15/16,**同一世代**,所以可以并。",
-           "`base9b_v2c` / `base4b` 不在这条线上(只有 09-11/12 的老扫描),不并。\n",
-           "每格 `均分 (n)`。**峰值**列 = 五点里最高的那一年。\n"]
+    out = ["\n\n# 年份曲线:全部年份 × 全部主臂(缺的留空)\n",
+           "**2026 取裸 tag**(`EVAL_RESEARCHER_YEAR` 默认就是 2026)。",
+           "两条扫描线:`新四点`只投了 2000/2025/2050/2075;`老扫描`投了 "
+           "1700-2100 共 12 个点但只覆盖 base 与 lo32nm 两族。**两条线不是同一世代,不要横跨着比。**\n",
+           "每格 `均分 (n)`。峰值只在该臂**自己有的**点里取。\n"]
     for bench, blab in [("mls", "MLS-Bench")] + NONMLS:
         out.append(f"\n## {blab}\n")
-        out.append("| arm | 2000 | 2025 | **2026** | 2050 | 2075 | 峰值 | 极差/均值 |")
-        out.append("|---|---|---|---|---|---|---|---|")
-        for arm, lab in LINE:
+        hdr = " | ".join((f"**{y}**" if y == 2026 else str(y)) for y in ALLY)
+        out.append(f"| arm | 扫描线 | {hdr} | 峰值 | 点数 |")
+        out.append("|---|---|" + "---|" * (len(ALLY) + 2))
+        for arm, lab, line in LINE:
             vals, cells = {}, []
-            for y, kind in PTS:
-                tag = arm if kind == "bare" else f"{arm}_y{y}"
+            for y in ALLY:
+                tag = arm if y == 2026 else f"{arm}_y{y}"
                 c = mls_cell(tag) if bench == "mls" else nonmls_cell(tag, bench)
                 if c and c["n"] > 0 and not np.isnan(c["mean"]):
                     vals[y] = c["mean"]
                     cells.append(f"{c['mean']:.3f} ({c['n']})")
                 else:
-                    cells.append("—")
+                    cells.append("")
+            row = f"| {lab} | {line} | " + " | ".join(cells) + " | "
             if len(vals) < 3:
-                out.append(f"| {lab} | " + " | ".join(cells) + " | — | ⚠点太少 |")
-                continue
-            pk = max(vals, key=vals.get)
-            rng = (max(vals.values()) - min(vals.values())) / (np.mean(list(vals.values())) or 1)
-            out.append(f"| {lab} | " + " | ".join(cells) + f" | **{pk}** | {rng:.1%} |")
-    out.append("\n**看峰值那一列**:倒 U 成立的话六条臂的峰应该都落在 2025/2026。")
+                out.append(row + f"— | {len(vals)} |")
+            else:
+                out.append(row + f"**{max(vals, key=vals.get)}** | {len(vals)} |")
+    out.append("\n**看峰值那一列**:倒 U 成立的话峰应该集中在 2025/2026。"
+               "另见下一节 —— 峰值列受分母影响,配对之后效应消失。")
     return out
 
-
-if __name__ == "__main__":
-    pass
 
 
 # ============ 2026 的配对检验 ============
@@ -228,7 +232,7 @@ def paired_2026():
         out.append("| arm | 公共题 n | 2026 | FAR(2000/2075均值) | Δ | +/− | Wilcoxon p | 2026−2025 | +/− | p |")
         out.append("|---|---|---|---|---|---|---|---|---|---|")
         zf, z25 = [], []
-        for arm, lab in LINE:
+        for arm, lab, _line in LINE:
             b26 = _byprob(arm, bench); b00 = _byprob(f"{arm}_y2000", bench)
             b75 = _byprob(f"{arm}_y2075", bench); b25 = _byprob(f"{arm}_y2025", bench)
             gs = sorted(set(b26) & set(b00) & set(b75) & set(b25))
@@ -253,3 +257,22 @@ def paired_2026():
 
 if __name__ == "__main__":
     main()
+
+
+def dump_json(path):
+    """给页面用的数据。结构:{bench: {arm: {year: {mean,n,mt}}}} + 配对检验。"""
+    import json as _j
+    D_ = {"years": ALLY, "arms": [{"key": a, "label": l, "line": ln} for a, l, ln in LINE],
+          "benches": [["mls", "MLS-Bench"]] + [list(x) for x in NONMLS], "data": {}}
+    for bench, _ in [("mls", "MLS-Bench")] + NONMLS:
+        D_["data"][bench] = {}
+        for arm, lab, line in LINE:
+            row = {}
+            for y in ALLY:
+                tag = arm if y == 2026 else f"{arm}_y{y}"
+                c = mls_cell(tag) if bench == "mls" else nonmls_cell(tag, bench)
+                if c and c["n"] > 0 and not np.isnan(c["mean"]):
+                    row[str(y)] = {"mean": round(c["mean"], 4), "n": c["n"], "mt": c["mt"]}
+            D_["data"][bench][arm] = row
+    _j.dump(D_, open(path, "w"), ensure_ascii=False)
+    return path
