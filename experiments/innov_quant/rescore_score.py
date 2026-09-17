@@ -12,6 +12,7 @@ file-state 只动 as-run 记 0 的格子,所以它只会往上抬,不会往下�
 这对我们是不利的方向(9B base 有 17 个这样的格子,我们只有 8 个),照报。
 """
 import json
+import math
 import os
 import sys
 from pathlib import Path
@@ -33,6 +34,22 @@ PAIRS = [("rlv5_base_s20", "rlv5_ft01mix_a10_s20", "9B 我们 − RL(base)"),
          ("rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − RL(base)"),
          ("4b_ft01mix_a10", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − SFT"),
          ("base4b", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − base")]
+
+
+def sign_counts(lo, hi):
+    """逐题配对:hi 更高 / 更低 / 相同。两条线都要报,不然看不出抬升是不是只发生在少数题上。"""
+    w = sum(1 for a, b in zip(lo, hi) if b > a)
+    l = sum(1 for a, b in zip(lo, hi) if b < a)
+    return w, l, len(lo) - w - l
+
+
+def sign_p(w, l):
+    """双边符号检验(平局剔除)。21 题,用精确二项。"""
+    n = w + l
+    if n == 0:
+        return float("nan")
+    c = [math.comb(n, k) for k in range(n + 1)]
+    return min(1.0, 2 * sum(c[:min(w, l) + 1]) / float(sum(c)))
 
 
 def asrun():
@@ -58,10 +75,10 @@ def main():
     T21 = sorted({t for tag, _ in ARMS for t in A[tag]})
     assert len(T21) == 21, f"题数 {len(T21)},应为 21"
 
-    fs, moved, nometric = {}, {}, {}
+    fs, moved, nometric, tried = {}, {}, {}, {}
     for tag, _ in ARMS:
         fs[tag] = {t: (A[tag].get(t) or 0.0) for t in T21}
-        moved[tag], nometric[tag] = [], []
+        moved[tag], nometric[tag], tried[tag] = [], [], []
         d = RES / tag
         if not d.is_dir():
             continue
@@ -72,6 +89,7 @@ def main():
                 continue
             if (A[tag].get(t) or 0.0) != 0.0:
                 continue                      # 只补 as-run 记 0 的格子
+            tried[tag].append(t)              # 补测过的格子,不管结果如何
             m = j.get("metrics") or {}
             if not m:
                 nometric[tag].append(t)
@@ -85,25 +103,32 @@ def main():
                 moved[tag].append((t, s))
 
     print("## 1. 逐臂:as-run vs file-state(al1,分母 21)\n")
-    print("| 臂 | 补测格子 | 补出非零 | as-run 均分 | file-state 均分 | Δ | as-run 非零 | file-state 非零 |")
-    print("|---|---:|---:|---:|---:|---:|---:|---:|")
+    print("| 臂 | 补测格子 | 跑出指标 | 补出非零 | as-run 均分 | file-state 均分 | Δ | as-run 非零 | file-state 非零 |")
+    print("|---|---:|---:|---:|---:|---:|---:|---:|---:|")
     store = {}
     for tag, name in ARMS:
         a = [A[tag].get(t) or 0.0 for t in T21]
         b = [fs[tag][t] for t in T21]
         store[tag] = (a, b)
-        n_try = len(moved[tag]) + len(nometric[tag])
-        print(f"| {name} | {n_try} | {len(moved[tag])} | {sum(a)/21:.4f} | {sum(b)/21:.4f} | "
+        # 三个数不是同一件事:补测过的格子 ⊋ 跑出指标的 ⊋ 评分为正的。
+        # 中间那一层以前没打印,于是这一列比 rescore_why.py 的 71 少了 10 格 ——
+        # 「跑出指标但分数被钳到 0」既不在 moved 里也不在 nometric 里。
+        n_try = len(tried[tag])
+        n_met = n_try - len(nometric[tag])
+        print(f"| {name} | {n_try} | {n_met} | {len(moved[tag])} | {sum(a)/21:.4f} | {sum(b)/21:.4f} | "
               f"{sum(b)/21-sum(a)/21:+.4f} | {sum(1 for x in a if x>0)}/21 | "
               f"{sum(1 for x in b if x>0)}/21 |")
 
     print("\n## 2. 对照\n")
-    print("| 对照 | as-run Δ | file-state Δ |")
-    print("|---|---:|---:|")
+    print("| 对照 | as-run Δ | as-run 胜/负/平 | as-run p | file-state Δ | file-state 胜/负/平 | file-state p |")
+    print("|---|---:|:---:|---:|---:|:---:|---:|")
     for lo, hi, lbl in PAIRS:
         da = (sum(store[hi][0]) - sum(store[lo][0])) / 21
         db = (sum(store[hi][1]) - sum(store[lo][1])) / 21
-        print(f"| {lbl} | {da:+.4f} | {db:+.4f} |")
+        wa = sign_counts(store[lo][0], store[hi][0])
+        wb = sign_counts(store[lo][1], store[hi][1])
+        print(f"| {lbl} | {da:+.4f} | {wa[0]}/{wa[1]}/{wa[2]} | {sign_p(*wa[:2]):.4f} | "
+              f"{db:+.4f} | {wb[0]}/{wb[1]}/{wb[2]} | {sign_p(*wb[:2]):.4f} |")
 
     print("\n## 3. 补出非零的格子\n")
     print("| 臂 | 题 | file-state 分 |")
@@ -115,7 +140,7 @@ def main():
     json.dump({"tasks": T21,
                "asrun": {t: store[t][0] for t, _ in ARMS},
                "filestate": {t: store[t][1] for t, _ in ARMS},
-               "moved": moved, "nometric": nometric},
+               "moved": moved, "nometric": nometric, "tried": tried},
               open(RES / "rescore_summary.json", "w"), indent=1)
 
 
