@@ -14,8 +14,10 @@
 #   SyntaxError/AttributeError,那些是 mlsbench 回灌给模型继续改的,不是失败。
 #
 # 用法:
-#   PLAN='al1|4|a,b,c;y2075|2075|d,e' ARM=... MODEL_PATH=... sbatch 本脚本
-#   PLAN 一条 = <setting>|<year>|<逗号分隔的题>。setting=al1 时自动加对齐采样。
+#   PLANFILE=/path/plan.tsv ARM=... MODEL_PATH=... sbatch 本脚本
+#   plan.tsv 每行 = <setting>\t<year>\t<逗号分隔的题>。setting=al1 时自动加对齐采样。
+#   **计划必须走文件,不能走 --export**:sbatch 的 --export 按逗号切 KEY=VAL,
+#   题目列表里的逗号会把 PLAN 切碎(2026-09-17 踩过,整批作业只跑了一道题)。
 #   结果写 $OUT_ROOT/cc_mls21_<ARM>_<setting>-fix/,**不动原目录**,读数时按题后写覆盖。
 #
 #SBATCH --job-name=cc-mls-fix
@@ -26,11 +28,17 @@
 #SBATCH --error=logs/%x-%j.err
 set -euo pipefail
 
-if [ -n "${SLURM_SUBMIT_DIR:-}" ]; then PROJECT_ROOT="${SLURM_SUBMIT_DIR}";
-else PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"; fi
+# PROJECT_ROOT 必须是 FrontierSmith(scripts/start_vllm_server.sh 在那儿)。
+# SLURM_SUBMIT_DIR 是「执行 sbatch 时所在的目录」,不是 -D 给的工作目录 ——
+# 2026-09-17 我用 -D 传,结果 SLURM_SUBMIT_DIR 指到 repo,serve 脚本找不到,整批作业空转。
+# 提交器现在会先 cd 到 FS;这里再兜一层 FS_ROOT。
+PROJECT_ROOT="${FS_ROOT:-${SLURM_SUBMIT_DIR:-$PWD}}"
+[ -x "$PROJECT_ROOT/scripts/start_vllm_server.sh" ] || {
+  echo "ERROR: no scripts/start_vllm_server.sh under PROJECT_ROOT=$PROJECT_ROOT" >&2; exit 1; }
 cd "$PROJECT_ROOT"
 
-: "${ARM:?ARM required}"; : "${MODEL_PATH:?MODEL_PATH required}"; : "${PLAN:?PLAN required}"
+: "${ARM:?ARM required}"; : "${MODEL_PATH:?MODEL_PATH required}"; : "${PLANFILE:?PLANFILE required}"
+[ -f "$PLANFILE" ] || { echo "ERROR: no PLANFILE $PLANFILE" >&2; exit 1; }
 OUT_ROOT="${OUT_ROOT:?OUT_ROOT required}"
 MLSBENCH_ROOT="${MLSBENCH_ROOT:?}"
 [ -d "$MLSBENCH_ROOT/src/mlsbench" ] || { echo "ERROR: bad MLSBENCH_ROOT" >&2; exit 1; }
@@ -59,7 +67,8 @@ TTO="${TASK_TIMEOUT:-9000}"
 
 echo "[mls-fix] ARM=$ARM MODEL=$MODEL_PATH"
 echo "[mls-fix] MAX_MODEL_LEN=$MAX_MODEL_LEN (was 40960) TASK_TIMEOUT=${TTO}s CONCURRENCY=$CONC"
-echo "[mls-fix] PLAN=$PLAN"
+echo "[mls-fix] PLANFILE=$PLANFILE"
+cat "$PLANFILE" | sed 's/^/    /'
 
 export MODEL_PATH
 PORT="$VLLM_PORT" SERVED_MODEL_NAME="$SERVED_MODEL_NAME" \
@@ -87,11 +96,8 @@ echo "[mls-fix] vLLM ready (served='$SERVED_MODEL_NAME')"
 KEEPALIVE_PID="$!"
 
 RC_ALL=0
-IFS=';' read -r -a ENTRIES <<< "$PLAN"
-for ENT in "${ENTRIES[@]}"; do
-  [ -n "$ENT" ] || continue
-  SETTING="${ENT%%|*}"; REST="${ENT#*|}"
-  YEAR="${REST%%|*}";   TASKS="${REST#*|}"
+while IFS=$'\t' read -r SETTING YEAR TASKS; do
+  [ -n "${SETTING:-}" ] || continue
   OB="$OUT_ROOT/cc_mls21_${ARM}_${SETTING}-fix"
   mkdir -p "$OB/saves"
   GEN="$OB/config_${SLURM_JOB_ID:-manual}.yaml"
@@ -137,7 +143,7 @@ YAML
   set -e
   echo "[mls-fix] $ARM/$SETTING rc=$rc"
   [ $rc -eq 0 ] || RC_ALL=$rc
-done
+done < "$PLANFILE"
 
 echo "[mls-fix] ALL DONE rc=$RC_ALL"
 exit 0
