@@ -101,7 +101,16 @@ def main():
 
     cols = [c for c, _, _ in COLS]
 
-    def grid(store, title):
+    def incomplete(tag, c):
+        """这一格的 0 分格子还没补完 —— file-state 值只是「补了一部分」的中间态。
+
+        y2050 是后落地的,它的 0 分格子当时不在重评计划里,于是同一列上
+        四个臂全补、四个臂一格没补。不标出来,这一列会被当成可比的数读(第 6 号)。
+        """
+        n_try, _, n_zero = cov.get((tag, c), (0, 0, 0))
+        return n_zero and n_try < n_zero
+
+    def grid(store, title, mark=False):
         emit(f"## {title}\n")
         emit("| 臂 | " + " | ".join(cols) + " | 峰值 |")
         emit("|---|" + "---:|" * (len(cols) + 1))
@@ -112,13 +121,14 @@ def main():
                     cells.append("—"); continue
                 v = sum(store[(tag, c)].values()) / 21
                 vals[c] = v
-                cells.append(f"{v:.3f}")
+                cells.append(f"{v:.3f}" + ("⚠" if mark and incomplete(tag, c) else ""))
             pk = max(vals, key=vals.get) if vals else "—"
             emit(f"| {name} | " + " | ".join(cells) + f" | {pk} |")
         emit()
 
     grid(A, "1. as-run(MLS 原样口径,总分/21)")
-    grid(F, "2. file-state(补测「有方法但没 finalize」的格子后,总分/21)")
+    grid(F, "2. file-state(补测「有方法但没 finalize」的格子后,总分/21)", mark=True)
+    emit("> ⚠ = 这一格的 0 分格子**还没补完**,值是中间态,不要和同列其它格比。\n")
 
     emit("## 3. 补测覆盖(记 0 的格子里,已补测 / 补出非零)\n")
     emit("| 臂 | " + " | ".join(cols) + " |")
@@ -143,7 +153,8 @@ def main():
                 if (lo, c) not in store or (hi, c) not in store:
                     cs.append("—"); continue
                 d = (sum(store[(hi, c)].values()) - sum(store[(lo, c)].values())) / 21
-                cs.append(f"{d:+.3f}")
+                bad = sname == "file-state" and (incomplete(lo, c) or incomplete(hi, c))
+                cs.append(f"{d:+.3f}" + ("⚠" if bad else ""))
             emit(f"| {lbl} | {sname} | " + " | ".join(cs) + " |")
     emit()
 
