@@ -37,10 +37,12 @@ sub_one() {  # $1=arm $2=plan-file
         --partition=ailab --account=chij --qos=short --gres=gpu:1 \
         -o "$D/logs/mlsfix-$ARM-%j.out" -e "$D/logs/mlsfix-$ARM-%j.err" \
         --export=ALL,"$ENVS" "$D/slurm_overlay/cc_mls_fix_multi.sh")
+  # 孪生只在主作业**失败**时才跑:afterany 在主作业成功时也放行,会重跑整份计划、
+  # 用新的一次抽样覆盖已经补好的题(14024221 就是这么被放行的,已 scancel)。
   G=$(sbatch --parsable -J "mlsfix-$ARM" -t "$WALL" \
         --account=chij --qos=gpu-short --constraint=gpu80 --gres=gpu:1 \
         -o "$D/logs/mlsfix-$ARM-%j.out" -e "$D/logs/mlsfix-$ARM-%j.err" \
-        --dependency=afterany:"$A" --kill-on-invalid-dep=yes \
+        --dependency=afternotok:"$A" --kill-on-invalid-dep=yes \
         --export=ALL,"$ENVS" "$D/slurm_overlay/cc_mls_fix_multi.sh")
   echo "$A $G" > "$LK/ids"
   echo "mlsfix-$ARM ailab=$A gpu=$G"
