@@ -9,10 +9,14 @@ n_method   = 去掉「没产出方法」后的做法数。
 「没产出方法」优先认 cluster 里的 `no_method` 布尔;没有这个字段的(第一批标注还没
 要求)退回按 desc 里是否含「没产出方法」判断。
 
-分层的理由(用户 2026-09-17):抽题要横跨多个 benchmark、且必须含 research。
-三个 bench 的题型差得很远(ALE 是长时优化、FCS 是竞赛题、FCS-research 是研究题),
-把它们混成一张表,均值就只是「各 bench 各抽了几题」的函数 —— 换一下配比结论就变。
-所以每个 bench 各出一份,最后才给合计,并且合计只用逐题配对(配对天然按题分层)。
+**主表是 FrontierCS-research**(用户 2026-09-17:「还是 FCS-research 比较有代表性,
+毕竟是 research」)。这个指标问的是「提研究方法时会不会多探索几种路子」,
+FCS-research 就是那个场景;ALE 是长时启发式优化、FCS 是竞赛题,题型离得远。
+ALE 那一层留着当**稳健性旁证**:同一套标注协议、同一批臂,换个题型结论还站不站得住。
+
+分层(而不是混成一张表)的理由:三个 bench 题型差得很远,混起来的均值只是
+「各 bench 各抽了几题」的函数 —— 换一下配比结论就变。所以每个 bench 各出一份,
+最后才给合计,并且合计只用逐题配对(配对天然按题分层)。
 
 用法:explore_agg.py [工作目录](默认脚本所在目录)。工作目录下要有
 explore_blind/key.json(或 explore_labels/_key.json)与 explore_labels/。
@@ -166,9 +170,9 @@ def main():
         per_arm(rec, groups[b], "逐臂")
         per_pair(rec, groups[b], "对照")
 
-    emit("## 合计(三个 bench 合起来)\n")
-    emit("> 逐臂均值不给合计 —— 它只是各 bench 抽题配比的函数。配对差天然按题分层,"
-         "合起来仍然有意义,所以只给配对。\n")
+    emit("## 合计(全部 bench 合起来)\n")
+    emit("> **主表是上面的 FrontierCS-research**;这里的合计只是参考。逐臂均值不给合计 —— "
+         "它只是各 bench 抽题配比的函数。配对差天然按题分层,合起来仍然有意义,所以只给配对。\n")
     per_pair(rec, slugs, "全部 bench")
 
     emit("## 逐题明细(n_approach / n_method)\n")

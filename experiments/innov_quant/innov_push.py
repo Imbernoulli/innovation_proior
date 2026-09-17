@@ -97,7 +97,9 @@ PAIR9 = {"rlv5_ft01mix_a10_s20 − rlv5_base_s20": "**我们 − RL(base)**",
 PAIR4 = {"rlv5_4b_ft01mix_a10_s20 − rlv5_4b_base_s20": "**我们 − RL(base)**",
          "rlv5_4b_ft01mix_a10_s20 − 4b_ft01mix_a10": "我们 − SFT",
          "4b_ft01mix_a10 − base4b": "SFT − base"}
-BENCH = [("frontiercs", "FrontierCS"), ("frontiercs_research", "FrontierCS-research"),
+# FCS-research 排第一:它是主表(用户 2026-09-17「还是 FCS-research 比较有代表性,
+# 毕竟是 research」)。另外两个 bench 排在后面,作同向复现的旁证。
+BENCH = [("frontiercs_research", "FrontierCS-research"), ("frontiercs", "FrontierCS"),
          ("alebench", "ALE-Bench")]
 
 
@@ -108,6 +110,7 @@ def sec_inner():
          "`n_abandon` = 点到但最终没用(考虑过又放弃),`explore_ratio` = n_reason / max(1, n_code),"
          "`n_alt` = 「换个思路」类标记词(Alternatively / Another approach / Instead of / "
          "Let me reconsider / 或者 …)的出现次数。\n")
+    emit("**主表是 FrontierCS-research**,FrontierCS 与 ALE-Bench 作同向复现的旁证。\n")
     emit("**推理长度必须一起看**:RL 臂的推理是 SFT/base 的 3-4 倍长,点到更多家族有一部分只是"
          "「写得更长」。所以每个指标都另给一份 **/10k 字符**的归一版本,两版都报。\n")
     for key, lbl in BENCH:
@@ -125,6 +128,9 @@ def sec_inner():
 
 def sec_between():
     emit("# B. 探索(b):**五条输出之间**有多少不同做法\n")
+    emit("**主表 = FrontierCS-research**(这个指标问的就是提研究方法时探不探索,"
+         "FCS-research 正是那个场景)。ALE-Bench 那一层是**稳健性旁证**:同一套协议、"
+         "同一批臂,换个题型看结论还在不在。合计只作参考。\n")
     emit("怎么测的:FCS-research 26 题,每题把八条臂各自的 5 次抽样的**最终答案**(不给思维链)"
          "做成八个「块」,块序按题打乱、只给字母,标注者对每一块把 5 抽聚成若干「做法」类。"
          "`n_approach` = 类数(**「没产出方法」自成一类**,所以坍塌的臂照样进分母);"
@@ -194,12 +200,12 @@ def main():
     emit("四块材料,四把互相独立的尺子。**每一块都先给原始数值,再给差值。**\n")
     emit("| 块 | 问的问题 | 单位 | 结论方向 |")
     emit("|---|---|---|---|")
-    emit("| A | 一条输出**内部**探索了几种路子 | 样本 → 题 | **对我们有利**(9B/4B 三个 bench 上"
-         "我们 − RL(base) 的 n_reason / n_abandon / explore_ratio 基本都是正的) |")
-    emit("| B | **五条输出之间**有多少不同做法 | 题(39 题人工标注:FCS-research 26 + ALE 13) | "
-         "**分 bench 后不是一句话**:9B 我们 − SFT 在 FCS-research 上 −1.23(0/18/8,p<1e-4),"
-         "在 ALE 上只有 −0.08(5/5/3,p=1.00);4B 我们 − RL(base) 两个 bench 都压倒性为正"
-         "(合计 36/0/3,p<1e-4) |")
+    emit("| A | 一条输出**内部**探索了几种路子 | 样本 → 题(**主表 FCS-research**) | "
+         "**对我们有利**。主表 FCS-research/9B:n_reason +0.561(38/17)p=0.000、"
+         "n_abandon +0.488 p=0.004、explore_ratio +0.295 p=0.007;FrontierCS 与 ALE 同向复现 |")
+    emit("| B | **五条输出之间**有多少不同做法 | 题(**主表 FCS-research 26 题**,ALE 13 题作旁证) | "
+         "主表:**4B 我们 − RL(base) +1.58(24/0/2,p<1e-4)**;9B 我们 − SFT −1.23(0/18/8)对我们不利。"
+         "ALE 旁证:4B 那条复现(+1.31,12/0/1,p=0.0005),9B − SFT 则收敛到 −0.08(5/5/3,p=1.00) |")
     emit("| C | 会不会判断 research idea 的好坏 | 题 | 9B 三个非 ⚑ 任务 3/3 正但都不显著;"
          "4B penalise 下 Stouffer Z=+5.66 |")
     emit("| D | 是不是在拼已有的零件 | 样本 → 题 | D1(FrontierCS)我们的 n_tech 比 SFT 低 0.822"
