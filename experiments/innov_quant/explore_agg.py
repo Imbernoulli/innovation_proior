@@ -36,12 +36,15 @@ ARMS = ["base9b_v2c", "ft01mix_a10", "rlv5_base_s20", "rlv5_ft01mix_a10_s20",
         "base4b", "4b_ft01mix_a10", "rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20"]
 NAME = dict(zip(ARMS, ["9B base", "9B SFT", "9B RL(base)", "9B RL(先验)",
                        "4B base", "4B SFT", "4B RL(base)", "4B RL(先验)"]))
+# 用户裁决 2026-09-17:**只看 RL 之后,不看 RL 之前**。RL 是最终 shape 出来的模型,
+# 主对照只有「我们的 RL − baseline 的 RL」;SFT / base 那四条排在后面当附录,
+# 仍然打印(不丢历史),但表里用 `附录` 标出来,论文正文不引。
 PAIRS = [("rlv5_base_s20", "rlv5_ft01mix_a10_s20", "9B 我们 − RL(base)"),
-         ("ft01mix_a10", "rlv5_ft01mix_a10_s20", "9B 我们 − SFT"),
-         ("base9b_v2c", "rlv5_ft01mix_a10_s20", "9B 我们 − base"),
          ("rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − RL(base)"),
-         ("4b_ft01mix_a10", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − SFT"),
-         ("base4b", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − base")]
+         ("ft01mix_a10", "rlv5_ft01mix_a10_s20", "附录 · 9B 我们 − SFT"),
+         ("base9b_v2c", "rlv5_ft01mix_a10_s20", "附录 · 9B 我们 − base"),
+         ("4b_ft01mix_a10", "rlv5_4b_ft01mix_a10_s20", "附录 · 4B 我们 − SFT"),
+         ("base4b", "rlv5_4b_ft01mix_a10_s20", "附录 · 4B 我们 − base")]
 BENCH_ORDER = ["frontiercs_research", "frontiercs", "alebench"]
 BENCH_NAME = {"frontiercs_research": "FrontierCS-research", "frontiercs": "FrontierCS",
               "alebench": "ALE-Bench"}

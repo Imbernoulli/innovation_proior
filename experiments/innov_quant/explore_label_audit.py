@@ -20,12 +20,15 @@ ARMS = ["base9b_v2c", "ft01mix_a10", "rlv5_base_s20", "rlv5_ft01mix_a10_s20",
         "base4b", "4b_ft01mix_a10", "rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20"]
 NAME = dict(zip(ARMS, ["9B base", "9B SFT", "9B RL(base)", "9B 我们",
                        "4B base", "4B SFT", "4B RL(base)", "4B 我们"]))
-# 4B RL(base) 不进对照:它 129 抽里 119 抽早停哑火,见 explore_why_nomethod.md
+# 用户裁决 2026-09-17:**只看 RL 之后,不看 RL 之前**。RL 是最终 shape 出来的模型,
+# 所以主对照只有「我们的 RL − baseline 的 RL」。SFT / base 那些对照降为附录,
+# 留着是为了不丢历史,不进主表、不进论文正文。
 PAIRS = [("rlv5_base_s20", "rlv5_ft01mix_a10_s20", "9B 我们 − RL(base)"),
-         ("ft01mix_a10", "rlv5_ft01mix_a10_s20", "9B 我们 − SFT"),
-         ("base9b_v2c", "rlv5_ft01mix_a10_s20", "9B 我们 − base"),
-         ("4b_ft01mix_a10", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − SFT"),
-         ("base4b", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − base")]
+         ("rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − RL(base)")]
+PAIRS_PRE = [("ft01mix_a10", "rlv5_ft01mix_a10_s20", "9B 我们 − SFT"),
+             ("base9b_v2c", "rlv5_ft01mix_a10_s20", "9B 我们 − base"),
+             ("4b_ft01mix_a10", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − SFT"),
+             ("base4b", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − base")]
 
 
 def slugof(p):
@@ -151,6 +154,9 @@ def main():
           f"r(截断数, n_method) = {pear([x['trunc'] for x in full], [x['nm'] for x in full]):+.3f}。\n")
     print("所以要分层重算。**我们的臂截断最少,如果截断会抬高 n_method,"
           "那是它抬高了对手、不是压低了我们** —— 下面三层给出答案。\n")
+    print("> 每层前两行是**主对照(RL 之后)**,其余是 RL 之前的附录。"
+          "4B 我们 − RL(base) 在这里恒为 ⚠不足 —— 对手 5 抽全活的题几乎没有,"
+          "这正是 `explore_why_nomethod.md` 那条结论,不是分层没做出来。\n")
     for title, keep in [
             ("3.1 基线:两臂都 5 抽全活", lambda A, B: A["live"] == 5 and B["live"] == 5),
             ("3.2 **两臂都零截断**(标注者看到的是完整答案)",
@@ -160,7 +166,7 @@ def main():
         print(f"### {title}\n")
         print("| 对照 | 可配对题 | Δ n_method | 胜/负/平 | 符号 p |")
         print("|---|---:|---:|:---:|---:|")
-        for lo, hi, lbl in PAIRS:
+        for lo, hi, lbl in PAIRS + PAIRS_PRE:
             d, w, l, t = [], 0, 0, 0
             for s in slugs:
                 A, B = rec.get((lo, s)), rec.get((hi, s))

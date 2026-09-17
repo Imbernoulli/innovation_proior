@@ -22,12 +22,15 @@ ARMS = ["base9b_v2c", "ft01mix_a10", "rlv5_base_s20", "rlv5_ft01mix_a10_s20",
         "base4b", "4b_ft01mix_a10", "rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20"]
 NAME = dict(zip(ARMS, ["9B base", "9B SFT", "9B RL(base)", "9B 我们",
                        "4B base", "4B SFT", "4B RL(base)", "4B 我们"]))
+# 用户裁决 2026-09-17:**只看 RL 之后,不看 RL 之前**。RL 是最终 shape 出来的模型,
+# 所以主对照只有「我们的 RL − baseline 的 RL」。SFT / base 那些对照降为附录,
+# 留着是为了不丢历史,不进主表、不进论文正文。
 PAIRS = [("rlv5_base_s20", "rlv5_ft01mix_a10_s20", "9B 我们 − RL(base)"),
-         ("ft01mix_a10", "rlv5_ft01mix_a10_s20", "9B 我们 − SFT"),
-         ("base9b_v2c", "rlv5_ft01mix_a10_s20", "9B 我们 − base"),
-         ("rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − RL(base)"),
-         ("4b_ft01mix_a10", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − SFT"),
-         ("base4b", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − base")]
+         ("rlv5_4b_base_s20", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − RL(base)")]
+PAIRS_PRE = [("ft01mix_a10", "rlv5_ft01mix_a10_s20", "9B 我们 − SFT"),
+             ("base9b_v2c", "rlv5_ft01mix_a10_s20", "9B 我们 − base"),
+             ("4b_ft01mix_a10", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − SFT"),
+             ("base4b", "rlv5_4b_ft01mix_a10_s20", "4B 我们 − base")]
 
 
 def sign_p(w, l):
@@ -134,35 +137,44 @@ def main():
         print(f"| {NAME[a]} | {sum(x['n_app'] for x in v)/n:.2f} | {sum(x['n_met'] for x in v)/n:.2f} | "
               f"{sum(x['live'] for x in v)/n:.2f} | {sum(x['met_live'] for x in v)/n:.2f} |")
 
-    print("\n## 3. 对照:原口径 vs 只看活着的抽样\n")
-    print("末列 `两臂都≥3活抽` 是可读性闸门 —— 低于它,这一行量的是死活不是多样性。\n")
-    print("| 对照 | n_method Δ | 胜/负/平 | 符号 p | n_method\\|live Δ | 胜/负/平 | 符号 p | 两臂都≥3活抽 |")
-    print("|---|---:|:---:|---:|---:|:---:|---:|:---:|")
-    for lo, hi, lbl in PAIRS:
-        d1, d2 = [], []
-        w1 = l1 = t1 = w2 = l2 = t2 = 0
-        ok3 = 0
-        for s in slugs:
-            if (lo, s) not in rec or (hi, s) not in rec:
-                continue
-            A, B = rec[(lo, s)], rec[(hi, s)]
-            d1.append(B["n_met"] - A["n_met"])
-            w1 += B["n_met"] > A["n_met"]; l1 += B["n_met"] < A["n_met"]; t1 += B["n_met"] == A["n_met"]
-            if A["live"] >= 3 and B["live"] >= 3:
-                ok3 += 1
-                d2.append(B["met_live"] - A["met_live"])
-                w2 += B["met_live"] > A["met_live"]; l2 += B["met_live"] < A["met_live"]
-                t2 += B["met_live"] == A["met_live"]
-        if not d1:
-            continue
-        m2 = f"{statistics.mean(d2):+.2f}" if d2 else "—"
-        p2 = f"{sign_p(w2, l2):.4f}" if d2 else "—"
-        c2 = f"{w2}/{l2}/{t2}" if d2 else "—"
-        flag = f"**{ok3}/{len(slugs)}**" if ok3 >= 10 else f"⚠ {ok3}/{len(slugs)}"
-        print(f"| {lbl} | {statistics.mean(d1):+.2f} | {w1}/{l1}/{t1} | {sign_p(w1,l1):.4f} | "
-              f"{m2} | {c2} | {p2} | {flag} |")
+    def contrast(pairs):
+        print("| 对照 | n_method Δ | 胜/负/平 | 符号 p | n_method\\|live Δ | 胜/负/平 | 符号 p | 两臂都≥3活抽 |")
+        print("|---|---:|:---:|---:|---:|:---:|---:|:---:|")
+        _emit(pairs)
 
-    print("\n> ⚠ = 可配对的题不足 10 道,该行**不可读**,不要引。")
+    def _emit(pairs):
+      for lo, hi, lbl in pairs:
+          d1, d2 = [], []
+          w1 = l1 = t1 = w2 = l2 = t2 = 0
+          ok3 = 0
+          for s in slugs:
+              if (lo, s) not in rec or (hi, s) not in rec:
+                  continue
+              A, B = rec[(lo, s)], rec[(hi, s)]
+              d1.append(B["n_met"] - A["n_met"])
+              w1 += B["n_met"] > A["n_met"]; l1 += B["n_met"] < A["n_met"]; t1 += B["n_met"] == A["n_met"]
+              if A["live"] >= 3 and B["live"] >= 3:
+                  ok3 += 1
+                  d2.append(B["met_live"] - A["met_live"])
+                  w2 += B["met_live"] > A["met_live"]; l2 += B["met_live"] < A["met_live"]
+                  t2 += B["met_live"] == A["met_live"]
+          if not d1:
+              continue
+          m2 = f"{statistics.mean(d2):+.2f}" if d2 else "—"
+          p2 = f"{sign_p(w2, l2):.4f}" if d2 else "—"
+          c2 = f"{w2}/{l2}/{t2}" if d2 else "—"
+          flag = f"**{ok3}/{len(slugs)}**" if ok3 >= 10 else f"⚠ {ok3}/{len(slugs)}"
+          print(f"| {lbl} | {statistics.mean(d1):+.2f} | {w1}/{l1}/{t1} | {sign_p(w1,l1):.4f} | "
+                f"{m2} | {c2} | {p2} | {flag} |")
+
+    print("\n## 3. 主对照:RL 之后(我们的 RL − baseline 的 RL)\n")
+    print("末列 `两臂都≥3活抽` 是可读性闸门 —— 低于它,这一行量的是死活不是多样性。\n")
+    contrast(PAIRS)
+    print("\n> ⚠ = 可配对的题不足 10 道,该行**不可读**。"
+          "4B 那一行就是这样:对手 129 抽里 119 抽早停哑火,所以 +1.58 的正确读法是"
+          "**「没有先验的 RL 在 4B 上塌成不交东西,先验挡住了」**,不是「我们更发散」。\n")
+    print("## 4. 附录:RL 之前的对照(不进主表)\n")
+    contrast(PAIRS_PRE)
 
 
 if __name__ == "__main__":
