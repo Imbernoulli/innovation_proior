@@ -26,8 +26,13 @@ ARMS = [("base9b_v2c", "9B base"), ("ft01mix_a10", "9B SFT"),
         ("rlv5_base_s20", "9B RL(base)"), ("rlv5_ft01mix_a10_s20", "9B RL(先验)"),
         ("base4b", "4B base"), ("4b_ft01mix_a10", "4B SFT"),
         ("rlv5_4b_base_s20", "4B RL(base)"), ("rlv5_4b_ft01mix_a10_s20", "4B RL(先验)")]
-METRICS = [("noact", "无action停(低=好)"), ("nedit", "edit 动作数(高=好)"),
-           ("nstep", "总步数(高=好)")]
+# 2026-09-16 用户指出:动作数不是结果,「动作多=好」没依据。分数在 mls_align_score.py。
+# 这里只留「无 action 停」,因为 §33 要拆的是「没动手 vs 做得差」,那一个指标就够了。
+# nedit/nstep 保留为诊断项,明确标注「非结果指标」—— 事实上 9B base 在 al1 下动作数
+# 显著上升而分数显著下降(−0.0707,Wilcoxon 0.0357),正好说明这两列不能当好坏读。
+METRICS = [("noact", "无action停(低=好)"),
+           ("nedit", "edit 动作数(诊断项,非结果指标)"),
+           ("nstep", "总步数(诊断项,非结果指标)")]
 
 
 def feats(p):
