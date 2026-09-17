@@ -92,6 +92,8 @@ def mls_cell(tag):
     ts = d.get("tasks", d)
     if isinstance(ts, dict):
         ts = list(ts.values())
+    # 用户 2026-09-16:MLS 分母一律 21。真 0 记 0 进分母;环境坏掉的题不进,要重跑。
+    # 补跑结果写在 <tag>-fix 目录,这里按题后写覆盖并进来。
     sc = [t["score"] for t in ts
           if t.get("score") is not None
           and "agent_failed" not in (t.get("status") or "")
@@ -103,8 +105,24 @@ def mls_cell(tag):
                if os.path.exists(t.get("log") or "")
                and "APIConnectionError" in open(t["log"], encoding="utf-8",
                                                 errors="replace").read())
+    # 合并补跑:同名题以 -fix 目录里的为准
+    fx = f"{D}/cc_mls21_{tag}-fix/summary.json"
+    if os.path.exists(fx):
+        fd = json.load(open(fx)); fts = fd.get("tasks", fd)
+        if isinstance(fts, dict):
+            fts = list(fts.values())
+        byname = {t["task"]: t for t in ts}
+        for t in fts:
+            byname[t["task"]] = t
+        ts = list(byname.values())
+        sc = [t["score"] for t in ts
+              if t.get("score") is not None
+              and "agent_failed" not in (t.get("status") or "")
+              and "timeout" not in (t.get("status") or "")]
     return dict(n=len(sc), mean=(float(np.mean(sc)) if sc else float("nan")),
-                mt=mt(f"{D}/cc_mls21_{tag}"), dead=dead, tot=len(ts), py=worker_py(tag))
+                mean21=(float(np.sum(sc)) / 21.0),     # 用户口径:分母钉死 21
+                mt=mt(f"{D}/cc_mls21_{tag}"), dead=dead, tot=len(ts), py=worker_py(tag),
+                fixed=os.path.exists(fx))
 
 
 def nonmls_cell(tag, bench):
@@ -266,7 +284,10 @@ def curve_section():
            "**2026 取裸 tag**(`EVAL_RESEARCHER_YEAR` 默认就是 2026)。",
            "两条扫描线:`新四点`只投了 2000/2025/2050/2075;`老扫描`投了 "
            "1700-2100 共 12 个点但只覆盖 base 与 lo32nm 两族。**两条线不是同一世代,不要横跨着比。**\n",
-           "每格 `均分 (n)`。峰值只在该臂**自己有的**点里取。\n",
+           "**MLS 每格 `总分/21 (判出题数/21)`** —— 用户 2026-09-16 定:分母一律 21,真 0 记 0,"
+           "环境坏掉的题不进分母、必须重跑。带 ⚠ 的格子判出题数不足 21,**那一格现在是低估的**,"
+           "补跑作业(`mlsfix-*`)落地后会自动并进来(读 `<tag>-fix` 目录,同名题后写覆盖)。"
+           "research 每格仍是 `均分 (抽样数)`。峰值只在该臂**自己有的**点里取。\n",
            "**MLS 的 2026 有四种来源,全部就地列在 2026 那一格**(先前我把它们赶到右边侧栏,"
            "结果主结果从 2026 消失了 —— 判据定得太严,已改回)。\n\n"
            "四者的 env 逐项比过:prefix 形式、`MAX_MODEL_LEN=40960`、`TASK_TIMEOUT=7200`、"
@@ -302,19 +323,25 @@ def curve_section():
                         c = mls_cell(tg)
                         if c and c["n"] > 0 and not np.isnan(c["mean"]):
                             got[key] = c
-                            cells.append(f"{c['mean']:.3f} ({c['n']}/{c['py']})")
+                            flag = "" if c["n"] >= 21 else "⚠"
+                            cells.append(f"{c['mean21']:.3f} ({c['n']}/21{flag})")
                         else:
                             cells.append("")
                     for key in ("al1", "p1", "y2026"):
                         if key in got:
-                            vals[y] = got[key]["mean"]
+                            vals[y] = got[key]["mean21"]
                             break
                     continue
                 tag = f"{arm}_y{y}" if bench == "mls" else (arm if y == 2026 else f"{arm}_y{y}")
                 c = mls_cell(tag) if bench == "mls" else nonmls_cell(tag, bench)
                 if c and c["n"] > 0 and not np.isnan(c["mean"]):
-                    vals[y] = c["mean"]
-                    cells.append(f"{c['mean']:.3f} ({c['n']})")
+                    if bench == "mls":
+                        vals[y] = c["mean21"]
+                        flag = "" if c["n"] >= 21 else "⚠"
+                        cells.append(f"{c['mean21']:.3f} ({c['n']}/21{flag})")
+                    else:
+                        vals[y] = c["mean"]
+                        cells.append(f"{c['mean']:.3f} ({c['n']})")
                 else:
                     cells.append("")
             row = f"| {lab} | {line} | " + " | ".join(cells) + " | "
