@@ -34,10 +34,26 @@ TASKS = ("causal-discovery-discrete causal-observational-linear-gaussian "
 # 这两题在所有臂上都是 agent.__init__ 就崩(缺 causal-learn / deap),模型一个 token 没被问过
 INFRA_DEAD = {"causal-observational-linear-gaussian", "optimization-multi-objective"}
 
-ARMS = [("base9b_v2c_p1", "9B base"), ("ft01mix_a10_p1", "9B SFT"),
-        ("rlv5_base_s20_p1", "9B RL(base)"), ("rlv5_ft01mix_a10_s20_p1", "9B RL(先验)"),
-        ("base4b_p1", "4B base"), ("4b_ft01mix_a10_p1", "4B SFT"),
-        ("rlv5_4b_base_s20_p1", "4B RL(base)"), ("rlv5_4b_ft01mix_a10_s20_p1", "4B RL(先验)")]
+# 批次后缀:默认还是 p1(原来写死的那批),传 _al1 就跑 al1 那批。
+# 不要把默认值改掉 —— p1 的结论是已经报过的,换了默认会静默改掉旧表。
+SUF = sys.argv[1] if len(sys.argv) > 1 else "_p1"
+
+BASE = [("base9b_v2c", "9B base"), ("ft01mix_a10", "9B SFT"),
+        ("rlv5_base_s20", "9B RL(base)"), ("rlv5_ft01mix_a10_s20", "9B RL(先验)"),
+        ("base4b", "4B base"), ("4b_ft01mix_a10", "4B SFT"),
+        ("rlv5_4b_base_s20", "4B RL(base)"), ("rlv5_4b_ft01mix_a10_s20", "4B RL(先验)")]
+ARMS = [(b + SUF, lab) for b, lab in BASE]
+TAG = {lab: b + SUF for b, lab in BASE}
+
+
+def outdirs(arm):
+    """这一臂的产出目录,补跑目录排在后面(后者覆盖前者)。
+
+    al1 那批有 cc_mls21_<arm>_al1 和 ..._al1-fix 两个目录,补跑的是干净完整的一次,
+    必须盖掉原次 —— 每个读取脚本都得做这件事,漏一个就静默用旧数据出表。
+    """
+    return [d for d in (f"{D}/outputs/cc_mls21_{arm}", f"{D}/outputs/cc_mls21_{arm}-fix")
+            if os.path.isdir(d)]
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 STEP = re.compile(r"^Step\s+(\d+)\s+(\w+)\s*$")
@@ -154,7 +170,9 @@ def main():
     hitc = Counter()
     for arm, lab in ARMS:
         for t in TASKS:
-            acted, adds = added_code(f"{D}/outputs/cc_mls21_{arm}/task_logs/{t}.log")
+            logs = [f"{d}/task_logs/{t}.log" for d in outdirs(arm)]
+            logs = [f for f in logs if os.path.exists(f)]
+            acted, adds = added_code(logs[-1]) if logs else (False, [])
             code = "\n".join(adds)
             sig = [l for l in adds if not SIG.match(l)]
             # 只留代码行,并把行尾 # 注释砍掉 —— 注释里写 "unlike DBSCAN, we..." 不算用了 DBSCAN
@@ -210,18 +228,19 @@ from scipy import stats
 
 
 def status_map(arm):
-    try:
-        d = json.load(open(f"{D}/outputs/cc_mls21_{arm}/summary.json"))
-    except OSError:
-        return {}
-    ts = d.get("tasks", d)
-    if isinstance(ts, dict):
-        ts = list(ts.values())
     out = {}
-    for t in ts:
-        n = t.get("task") or t.get("task_name") or t.get("name")
-        if n:
-            out[n] = t.get("status")
+    for base in outdirs(arm):                    # 补跑目录在后,覆盖原次
+        try:
+            d = json.load(open(f"{base}/summary.json"))
+        except OSError:
+            continue
+        ts = d.get("tasks", d)
+        if isinstance(ts, dict):
+            ts = list(ts.values())
+        for t in ts:
+            n = t.get("task") or t.get("task_name") or t.get("name")
+            if n:
+                out[n] = t.get("status")
     return out
 
 
@@ -266,12 +285,12 @@ def report(rows, vocab):
     print("\n注:`动手率`=21 题里有 edit 动作的比例;没动手 = 直接交默认脚手架,方法**就是**那条默认 baseline。"
           "后面各列只在「动手了」的格子上算。")
 
-    CONTR = [("rlv5_ft01mix_a10_s20_p1", "base9b_v2c_p1", "9B RL(先验) − base"),
-             ("rlv5_ft01mix_a10_s20_p1", "rlv5_base_s20_p1", "9B RL(先验) − RL(base)"),
-             ("rlv5_ft01mix_a10_s20_p1", "ft01mix_a10_p1", "9B RL(先验) − SFT"),
-             ("rlv5_4b_ft01mix_a10_s20_p1", "base4b_p1", "4B RL(先验) − base"),
-             ("rlv5_4b_ft01mix_a10_s20_p1", "rlv5_4b_base_s20_p1", "4B RL(先验) − RL(base)"),
-             ("rlv5_4b_ft01mix_a10_s20_p1", "4b_ft01mix_a10_p1", "4B RL(先验) − SFT")]
+    CONTR = [(TAG["9B RL(先验)"], TAG["9B base"], "9B RL(先验) − base"),
+             (TAG["9B RL(先验)"], TAG["9B RL(base)"], "9B RL(先验) − RL(base)"),
+             (TAG["9B RL(先验)"], TAG["9B SFT"], "9B RL(先验) − SFT"),
+             (TAG["4B RL(先验)"], TAG["4B base"], "4B RL(先验) − base"),
+             (TAG["4B RL(先验)"], TAG["4B RL(base)"], "4B RL(先验) − RL(base)"),
+             (TAG["4B RL(先验)"], TAG["4B SFT"], "4B RL(先验) − SFT")]
     METRICS = [("n_hard", "真 import/调用的 baseline 条数(低=好)"),
                ("n_base", "点到的 baseline 条数,含注释(低=好)"),
                ("sim", "与参考实现的最大 Jaccard(低=好)"),
