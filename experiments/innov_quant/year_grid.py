@@ -22,8 +22,8 @@ D = "/scratch/gpfs/CHIJ/ziran/innov_v2_multi/outputs"
 import dump2
 
 YEARS = [1700, 1800, 1900, 1950, 1975, 2000, 2010, 2025, 2026, 2050, 2075, 2100]
-NONMLS = [("frontiercs", "FrontierCS"), ("alebench", "ALE"),
-          ("frontiercs_research", "FCS-research")]
+# 2026-09-16 用户定调:年份这条线只有 FCS-research 和 MLS 有希望,FrontierCS / ALE 不再跟。
+NONMLS = [("frontiercs_research", "FCS-research")]
 
 
 def arms():
@@ -54,6 +54,36 @@ def mt(p):
         return None
 
 
+LOGD = "/scratch/gpfs/CHIJ/ziran/innov_v2_multi/logs"
+_PYC = {}
+
+
+def worker_py(tag):
+    """这一批用的是哪个 worker python。**这才是 MLS 的世代主键** ——
+    2026-09-16 查出:裸 tag 与全部 `_y####` 年份点走 /home/zy7019/miniconda3/bin/python3,
+    而 `_p1`/`_al1` 走 $D/envs/client/bin/python(`mls21_rerun_submit.sh` 显式传 MLSBENCH_PY)。
+    两者不是同一套环境,混进同一条年份曲线就是 §25。"""
+    if tag in _PYC:
+        return _PYC[tag]
+    out = "?"
+    ys = glob.glob(f"{D}/cc_mls21_{tag}/config_vllm_local_*.yaml")
+    if ys:
+        jid = re.search(r"_(\d+)\.yaml$", ys[0])
+        if jid:
+            for f in glob.glob(f"{LOGD}/*-{jid.group(1)}.out"):
+                try:
+                    for ln in open(f, encoding="utf-8", errors="replace"):
+                        if "launching worker pool with" in ln:
+                            out = "client" if "envs/client" in ln else "conda"
+                            raise StopIteration
+                except StopIteration:
+                    break
+                except OSError:
+                    pass
+    _PYC[tag] = out
+    return out
+
+
 def mls_cell(tag):
     p = f"{D}/cc_mls21_{tag}/summary.json"
     if not os.path.exists(p):
@@ -66,12 +96,15 @@ def mls_cell(tag):
           if t.get("score") is not None
           and "agent_failed" not in (t.get("status") or "")
           and "timeout" not in (t.get("status") or "")]
+    # 口径必须与 mls_year.py 一致:统计**出现过至少一次** APIConnectionError 的题数,
+    # 该格 dead>=3 题即判基础设施无效。先前这里写成「单个日志里出现>=3次」,那从不发生,
+    # dead 恒为 0,整张年份表一格死 serve 都没标出来(ft01mix_a10 y2000/y2075 实为 12/18 题)。
     dead = sum(1 for t in ts
                if os.path.exists(t.get("log") or "")
-               and len(re.findall("APIConnectionError",
-                                  open(t["log"], encoding="utf-8", errors="replace").read())) >= 3)
+               and "APIConnectionError" in open(t["log"], encoding="utf-8",
+                                                errors="replace").read())
     return dict(n=len(sc), mean=(float(np.mean(sc)) if sc else float("nan")),
-                mt=mt(f"{D}/cc_mls21_{tag}"), dead=dead, tot=len(ts))
+                mt=mt(f"{D}/cc_mls21_{tag}"), dead=dead, tot=len(ts), py=worker_py(tag))
 
 
 def nonmls_cell(tag, bench):
@@ -149,12 +182,67 @@ def main():
             nm = f"**`{arm}`**" if arm in MAIN else f"`{arm}`"
             W(f"| {nm} | " + " | ".join(cells) + " |")
         W("")
+    out += completeness_audit()
     out += curve_section()
     out += paired_2026()
     p = os.path.join(HERE, "year_grid.md")
     open(p, "w", encoding="utf-8").write("\n".join(out) + "\n")
     print("\n".join(out))
 
+
+# ============ 完整性审计:每一格到底判出了几题 ============
+# 2026-09-16 用户问「裸 tag 比年份点多 10-20 题,这问题解决了吗?其他数字还能信吗」。
+# 那个 10-20 是我算错的(见下面配对检验的注释)。这一节把逐格的判出题数固定下来,
+# 以后任何人都能自己数一遍,不用信我的话。
+FULL = {"frontiercs_research": 64, "frontiercs": 172, "alebench": 40}
+
+
+def completeness_audit():
+    out = ["\n\n# 0. 完整性审计:每格判出了几道题\n",
+           "研究 bench 满题 64,MLS 满题 21。`判出题/满题`。**这是读下面任何数字之前先看的一列。**",
+           "丢掉的行全是判题侧的 `ResearchInfraError: evaluator produced no score`,"
+           "集中在同一小撮题(`symbolic_regression/{sincos,mixed_polyexp_4d,peaks,ripple}`),"
+           "**裸 tag 与年份点丢的是同一批**,所以不是偏向性削题,逐题配对可以救。\n"]
+    for bench, blab in NONMLS + [("mls", "MLS-Bench")]:
+        full = 21 if bench == "mls" else FULL[bench]
+        out.append(f"\n## {blab}(满题 {full})\n")
+        out.append("| arm | 裸tag | " + " | ".join(str(y) for y in ALLY) + " |")
+        out.append("|---|---|" + "---|" * len(ALLY))
+        for arm, lab, _line in LINE:
+            cells = []
+            for tag in [arm] + [f"{arm}_y{y}" for y in ALLY]:
+                if bench == "mls":
+                    c = mls_cell(tag)
+                    n = c["n"] if c else None
+                    # 死 serve 单独标:它不是「模型没做出来」,是那一格的 vLLM 当时是死的。
+                    if c and c["dead"] >= 3:
+                        cells.append(f"**{n}** ☠{c['dead']}")
+                        continue
+                else:
+                    if not os.path.isdir(f"{D}/cc_eval_{tag}_{dump2.sub_of(bench)}"):
+                        n = None
+                    else:
+                        try:
+                            ok, _ = dump2.load(tag, bench)
+                            n = len({g for g, _i in ok})
+                        except Exception:
+                            n = None
+                if n is None:
+                    cells.append("")
+                elif n < full * 0.9:
+                    cells.append(f"**{n}** ⛔")
+                else:
+                    cells.append(str(n))
+            out.append(f"| {lab} | " + " | ".join(cells) + " |")
+    out.append("\n☠k = 该格有 k 道题日志里出现 `openai.APIConnectionError`(k≥3 即 vLLM serve 当时是死的),"
+               "**基础设施无效,不是模型表现**。\n\n"
+               "MLS 还有一个结构性下限:`causal-observational-linear-gaussian` 与 "
+               "`optimization-multi-objective` 在装 `causal-learn`/`deap` 之前恒定 `agent_failed`,"
+               "所以旧批次的天花板是 **19/21** 而不是 21 —— 19 不是数据损失。\n\n"
+               "⛔ = 判出不足 90%,该格作废。**已知作废格:`base9b_v2c_y1700`**"
+               "(FCS 142/172、ALE 6/40 —— 这两条 bench 现已不跟)、"
+               "**`base4b_y2010` 的 ALE 34/40**。research 侧没有作废格。")
+    return out
 
 # ============ 同世代五点年份曲线(含 2026) ============
 # 上面的大网格是清单。这一节只做一件事:把**同世代**的年份点拼成一条曲线。
@@ -178,23 +266,46 @@ def curve_section():
            "**2026 取裸 tag**(`EVAL_RESEARCHER_YEAR` 默认就是 2026)。",
            "两条扫描线:`新四点`只投了 2000/2025/2050/2075;`老扫描`投了 "
            "1700-2100 共 12 个点但只覆盖 base 与 lo32nm 两族。**两条线不是同一世代,不要横跨着比。**\n",
-           "每格 `均分 (n)`。峰值只在该臂**自己有的**点里取。\n"]
+           "每格 `均分 (n)`。峰值只在该臂**自己有的**点里取。\n",
+           "**MLS 的 2026 只认 `_y2026`。** 它的 worker python 才是世代主键:裸 tag 和全部 "
+           "`_y####` 走 `/home/zy7019/miniconda3/bin/python3`,而 `_p1`/`_al1` 走 "
+           "`$D/envs/client/bin/python`(`mls21_rerun_submit.sh` 显式传了 `MLSBENCH_PY`)。"
+           "裸 tag 另外还在 vendor 重建之前。三者都不能并进年份曲线,单列在右边三列 "
+           "`均分 (n/python)`,**只可同列纵比,不可与年份列横比**。\n"]
     for bench, blab in [("mls", "MLS-Bench")] + NONMLS:
         out.append(f"\n## {blab}\n")
         hdr = " | ".join((f"**{y}**" if y == 2026 else str(y)) for y in ALLY)
-        out.append(f"| arm | 扫描线 | {hdr} | 峰值 | 点数 |")
-        out.append("|---|---|" + "---|" * (len(ALLY) + 2))
+        ex = " | 裸tag | p1 | al1" if bench == "mls" else ""
+        nex = 3 if bench == "mls" else 0
+        out.append(f"| arm | 扫描线 | {hdr}{ex} | 峰值 | 点数 |")
+        out.append("|---|---|" + "---|" * (len(ALLY) + 2 + nex))
+        if bench == "mls":
+            out.append("")
+            out.pop()
         for arm, lab, line in LINE:
             vals, cells = {}, []
             for y in ALLY:
-                tag = arm if y == 2026 else f"{arm}_y{y}"
+                # MLS 的 2026 只认 `_y2026`(与年份点同一次投递、同一个 worker python)。
+                # 裸 tag 是 vendor 重建之前的,p1/al1 换了 worker python —— 都不能并进曲线,
+                # 它们在下面单列。非 MLS 的三条 bench 裸 tag 与年份点同世代,可以并。
+                if bench == "mls":
+                    tag = f"{arm}_y{y}"
+                else:
+                    tag = arm if y == 2026 else f"{arm}_y{y}"
                 c = mls_cell(tag) if bench == "mls" else nonmls_cell(tag, bench)
                 if c and c["n"] > 0 and not np.isnan(c["mean"]):
                     vals[y] = c["mean"]
                     cells.append(f"{c['mean']:.3f} ({c['n']})")
                 else:
                     cells.append("")
-            row = f"| {lab} | {line} | " + " | ".join(cells) + " | "
+            extra = ""
+            if bench == "mls":
+                ec = []
+                for suf, nm in (("", "裸tag"), ("_p1", "p1"), ("_al1", "al1")):
+                    c = mls_cell(f"{arm}{suf}")
+                    ec.append(f"{c['mean']:.3f} ({c['n']}/{c['py']})" if c and c["n"] else "")
+                extra = " | " + " | ".join(ec)
+            row = f"| {lab} | {line} | " + " | ".join(cells) + extra + " | "
             if len(vals) < 3:
                 out.append(row + f"— | {len(vals)} |")
             else:
@@ -207,8 +318,23 @@ def curve_section():
 
 # ============ 2026 的配对检验 ============
 # 上一节按「峰值年份」看,FCS-research 六条臂的峰全落在 2025/2026,看着像倒 U。
-# **那是假的。** 裸 tag 比年份点多 10-20 道题,多出来的那些分高,把均值抬起来了(§27)。
-# 按题配对之后效应全部消失。这一节就是那个配对检验,留着防止有人再被峰值列骗一次。
+# **那是假的**,但**原因不是我先前写的那个**。
+#
+# 【2026-09-16 更正】我先前在这里写过「裸 tag 比年份点多 10-20 道题」——**错的,已收回**。
+# 逐格数过之后:research 裸 tag 64 题、各年份点 62-64 题,差 **1-3 题**;FCS 差 0-1;ALE 差 1。
+# 那个「10-20」是我自己取「该臂全部年份点的交集」算出来的假象:每个点各自丢的题不一样,
+# 12 个点叠起来交集才掉得多;而 ALE 上 `base9b_v2c_y1700` 只判出 6/40(那一格真死了),
+# 一个人把交集拖到 6,于是 40-6=34。我把这个 ALE 上的数字过度概括成了 research 的。
+#
+# 丢题的真因是**判题侧**不是模型侧:丢掉的行全是 `ResearchInfraError: evaluator produced
+# no score`,且集中在同一小撮题(`symbolic_regression/{sincos,mixed_polyexp_4d,peaks,ripple}`),
+# **裸 tag 和年份点丢的是同一批题**。所以它不是偏向性削题,逐题配对能干净地救回来。
+# 反过来脏的是裸 tag:`ft01mix_a10` research 裸 tag 两分片共 478 行(应 320),重复行来自
+# 09-02/03 那代的超时补跑;年份点是整齐的 320 行。`dump2.load` 的去重就是为这个写的。
+#
+# 均值差的真因仍是分母(§27),只是量级小得多:9B SFT research 64 题无约束 11.573,
+# 限制到 61 道公共题变 10.668 —— 0.9 分来自 3 题。配对之后效应仍然消失,结论不变。
+# 这一节就是那个配对检验,留着防止有人再被峰值列骗一次。
 from scipy import stats as _st
 
 
@@ -269,7 +395,13 @@ def dump_json(path):
         for arm, lab, line in LINE:
             row = {}
             for y in ALLY:
-                tag = arm if y == 2026 else f"{arm}_y{y}"
+                # MLS 的 2026 只认 `_y2026`(与年份点同一次投递、同一个 worker python)。
+                # 裸 tag 是 vendor 重建之前的,p1/al1 换了 worker python —— 都不能并进曲线,
+                # 它们在下面单列。非 MLS 的三条 bench 裸 tag 与年份点同世代,可以并。
+                if bench == "mls":
+                    tag = f"{arm}_y{y}"
+                else:
+                    tag = arm if y == 2026 else f"{arm}_y{y}"
                 c = mls_cell(tag) if bench == "mls" else nonmls_cell(tag, bench)
                 if c and c["n"] > 0 and not np.isnan(c["mean"]):
                     row[str(y)] = {"mean": round(c["mean"], 4), "n": c["n"], "mt": c["mt"]}
