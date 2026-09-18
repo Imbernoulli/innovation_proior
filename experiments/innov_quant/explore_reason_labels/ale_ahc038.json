@@ -1,0 +1,6 @@
+{"A": {"routes": [{"desc": "设计一条链式(path graph)机械臂,把每个丸子的位移(dx,dy)贪心分解到各条边的方向上,靠旋转各边对齐再平移根节点完成逐个取放", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"B": {"routes": [{"desc": "设计星形(star)机械臂,让多个指尖分别指向四个方向,批量捡起多个丸子后一起移动到目标区域批量放下,用优先级/贪心调度搬运顺序", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [{"desc": "只用两节点(单指尖)机械臂,每步判断指尖是否已在源/目标格上,否则朝最近的未完成源或目标做曼哈顿方向移动,逐个搬运丸子", "adopted": true}, {"desc": "照抄题目给的示例随机游走做法,直接输出随机的旋转/移动序列来搬运丸子", "adopted": false}], "n_routes": 2, "n_abandoned": 1},
+"D": {"routes": [{"desc": "用任意长度的链式机械臂,不追踪棋盘真实状态,直接输出一段看起来合法的随机/固定操作序列,指望能蒙对一部分", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"E": {"routes": [{"desc": "读入源/目标坐标,在代码里维护机械臂当前坐标,按距离贪心选最近的未访问目标,单指尖逐步移动过去搬运", "adopted": false}, {"desc": "放弃真实状态追踪,直接输出固定不变的移动模式(先想循环 RRDDLLUU,最终简化成通篇只输出 R)", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"F": {"routes": [{"desc": "用一条直线机械臂,照搬题目给的 Python 示例思路做随机移动和旋转来搬运丸子", "adopted": true}], "n_routes": 1, "n_abandoned": 0}}

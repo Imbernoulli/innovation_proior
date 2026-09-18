@@ -1,0 +1,6 @@
+{"A": {"routes": [{"desc": "用一个 384->256->128 的两层 MLP,试算几种隐藏层宽度后选定,标准 Adam+交叉熵训练 50 epoch", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"B": {"routes": [{"desc": "反复试算不同宽度/深度的 MLP(如 384->256->256->256->128,并试探加 BatchNorm/Dropout)把参数量卡在 20 万预算附近,再标准训练", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [{"desc": "用两层 MLP(隐藏层宽度反复试算 256/320/384,最终选 384)加 Dropout,配合 tqdm 进度条做标准梯度下降训练", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"D": {"routes": [{"desc": "用 384->384->128 的两层 MLP,反复试算隐藏层宽度把参数量逼近 20 万上限,标准训练 50~100 epoch", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"E": {"routes": [{"desc": "用带 BatchNorm+Dropout 的 384->384->128 两层 MLP,加权重衰减,反复试算层数/宽度后训练 100 epoch", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"F": {"routes": [{"desc": "反复试算多种层数/宽度组合(3 层 256 宽,加 BatchNorm+Dropout)把参数量精确卡在 20 万预算内,再标准训练 150 epoch", "adopted": true}], "n_routes": 1, "n_abandoned": 0}}

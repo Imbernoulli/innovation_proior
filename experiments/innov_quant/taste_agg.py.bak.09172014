@@ -20,17 +20,9 @@ ARMS = {
  "9B base": "base9b_v2c", "9B SFT": "ft01mix_a10",
  "9B RL(base)": "rlv5_base_s20", "9B RL(SFT)": "rlv5_ft01mix_a10_s20",
  "4B base": "base4b", "4B SFT": "4b_ft01mix_a10",
- "4B RL(base)": "rlv5_4b_base_s20", "4B RL(SFT)": "rlv5_4b_ft01mix_a10_s20",
- # lora 线 2026-09-17 补跑,协议与上面八条完全一致(同为 `_y26pp` 世代 —— 裸 tag 是
- # 另一个协议世代,跨世代配对会静默出错,所以这里一律只认 `_y26pp`)。
- "9B SFT lora": "lo32nm_a10", "9B RL lora": "rlv5_lo32nm_a10_s20",
- "4B SFT lora": "4b_lo32nm_a10", "4B RL lora": "rlv5_4b_lo32nm_a10_s20"}
+ "4B RL(base)": "rlv5_4b_base_s20", "4B RL(SFT)": "rlv5_4b_ft01mix_a10_s20"}
 CONTRASTS = [("9B RL(SFT)", "9B base"), ("9B SFT", "9B base"), ("9B RL(SFT)", "9B RL(base)"),
-             ("4B RL(SFT)", "4B base"), ("4B SFT", "4B base"), ("4B RL(SFT)", "4B RL(base)"),
-             # lora 线:主对照仍然只看 RL 之后,SFT 那两条留着当附录。
-             ("9B RL lora", "9B RL(base)"), ("9B RL lora", "9B base"), ("9B SFT lora", "9B base"),
-             ("4B RL lora", "4B RL(base)"), ("4B RL lora", "4B base"), ("4B SFT lora", "4B base"),
-             ("9B RL lora", "9B RL(SFT)"), ("4B RL lora", "4B RL(SFT)")]
+             ("4B RL(SFT)", "4B base"), ("4B SFT", "4B base"), ("4B RL(SFT)", "4B RL(base)")]
 DEAD = {("judge3", "novelty_pair")}   # every arm at chance on this task; see 16.2
 
 def load(fam, arm):

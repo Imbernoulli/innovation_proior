@@ -224,6 +224,24 @@ def main():
             per_pair(hum, groups[b], BENCH_NAME[b])
     per_pair(hum, slugs, "全部 bench 合计")
 
+    emit("## 2b. 人工标注真正分得开的那一列:**推理到最后没定下来**\n")
+    emit("routes 的条数各臂差不多(都在 1.0–1.9),但「这条推理收尾时有没有选定一条路」"
+         "分得很开。这一列正则表量不到 —— 没定下来的那些抽样多半也没有最终代码,"
+         "正好被 `explore.py` 的两道闸门删掉了。\n")
+    emit("| 对照 | 前者没定下来 | 后者没定下来 | 后者−前者 | 只前者没定/只后者没定 | 符号 p |")
+    emit("|---|---:|---:|---:|:---:|---:|")
+    for lo, hi, lbl in PAIRS:
+        cs = [s2 for s2 in slugs if s2 in hum[lo] and s2 in hum[hi]]
+        if not cs:
+            continue
+        n0 = sum(1 for s2 in cs if hum[lo][s2][2] == 0)
+        n1 = sum(1 for s2 in cs if hum[hi][s2][2] == 0)
+        only0 = sum(1 for s2 in cs if hum[lo][s2][2] == 0 and hum[hi][s2][2] > 0)
+        only1 = sum(1 for s2 in cs if hum[hi][s2][2] == 0 and hum[lo][s2][2] > 0)
+        emit(f"| {lbl}(n={len(cs)}) | {n0} | {n1} | {n1 - n0:+d} | {only0}/{only1} | "
+             f"{sign_p(only0, only1):.4f} |")
+    emit()
+
     emit("## 3. 尺子核验:正则表量到的是不是同一回事\n")
     both = [(a, s) for a in ARMS for s in slugs if s in hum[a] and s in rex.get(a, {})]
     emit(f"两侧都有的格子:**{len(both)}**(共 {len(ARMS)} 臂 × {len(slugs)} 题 = "
@@ -280,6 +298,20 @@ def main():
             emit(f"| {NAME[a]} | " + " | ".join(
                 f"{hum[a][s][0]}/{hum[a][s][1]}" if s in hum[a] else "-" for s in ss) + " |")
         emit()
+
+    emit("## 5. 这份标注改了什么说法\n")
+    emit("1. **`n_reason` / `n_abandon` 不能再叫「一条输出之内考虑过几条路」。** "
+         "正则说一条推理里 7 条路、放弃 4.5 条,人读下来是 1.4 条 / 0.4 条,"
+         "逐格相关只有 r≈0.18。它量的是 `recomb.PAT` 命中了几个技术家族名词。"
+         "要留这个数就改叫「推理里点到的技术家族数」,别再当「考虑过的路线数」。")
+    emit("2. **正则表看不见塌陷的臂。** `explore.py` 对没有 `</think>` 或没有最终代码的抽样"
+         "直接 `continue`,4B RL(base) 在 si=0 上 39 题只剩 1 题。"
+         "之前「一条输出之内我们明显好」的 4B 那两个对照,其实是在**对手几乎不存在**的格子上算的。")
+    emit("3. **人工口径下 routes 的差都很小**(主表 |Δ| ≤ 0.12,符号检验都不显著)—— "
+         "先验没有让模型在一条输出里多想几条路。")
+    emit("4. **真正分得开的是「有没有定下来」**(见 §2b),而这正是先验的作用:"
+         "挡住 RL 后期的塌陷,让模型还能收敛到一个方案。这条结论靠人工标注成立,"
+         "不依赖那张正则表。\n")
 
     json.dump({a: hum[a] for a in ARMS}, open(f"{S}/explore_reason_agg.json", "w"),
               ensure_ascii=False, indent=1)

@@ -1,0 +1,18 @@
+{"A": {"routes": [
+  {"desc": "贪心策略:has_spot 为真就用 SPOT,否则用 ON_DEMAND,并在临近 deadline 时用剩余时间/重启开销的安全阈值强制切到 ON_DEMAND", "adopted": true}
+], "n_routes": 1, "n_abandoned": 0},
+"B": {"routes": [
+  {"desc": "纯贪心策略:has_spot 为真就用 SPOT,否则用 ON_DEMAND,不做任何 deadline 安全余量检查", "adopted": true}
+], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [
+  {"desc": "纯贪心策略:has_spot 为真就用 SPOT,否则用 ON_DEMAND,不做任何 deadline 安全余量检查", "adopted": true}
+], "n_routes": 1, "n_abandoned": 0},
+"D": {"routes": [
+  {"desc": "纯贪心策略:has_spot 为真就用 SPOT,否则用 ON_DEMAND,依赖大量 slack 保证按时完成", "adopted": true}
+], "n_routes": 1, "n_abandoned": 0},
+"E": {"routes": [
+  {"desc": "纯贪心策略:has_spot 为真就用 SPOT,否则用 ON_DEMAND", "adopted": true}
+], "n_routes": 1, "n_abandoned": 0},
+"F": {"routes": [
+  {"desc": "纯贪心策略:has_spot 为真就用 SPOT,否则用 ON_DEMAND,曾想用 elapsed/deadline 余量做提前切换但因无法得知已完成工作量而放弃", "adopted": true}
+], "n_routes": 1, "n_abandoned": 0}}
