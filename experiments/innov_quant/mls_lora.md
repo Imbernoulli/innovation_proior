@@ -14,10 +14,10 @@
 | 9B RL lora `rlv5_lo32nm_a10_s20` | 21 | 13 | **0.1479** | 0.1479 |
 | 4B base `base4b` | 21 | 6 | **0.0431** | 0.0431 |
 | 4B SFT `4b_ft01mix_a10` | 21 | 5 | **0.0612** | 0.0612 |
-| 4B SFT lora `4b_lo32nm_a10` | **没有 `p1` 跑** | — | — | — |
+| 4B SFT lora `4b_lo32nm_a10` | 21 | 7 | **0.0607** | 0.0607 |
 | 4B RL(base) `rlv5_4b_base_s20` | 21 | 9 | **0.0973** | 0.0973 |
 | 4B RL 我们 `rlv5_4b_ft01mix_a10_s20` | 21 | 12 | **0.1514** | 0.1514 |
-| 4B RL lora `rlv5_4b_lo32nm_a10_s20` | **没有 `p1` 跑** | — | — | — |
+| 4B RL lora `rlv5_4b_lo32nm_a10_s20` | ⚠ **作业还在跑** 19/21 | 8 | (半成品 0.0664,**不要引用**) | — |
 
 ## 对照(只看 RL 之后)
 
@@ -28,6 +28,6 @@
 | 9B ft03nm − RL(base) | +0.0702 |
 | 9B lora − 我们 | -0.0080 |
 | 4B 我们 − RL(base) | +0.0540 |
-| 4B lora − RL(base) | 缺 `rlv5_4b_lo32nm_a10_s20` 的 p1 跑 |
-| 4B lora − 我们 | 缺 `rlv5_4b_lo32nm_a10_s20` 的 p1 跑 |
+| 4B lora − RL(base) | `rlv5_4b_lo32nm_a10_s20` 的 p1 作业还在跑 |
+| 4B lora − 我们 | `rlv5_4b_lo32nm_a10_s20` 的 p1 作业还在跑 |
 

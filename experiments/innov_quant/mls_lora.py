@@ -12,7 +12,7 @@
   2. **分母恒为 21**。真 0 记 0;题目缺失也记 0 并单列出来 —— 不能靠少算题把均分做高。
   3. 合并 `<tag>-fix` 补跑,同名题以 -fix 为准,与 year_grid.py / mls_audit21.py 一致。
 """
-import json, os, sys
+import json, os, subprocess, sys
 
 D = "/scratch/gpfs/CHIJ/ziran/innov_v2_multi"
 N = 21
@@ -45,12 +45,34 @@ def emit(s=""):
     print(s); B.append(s)
 
 
+def running_arms():
+    """哪些臂的 MLS 作业**此刻还在跑**。
+
+    踩坑第 32 条:作业 RUNNING 时 `summary.json` 是半成品 —— 只落了跑完的那几道题。
+    不看队列就读它,会把「还没跑完」读成「这条臂只有 19 题、分很低」。这里直接问 squeue
+    (只查自己),作业名形如 `mls21-<arm>_<suf>`,凡是还在队列里的臂一律标成半成品,
+    **不进对照表**。队列查不到(比如在别的机器上看这份 md)就退回原行为。
+    """
+    try:
+        out = subprocess.run(["squeue", "-u", os.environ.get("USER", ""), "-h", "-o", "%j"],
+                             capture_output=True, text=True, timeout=30).stdout
+    except Exception:
+        return set()
+    live = set()
+    for ln in out.splitlines():
+        ln = ln.strip()
+        if ln.startswith("mls21-"):
+            live.add(ln[len("mls21-"):])
+    return live
+
+
 def main():
     suf = sys.argv[1] if len(sys.argv) > 1 else "p1"
     emit(f"# MLS-21(as-run,协议 `{suf}`,分母恒 {N})—— 含 ft03nm / lora 两条线\n")
     emit("`跑出题` = summary.json 里有这道题;缺的题按 **0** 计入分母,不缩分母。\n")
     emit("| 臂 | 跑出题/21 | 非零题 | **均分(/21)** | 只按跑出题算 |")
     emit("|---|---:|---:|---:|---:|")
+    live = running_arms()
     got = {}
     for lbl, a in ARMS:
         s = as_run(f"{a}_{suf}")
@@ -59,6 +81,11 @@ def main():
             continue
         v = [x for x in s.values() if x is not None]
         tot = sum(v)
+        if f"{a}_{suf}" in live:
+            # 半成品:报出来是为了能看进度,但不进 got,也就不进下面的对照表。
+            emit(f"| {lbl} `{a}` | ⚠ **作业还在跑** {len(s)}/{N} | {sum(1 for x in v if x > 0)} | "
+                 f"(半成品 {tot/N:.4f},**不要引用**) | — |")
+            continue
         got[a] = tot / N
         emit(f"| {lbl} `{a}` | {len(s)} | {sum(1 for x in v if x > 0)} | "
              f"**{tot/N:.4f}** | {tot/max(1,len(v)):.4f} |")
@@ -76,7 +103,8 @@ def main():
         if lo in got and hi in got:
             emit(f"| {lbl} | {got[hi]-got[lo]:+.4f} |")
         else:
-            emit(f"| {lbl} | 缺 `{hi if hi not in got else lo}` 的 {suf} 跑 |")
+            miss = hi if hi not in got else lo
+            emit(f"| {lbl} | {'`' + miss + '` 的 ' + suf + ' 作业还在跑' if f'{miss}_{suf}' in live else '缺 `' + miss + '` 的 ' + suf + ' 跑'} |")
     emit()
 
 
