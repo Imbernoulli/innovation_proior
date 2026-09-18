@@ -14,16 +14,6 @@ import json, glob, collections, math, os, sys
 import numpy as np
 from scipy.stats import wilcoxon, binomtest, norm
 
-# §18:只打 stdout 的脚本必须把表落成 .md,否则下次看到的 taste_agg.md 是上一代的产物。
-# 这里不改任何打印内容,只是把 print 同时抄一份进缓冲区,收尾统一写盘。
-_BUF = []
-_print = print
-
-
-def print(*a, **k):          # noqa: A001 —— 故意遮蔽内建 print,改动面最小
-    _BUF.append(" ".join(str(x) for x in a))
-    _print(*a, **k)
-
 D = "/scratch/gpfs/CHIJ/ziran/innov_v2_multi/outputs"
 FAM = {"idea": "cc_idea32k_{}_y26pp", "ideav2": "cc_ideav2_{}_y26pp", "judge3": "cc_judge3_{}_y26pp"}
 ARMS = {
@@ -103,7 +93,3 @@ for A, B in CONTRASTS:
     agg(allc, "全部有效任务")
     agg([c for c in allc if c["fam"] == "judge3"], "只看 judge3(research judgment)")
     agg([c for c in allc if c["fam"] in ("idea", "ideav2")], "只看 idea+ideav2(taste)")
-
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "taste_agg.md"),
-          "w", encoding="utf-8") as _f:
-    _f.write("\n".join(_BUF) + "\n")
