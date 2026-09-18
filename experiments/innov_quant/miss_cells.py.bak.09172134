@@ -47,13 +47,6 @@ MODEL = [
     (r"PySR requires a maxsize of at least", "PySR 参数越界"),
     (r"`tournament_selection_n` parameter must be smaller", "PySR 参数越界"),
     (r"Failed to parse expression", "模型给的表达式解析不了"),
-    # 09-17 pass3 才看得到的三条:原来 `frontiercs_research_cpu_eval.py:498` 只留 stderr
-    # **最后一行**,而最后一行恒是 `PythonCall/.../C.jl:63`,把前面真正的异常整段吞掉,
-    # 于是这十格全被记成 unknown。pass3 用 `$D/rejudge/evalfull/` 那份只改 3 行的副本
-    # (tail 留最后 3000 字符)重跑,真凶才露出来 —— 三条都指向模型自己的产物。
-    (r"use .x\^y. instead of", "模型的表达式用了 Python 的 `**`,julia 解析不了"),
-    (r"pyjlany_call\(self::Type\{Options\}", "模型给 PySR 传了它不认的关键字参数"),
-    (r"Evaluation failed: 'eqn'", "模型的产物里没有 eqn 字段"),
 ]
 INFRA = [
     (r"No such file or directory", "资源/产物文件没铺好"),
