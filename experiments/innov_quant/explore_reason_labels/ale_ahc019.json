@@ -1,0 +1,6 @@
+{"A": {"routes": [{"desc": "照抄样例解法:对每个满足 f∧r 的单元格各放一个独立 1x1x1 方块,推出对应的代价公式后分析是否最优", "adopted": false}], "n_routes": 1, "n_abandoned": 1},
+"B": {"routes": [{"desc": "样例式朴素策略:每个格子独立用 1x1x1 方块覆盖两个轮廓,不做任何共享", "adopted": false}, {"desc": "把 P1∩P2 及各自专属区域分别按 6-连通分量合并成尽量大的方块,共享块用于交集以最小化 Σ1/v", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"C": {"routes": [{"desc": "把交集/连通区域合并成大方块以复用体积、降低 Σ1/v 的优化策略,因等价于 3D 装箱/NP-hard 而放弃", "adopted": false}, {"desc": "照抄样例朴素解法:两个轮廓各自用独立、互不共享的 1x1x1 方块覆盖", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"D": {"routes": [{"desc": "让两个轮廓共享/合并方块以复用体积换取更小的 Σ1/v(含随机局部搜索/模拟退火的构想),按代价公式推导后判定不划算而放弃", "adopted": false}, {"desc": "样例式朴素策略:每个格子各用独立 1x1x1 方块,两轮廓间不共享任何方块", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"E": {"routes": [{"desc": "把相邻单元格合并成更大方块以降低 Σ1/v", "adopted": false}, {"desc": "直接照搬样例 Python 解法:每个格子用独立 1x1x1 方块,翻译成 C++", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"F": {"routes": [{"desc": "让两个轮廓复用同一批方块 ID 以获得共享收益,逐情形推导贡献后判定不如样例的不共享方案", "adopted": false}, {"desc": "照抄样例解法:两个轮廓各自用独立、不共享的 1x1x1 方块覆盖", "adopted": true}], "n_routes": 2, "n_abandoned": 1}}

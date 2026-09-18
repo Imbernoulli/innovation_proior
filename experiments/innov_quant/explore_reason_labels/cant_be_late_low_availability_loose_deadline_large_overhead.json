@@ -1,0 +1,66 @@
+{
+  "A": {
+    "routes": [
+      {
+        "desc": "贪心:has_spot 为真用 Spot、为假用 On-Demand;另加完成度检查(sum(task_done_time)>=task_duration)和超过 deadline 检查,两者都返回 NONE 停止",
+        "adopted": true
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 0
+  },
+  "B": {
+    "routes": [
+      {
+        "desc": "贪心:has_spot 为真就用 Spot、为假用 On-Demand,不刻意避免来回切换",
+        "adopted": true
+      },
+      {
+        "desc": "为避免切换开销尽量停留在 On-Demand、不主动切到 Spot;用 12 分钟开销下 Spot 与 On-Demand 的实际花费($11.64 vs $36.72)做数字对比后,判定仍应切换,放弃该保守方案",
+        "adopted": false
+      }
+    ],
+    "n_routes": 2,
+    "n_abandoned": 1
+  },
+  "C": {
+    "routes": [
+      {
+        "desc": "按剩余时间与剩余工作量算出是否落后进度(work_left vs time_left),落后时强制用 On-Demand 抢进度,未落后则按 has_spot 决定 Spot/On-Demand(推理在给出最终结论前被截断)",
+        "adopted": false
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 1
+  },
+  "D": {
+    "routes": [
+      {
+        "desc": "贪心:has_spot 为真用 Spot、为假用 On-Demand,加一个完成检查(elapsed_seconds>=task_duration 时返回 NONE)",
+        "adopted": true
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 0
+  },
+  "E": {
+    "routes": [
+      {
+        "desc": "贪心:has_spot 为真用 Spot、为假用 On-Demand,加 deadline 检查(elapsed_seconds>=deadline 时返回 NONE)",
+        "adopted": true
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 0
+  },
+  "F": {
+    "routes": [
+      {
+        "desc": "贪心:has_spot 为真用 Spot、为假用 On-Demand,同时检查是否超过 deadline 和是否已完成(sum(task_done_time)>=task_duration),满足任一即返回 NONE 停止",
+        "adopted": true
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 0
+  }
+}

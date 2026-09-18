@@ -1,0 +1,6 @@
+{"A": {"routes": [], "n_routes": 0, "n_abandoned": 0},
+"B": {"routes": [{"desc": "随机初始化每格旋转,再做局部搜索/爬山(必要时退火)反复调整单格旋转以提升 L1×L2 分数", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [{"desc": "把棋盘按区域(如上下各一半)分别显式构造出两个大环,直接保证两条长循环", "adopted": false}, {"desc": "不看输入内容,按坐标的固定公式(最终定为 (i+j)%4)给每格输出旋转,不做任何基于分数的搜索", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"D": {"routes": [{"desc": "把读入的 t 值原样当作要输出的旋转 r 直接打印(恒等映射),反复论证输入输出值域含义后放弃搜索优化", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"E": {"routes": [{"desc": "随机初始化旋转后做爬山式局部搜索,把状态建模为(格子,进入方向)的有向函数图,用递增 token 时间戳数组做 O(N) 找环长来评估并提升 L1×L2", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"F": {"routes": [{"desc": "随机初始化旋转,做多次随机重启的局部搜索/爬山,通过建图求连通分量的环长来评估并提升 L1×L2", "adopted": true}], "n_routes": 1, "n_abandoned": 0}}

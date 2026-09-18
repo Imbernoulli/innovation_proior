@@ -1,0 +1,6 @@
+{"A": {"routes": [{"desc": "不估计边权,直接按目标方向输出曼哈顿距离路径", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"B": {"routes": [{"desc": "假设各边权重大致均一,直接走边数最少的曼哈顿路径(等价于单位权最短路)", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [{"desc": "假设边权近似相等,直接输出边数最少的曼哈顿路径", "adopted": false}, {"desc": "按行估计横向基础权H_i、按列估计纵向基础权V_j(多查询汇总/回归),再据此求最短路", "adopted": false}], "n_routes": 2, "n_abandoned": 2},
+"D": {"routes": [{"desc": "用历史反馈(prev_result)反推路径真实长度,进而估计各边权重,再用Dijkstra/BFS求最短路", "adopted": false}, {"desc": "直接输出曼哈顿距离路径,不做边权估计", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"E": {"routes": [{"desc": "假设各边权重同量级,直接走边数最少的曼哈顿路径", "adopted": true}, {"desc": "把逐次查询当作探测边的机会,估计每条边的真实权重,再用Dijkstra求最短路", "adopted": false}], "n_routes": 2, "n_abandoned": 1},
+"F": {"routes": [{"desc": "为每条边维护权重估计(初始设默认值),每次查询用当前估计跑Dijkstra得到路径,再把反馈值与估计代价之差平均分摊给路径上各边以更新权重估计,循环迭代收敛", "adopted": true}], "n_routes": 1, "n_abandoned": 0}}

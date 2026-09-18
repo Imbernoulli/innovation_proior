@@ -1,0 +1,6 @@
+{"A": {"routes": [{"desc": "用带BatchNorm的MLP(384->512->400->128量级,依验证集损失挑最优checkpoint)在参数预算内训练分类器", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"B": {"routes": [{"desc": "用多层MLP(逐步加宽/加深至参数上限附近,配合tqdm训练循环)训练分类器", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [{"desc": "用带Dropout的MLP(384->512->384->128量级)训练分类器,每10轮跑一次验证集准确率监控", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"D": {"routes": [{"desc": "用多层MLP(384->512->256->128->128量级)训练分类器", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"E": {"routes": [{"desc": "用MLP(384->512->256->128量级)训练分类器,带早停(patience)和保存最佳验证准确率权重", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"F": {"routes": [{"desc": "用简单3层MLP(输入维度同宽,384->384->384->128量级)训练分类器,固定100轮", "adopted": true}], "n_routes": 1, "n_abandoned": 0}}

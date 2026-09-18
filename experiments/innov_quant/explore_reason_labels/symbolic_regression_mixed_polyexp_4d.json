@@ -1,0 +1,6 @@
+{"A": {"routes": [{"desc": "调用 PySRRegressor 做符号回归拟合,取 model.sympy() 转字符串作为表达式", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"B": {"routes": [{"desc": "调用 PySRRegressor 做符号回归拟合(用较小的 populations=2 控制资源),取 model.sympy() 转字符串", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [{"desc": "严格照抄题面给出的 PySR 示例:PySRRegressor 拟合 + model.sympy() 转字符串表达式", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"D": {"routes": [{"desc": "给 PySR 拟合包 try/except,失败时退化为 np.linalg.lstsq 线性最小二乘回归,拼出线性表达式字符串作为后备方案", "adopted": false}, {"desc": "直接用 PySRRegressor 拟合并取 model.sympy(),不加异常处理,贴近题面示例风格", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"E": {"routes": [{"desc": "用 PySRRegressor 做符号回归拟合,反复权衡 niterations/populations/population_size 参数后取 model.sympy() 转字符串", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"F": {"routes": [{"desc": "照搬题面 PySR 示例结构:PySRRegressor 拟合 + model.sympy() 转字符串表达式", "adopted": true}], "n_routes": 1, "n_abandoned": 0}}

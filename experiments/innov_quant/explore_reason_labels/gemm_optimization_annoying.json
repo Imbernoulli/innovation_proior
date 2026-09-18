@@ -1,0 +1,6 @@
+{"A": {"routes": [{"desc": "朴素双重循环逐行逐列算点积再套 GELU,因大矩阵下太慢被放弃", "adopted": false}, {"desc": "按 128x128 等分块,用 tl.dot 做块级累加,再对结果套 GELU", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"B": {"routes": [{"desc": "直接调用高层内置算子(tl.dot/tl.matmul)对整个矩阵做乘法,再想办法逐元素套 GELU,因 API 是否存在、无法方便逐元素套 GELU 而放弃", "adopted": false}, {"desc": "每个线程负责一个输出元素,对 K 维做 range 循环逐元素累加的朴素 GEMM,再调用 gelu 核函数,写出完整实现", "adopted": true}], "n_routes": 2, "n_abandoned": 1},
+"C": {"routes": [{"desc": "按 BLOCK_SIZE_M/K/N 分块用 tl.dot 做块级矩阵乘,并对 BLOCK 大小、num_stages、num_warps 做网格搜索式 autotune", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"D": {"routes": [{"desc": "按 BLOCK_M/BLOCK_N/BLOCK_K 分块、用 mask 处理边界,逐块用逐元素乘加(非 tl.dot)完成分块 GEMM,再对累加结果套 GELU", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"E": {"routes": [{"desc": "每线程对应一个输出元素,对 K 做循环累加的朴素 GEMM,再套 GELU;后半程陷入关于 program_id 能否枚举 i、j 的复读循环未能推进", "adopted": true}], "n_routes": 1, "n_abandoned": 0},
+"F": {"routes": [{"desc": "对 K 做逐元素 range 循环的朴素 GEMM,认为最稳妥好写但性能不如 tl.dot,被放弃", "adopted": false}, {"desc": "按 BLOCK_M/BLOCK_N/BLOCK_K 分块,用 tl.dot 做块级矩阵乘再套 GELU,最终确定用此方案输出代码", "adopted": true}], "n_routes": 2, "n_abandoned": 1}}

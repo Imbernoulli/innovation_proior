@@ -1,0 +1,20 @@
+{"A": {"routes": [
+  {"desc": "逐格钻探(drill)获得每格精确的 v(i,j),再输出所有非零格集合", "adopted": true},
+  {"desc": "用 divine 批量查询(先测整体和,再对半/递归分组测子集和,或用整体减单格的差分)定位含油格以降低总成本", "adopted": false}
+], "n_routes": 2, "n_abandoned": 1},
+"B": {"routes": [
+  {"desc": "逐格钻探获得精确值,输出所有非零格集合(照抄题面给出的样例解法)", "adopted": true}
+], "n_routes": 1, "n_abandoned": 0},
+"C": {"routes": [
+  {"desc": "逐格钻探获得精确 v(i,j),输出所有非零格集合", "adopted": true},
+  {"desc": "利用已知油田形状,枚举每个油田可能的摆放位置,用覆盖格 v 值之和是否等于该油田面积来定位摆放", "adopted": false}
+], "n_routes": 2, "n_abandoned": 1},
+"D": {"routes": [
+  {"desc": "逐格钻探一次获得精确值,输出所有非零格集合(与样例解法一致)", "adopted": true},
+  {"desc": "用大集合 divine 查询(整格网/列或块查询,及整体减单格差分)定位含油格并重建各格取值以降低成本", "adopted": false}
+], "n_routes": 2, "n_abandoned": 1},
+"E": {"routes": [
+  {"desc": "逐格钻探获得精确值,输出所有非零格集合", "adopted": true},
+  {"desc": "用大集合 divine 查询把成本从 O(N^2) 降到 O(N),再靠线性方程组从带噪声的和值反推每格取值", "adopted": false}
+], "n_routes": 2, "n_abandoned": 1},
+"F": {"routes": [], "n_routes": 0, "n_abandoned": 0}}

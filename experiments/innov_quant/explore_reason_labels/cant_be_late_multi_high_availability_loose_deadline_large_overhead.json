@@ -1,0 +1,65 @@
+{
+  "A": {
+    "routes": [],
+    "n_routes": 0,
+    "n_abandoned": 0
+  },
+  "B": {
+    "routes": [
+      {
+        "desc": "贪心轮询切换区域寻找 Spot:has_spot 为假时按序切换到下一区域并尝试用 Spot,过渡步先用 On-Demand 兜底;用具体数字对比“留在原区域用 On-Demand”和“切换搜索 Spot”两种做法的期望花费后选择切换",
+        "adopted": true
+      },
+      {
+        "desc": "留在当前区域不切换,Spot 不可用时始终用 On-Demand",
+        "adopted": false
+      }
+    ],
+    "n_routes": 2,
+    "n_abandoned": 1
+  },
+  "C": {
+    "routes": [
+      {
+        "desc": "只在当前区域内决策:has_spot 为真用 Spot、为假用 On-Demand,完成后返回 NONE 停止,不做跨区域切换(认为看不到其他区域状态,切换不值得)",
+        "adopted": true
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 0
+  },
+  "D": {
+    "routes": [
+      {
+        "desc": "固定停留在单一区域(不调用 switch_region),Spot 可用则用 Spot、否则 On-Demand,完成后返回 NONE",
+        "adopted": true
+      },
+      {
+        "desc": "Spot 不可用时切换区域寻找 Spot,用“每小时省约 2.1 美元 vs 12 分钟开销”做量化比较后,因不确定新区域是否真有 Spot 而放弃",
+        "adopted": false
+      }
+    ],
+    "n_routes": 2,
+    "n_abandoned": 1
+  },
+  "E": {
+    "routes": [
+      {
+        "desc": "只在当前区域决策 Spot/On-Demand,完成后返回 NONE,不切换区域(担心切换会丢失当前步进度,且无法预知新区域是否有 Spot)",
+        "adopted": true
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 0
+  },
+  "F": {
+    "routes": [
+      {
+        "desc": "solve 阶段预读全部 trace_files,得到各区域逐步的 Spot 可用性表;_step 中若当前区域无 Spot,则扫描其他区域的 trace 找到有 Spot 的区域并调用 switch_region 主动切换过去用 Spot,都没有则用 On-Demand",
+        "adopted": true
+      }
+    ],
+    "n_routes": 1,
+    "n_abandoned": 0
+  }
+}
