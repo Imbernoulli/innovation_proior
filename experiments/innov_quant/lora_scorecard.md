@@ -36,20 +36,21 @@ FrontierCS 上 9B lora 的 8.254 还是全 9B 最高分。
 | 对比 | 尺子 | 年份点数 | **正/负** | 均值 Δ |
 |---|---|---:|:---:|---:|
 | 9B lora − RL(base) | FCS-research 分数 | 5 | **5/0** | +1.446 |
-| 4B lora − RL(base) | FCS-research 分数 | 2 | **2/0** | +9.547 |
+| 4B lora − RL(base) | FCS-research 分数 | **4** | **4/0** | **+10.406** |
 | 9B lora − 预训练 base | FCS-research 分数 | 11 | **11/0** | +6.714 |
-| 4B lora − 预训练 base | FCS-research 分数 | 5 | **5/0** | +11.899 |
-| **合计** | **FCS-research 分数** | **23** | **★ 23/0 ★** | — |
-| 4B lora − RL(base) | research 完成率 | 2 | **2/0** | +0.794 |
+| 4B lora − 预训练 base | FCS-research 分数 | **6** | **6/0** | +11.765 |
+| **合计** | **FCS-research 分数** | **26** | **★ 26/0 ★** | — |
+| 4B lora − RL(base) | research 完成率 | **4** | **4/0** | +0.783 |
 | 9B lora − RL(base) | research 完成率 | 5 | 4/1 | +0.026 |
-| 4B lora − 预训练 base | MLS 分数 | 5 | **5/0** | +0.074 |
+| 4B lora − 预训练 base | MLS 分数 | **6** | **6/0** | +0.083 |
 | 9B lora − 预训练 base | MLS 分数 | 11 | 8/3 | +0.029 |
 
 出处:`year_lora.md` §4。
 
-> 2026-09-18 补投中:4B 两条 lora 臂的 **2050 / 2075** 点(research + MLS,`NO_FCS=1`)。
-> 4B 的主对照现在只有 2000/2100 两个点,补完会变四个 —— 对照臂 `rlv5_4b_base_s20`
-> 本来就有 2050/2075。作业落地前 `year_lora.md` 的 4B 行不要重算。
+> 2026-09-18 补齐:4B 两条 lora 臂的 **2050 / 2075**(research + MLS)已落地并入表,
+> 4B 的主对照因此从 2 个年份点变成 **4 个**,方向仍然 4/4 全正,均值还从 +9.547 升到 **+10.406**。
+> 12 对 dual 作业全部 COMPLETED exit 0:0;每格 research 64 题 × 5 抽、MLS 21/21;
+> `ResearchInfraError` 10–15/320,与同臂 y2100(10)及对照臂 y2050/2075(12/11)同量级。
 
 ## 3. 那句 system prompt 在起什么作用:**错年份才掉分,没提示不掉分**
 
