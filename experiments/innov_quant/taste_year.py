@@ -109,12 +109,13 @@ def cell(da, db, task, rng):
 def agg(cs, label):
     if not cs:
         emit(f"| **{label}** | — | — | — | — | — |")
-        return
+        return None
     k, n = sum(c["mean"] > 0 for c in cs), len(cs)
     Z = sum(math.copysign(norm.isf(max(c["p"], 1e-12) / 2), c["mean"]) for c in cs) / math.sqrt(n)
     emit(f"| **{label}** | **{n} 个任务** | **{k}/{n} 正** | "
          f"**{binomtest(k, n, 0.5).pvalue:.4f}** | **{Z:+.2f}** | "
          f"**{2 * (1 - norm.cdf(abs(Z))):.4f}** |")
+    return dict(n=n, k=k, Z=Z, p=2 * (1 - norm.cdf(abs(Z))))
 
 
 def main():
@@ -124,7 +125,7 @@ def main():
     emit("唯一的变量是 system prompt 里的年份:`It is now year <Y>. You are a good researcher.`")
     emit(f"采样、题面、抽样数全部不变。基准年 **{BASE_YEAR}**(用已有的 `y26pp`,没有重投)。\n")
 
-    cache = {}
+    cache, summary = {}, {}
     emit("## 0. 数据在不在\n")
     emit("| 臂 | family | " + " | ".join(str(y) for y in YEARS) + " |")
     emit("|---|---|" + "---:|" * len(YEARS))
@@ -174,10 +175,30 @@ def main():
                          f"[{c['lo']:+.4f}, {c['hi']:+.4f}] | {c['pos']}/{c['neg']} | {c['p']:.4f} |")
             emit("\n| 聚合 | 格子 | 方向 | 符号检验 p | Stouffer Z | p |")
             emit("|---|---|---|---|---|---|")
-            agg(allc, "全部有效任务")
-            agg([c for c in allc if c["fam"] == "judge3"], "只看 judge3(research judgment)")
-            agg([c for c in allc if c["fam"] in ("idea", "ideav2")], "只看 idea+ideav2(taste)")
+            summary[(lbl, y, "all")] = agg(allc, "全部有效任务")
+            summary[(lbl, y, "judge3")] = agg(
+                [c for c in allc if c["fam"] == "judge3"], "只看 judge3(research judgment)")
+            summary[(lbl, y, "taste")] = agg(
+                [c for c in allc if c["fam"] in ("idea", "ideav2")], "只看 idea+ideav2(taste)")
             emit()
+
+    emit("## 一眼表:Stouffer Z(每格 = 该年 − 2026,负号 = 比 2026 差)\n")
+    emit("| 口径 | 臂 | 2000 | 2050 | 2100 |")
+    emit("|---|---|---:|---:|---:|")
+    for key, name in (("judge3", "research judgment(judge3)"),
+                      ("taste", "taste(idea+ideav2)"),
+                      ("all", "两者合并")):
+        for lbl in ARMS:
+            cells = []
+            for y in YEARS:
+                if y == BASE_YEAR:
+                    continue
+                r = summary.get((lbl, y, key))
+                cells.append("—" if not r else
+                             f"{r['Z']:+.2f}" + ("" if r["p"] >= 0.05 else " ★"))
+            emit(f"| {name} | {lbl} | " + " | ".join(cells) + " |")
+    emit()
+    emit("★ = 该格 p < 0.05。**2026 是基准年,按定义恒为 0,不列。**\n")
 
 
 main()
